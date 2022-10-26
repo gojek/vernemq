@@ -231,6 +231,14 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason)
             %% remote nodes to initiate queue migration
             {SubscriptionsPresent, UpdatedSubs, ChangedNodes}
                 = maybe_remap_subscriber(?DefaultRegView, SubscriberId, StartClean),
+            case {SubscriptionsPresent, QueuePresent, ChangedNodes} of
+                {true, false, []} ->
+                    vmq_queue:init_offline_queue(QPid);
+                {true, _, [OldNode]} ->
+                    rpc:call(OldNode, vmq_reg_mgr, handle_new_sub_event, [SubscriberId, UpdatedSubs]),
+                    vmq_queue:init_offline_queue(QPid);
+                _ -> ok
+            end,
             SessionPresent1 = SubscriptionsPresent or QueuePresent,
             SessionPresent2 =
                 case StartClean of
@@ -295,7 +303,11 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason)
                     register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1, register_subscriber_retry_exhausted);
                 {ok, Opts} ->
                     {ok, Opts#{session_present => SessionPresent2,
-                               queue_pid => QPid}}
+                               queue_pid => QPid}};
+                _ ->
+                    lager:info("It was happening due to this"),
+                    timer:sleep(100),
+                    register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1, register_subscriber_retry_exhausted)
             end
     end.
 
@@ -991,7 +1003,7 @@ del_subscriptions(_, Topics, SubscriberId) ->
 %% subscriber id.
 -spec maybe_remap_subscriber(atom(), subscriber_id(), boolean()) ->
     {boolean(), undefined | vmq_subscriber:subs(), [node()]}.
-maybe_remap_subscriber(vmq_reg_redis_trie, {MP, ClientId} = SubscriberId, _StartClean = true) ->
+maybe_remap_subscriber(vmq_reg_redis_trie, {MP, ClientId}, _StartClean = true) ->
     Subs = vmq_subscriber:new(true),
     case vmq_redis:query(redis_client, [?FCALL,
                                    ?REMAP_SUBSCRIBER,
@@ -1001,13 +1013,11 @@ maybe_remap_subscriber(vmq_reg_redis_trie, {MP, ClientId} = SubscriberId, _Start
                                    node(),
                                    true,
                                    os:system_time(nanosecond)], ?FCALL, ?REMAP_SUBSCRIBER) of
-        {ok, [undefined, [_, <<"1">>, []]]} -> ok;
-        {ok, [<<"1">>, [_, <<"1">>, []]]} -> ok;
-        {ok, [<<"1">>, [_, <<"1">>, []], OldNode]} ->
-            rpc:cast(binary_to_atom(OldNode), vmq_reg_mgr, handle_new_sub_event, [SubscriberId, Subs])
-    end,
-    {false, Subs, []};
-maybe_remap_subscriber(vmq_reg_redis_trie, {MP, ClientId} = SubscriberId, _StartClean = false) ->
+        {ok, [undefined, [_, <<"1">>, []]]} -> {false, Subs, []};
+        {ok, [<<"1">>, [_, <<"1">>, []]]} -> {true, Subs, []};
+        {ok, [<<"1">>, [_, <<"1">>, []], OldNode]} -> {true, Subs, [binary_to_atom(OldNode)]}
+    end;
+maybe_remap_subscriber(vmq_reg_redis_trie, {MP, ClientId}, _StartClean = false) ->
     case vmq_redis:query(redis_client, [?FCALL,
                                    ?REMAP_SUBSCRIBER,
                                    0,
@@ -1024,7 +1034,6 @@ maybe_remap_subscriber(vmq_reg_redis_trie, {MP, ClientId} = SubscriberId, _Start
         {ok, [<<"1">>, [NewNode, undefined, TopicsWithQoS], OldNode]} ->
             NewTopicsWithQoS = [{vmq_topic:word(Topic), binary_to_term(QoS)} || [Topic, QoS] <- TopicsWithQoS],
             NewSubs = [{binary_to_atom(NewNode), false, NewTopicsWithQoS}],
-            rpc:cast(binary_to_atom(OldNode), vmq_reg_mgr, handle_new_sub_event, [SubscriberId, NewSubs]),
             {true, NewSubs, [binary_to_atom(OldNode)]}
     end;
 maybe_remap_subscriber(_, SubscriberId, _StartClean = true) ->

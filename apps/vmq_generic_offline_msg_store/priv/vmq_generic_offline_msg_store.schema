@@ -1,0 +1,37 @@
+%% -*- mode: erlang -*-
+%% ex: ft=erlang
+
+{mapping, "offline_message_store_engine", "vmq_generic_offline_msg_store.msg_store_engine",
+    [{default, vmq_offline_storage_engine_postgres},
+     {datatype, atom}
+    ]}.
+
+{mapping, "offline_message_store_opts.host", "vmq_generic_offline_msg_store.msg_store_opts.host",
+    [{default, "localhost"},
+     {datatype, string}
+    ]}.
+
+{mapping, "offline_message_store_opts.port", "vmq_generic_offline_msg_store.msg_store_opts.port",
+    [{default, 5432},
+     {datatype, integer}
+    ]}.
+
+{mapping, "offline_message_store_opts.username", "vmq_generic_offline_msg_store.msg_store_opts.username",
+    [{default, "root"},
+     {datatype, string}
+    ]}.
+
+{mapping, "offline_message_store_opts.password", "vmq_generic_offline_msg_store.msg_store_opts.password",
+    [{default, "pass"},
+     {datatype, string}
+    ]}.
+
+{mapping, "offline_message_store_opts.database", "vmq_generic_offline_msg_store.msg_store_opts.database",
+    [{default, "postgres"},
+     {datatype, string}
+    ]}.
+
+{mapping, "offline_message_store_opts.timeout", "vmq_generic_offline_msg_store.msg_store_opts.timeout",
+    [{default, 4000},
+     {datatype, integer}
+    ]}.

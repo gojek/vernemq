@@ -108,7 +108,7 @@ session_cleanup_test(Cfg) ->
     %% if queue cleanup woudln't have happen, we'd see a remaining offline message
     {1,0,0,0,0} = vmq_queue_sup_sup:summary(),
     clean_session_qos1_helper(),
-    %% if redis topic-sid mapping cleanup woudln't have happen, we'd receive a message
+    %% if redis topic-sid mapping cleanup will not happen, then we will receive a message
     {error,timeout} = packet:expect_packet(gen_tcp, Socket1, "publish", Publish, 500),
     ok = gen_tcp:close(Socket1).
 

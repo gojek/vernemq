@@ -26,13 +26,6 @@ setup() ->
     application:set_env(vmq_server, ignore_db_config, true),
     application:load(vmq_plugin),
     application:set_env(vmq_plugin, default_schema_dir, [PrivDir]),
-    application:load(vmq_generic_msg_store),
-    application:set_env(vmq_generic_msg_store, msg_store_opts, [
-                                                     {store_dir, Datadir ++ "/msgstore"},
-                                                     {open_retries, 30},
-                                                     {open_retry_delay, 2000}
-                                                    ]),
-    %application:set_env(vmq_generic_msg_store, msg_store_engine, vmq_storage_engine_ets),
     LogDir = "log." ++ atom_to_list(node()),
     application:load(lager),
     application:set_env(lager, handlers, [
@@ -73,7 +66,7 @@ disable_all_plugins() ->
     lists:foreach(fun ({application, vmq_plumtree, _}) ->
                           % don't disable metadata plugin
                           ignore;
-                      ({application, vmq_generic_msg_store, _}) ->
+                      ({application, vmq_generic_offline_msg_store, _}) ->
                           % don't disable message store plugin
                           ignore;
                       ({application, App, _Hooks}) ->

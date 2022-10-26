@@ -1,0 +1,30 @@
+{application, vmq_generic_offline_msg_store,
+ [{description, "A VerneMQ plugin that sets up offline store for message storage"},
+  {vsn, git},
+  {registered, []},
+  {mod, { vmq_generic_offline_msg_store_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    sasl,
+    lager,
+    epgsql
+   ]},
+  {env,[
+      {vmq_plugin_hooks, [
+            {vmq_generic_offline_msg_store, msg_store_write, 2, [internal]},
+            {vmq_generic_offline_msg_store, msg_store_delete, 1, [internal]},
+            {vmq_generic_offline_msg_store, msg_store_find, 2, [internal]}
+      ]},
+      {msg_store_engine, vmq_offline_storage_engine_postgres},
+      {msg_store_opts, [
+                        {host, "localhost"},
+                        {port, 5432},
+                        {username, "dhruvjain"},
+                        {password, ""},
+                        {database, "postgres"},
+                        {timeout, 4000}
+                       ]}
+  ]},
+  {modules, []}
+ ]}.

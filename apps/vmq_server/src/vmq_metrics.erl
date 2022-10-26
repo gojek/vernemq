@@ -82,8 +82,10 @@
          incr_router_matches_remote/1,
          pretimed_measurement/2,
 
-         incr_stored_offline_messages/0,
-         incr_removed_offline_messages/0,
+         incr_stored_offline_messages/1,
+         incr_removed_offline_messages/1,
+
+         incr_msg_store_ops_error/1,
 
          incr_redis_cmd/1,
          incr_redis_cmd_miss/1,
@@ -278,11 +280,14 @@ incr_router_matches_local(V) ->
 incr_router_matches_remote(V) ->
     incr_item(?METRIC_ROUTER_MATCHES_REMOTE, V).
 
-incr_stored_offline_messages() ->
-  incr_item(?METRIC_STORED_OFFLINE_MESSAGES, 1).
+incr_stored_offline_messages(N) ->
+  incr_item(?METRIC_STORED_OFFLINE_MESSAGES, N).
 
-incr_removed_offline_messages() ->
-  incr_item(?METRIC_REMOVED_OFFLINE_MESSAGES, 1).
+incr_removed_offline_messages(N) ->
+  incr_item(?METRIC_REMOVED_OFFLINE_MESSAGES, N).
+
+incr_msg_store_ops_error(Op) ->
+    incr_item({msg_store_ops_error, Op}, 1).
 
 incr_redis_cmd({CMD, OPERATION}) ->
     incr_item({?REDIS_CMD, CMD, OPERATION}, 1).
@@ -785,8 +790,19 @@ internal_defs() ->
              mqtt5_pubrel_sent_def(), mqtt5_pubrel_received_def(),
              mqtt5_pubcomp_sent_def(), mqtt5_pubcomp_received_def(),
              mqtt5_auth_sent_def(), mqtt5_auth_received_def(),
-             sidecar_events_def(), redis_def()
+             sidecar_events_def(), redis_def(), msg_store_ops_def()
             ], []).
+
+msg_store_ops_def() ->
+    Ops =
+        [
+            write,
+            delete,
+            delete_all,
+            find],
+    [
+        m(counter, [{operation, rcn_to_str(Op)}], {msg_store_ops_error, Op}, msg_store_ops_error, <<"The number of times msg store operation failed.">>) || Op <- Ops
+    ].
 
 redis_def() ->
     OPERATIONs =
@@ -1598,7 +1614,11 @@ met2idx({?REDIS_CMD_MISS, ?FCALL, ?POLL_MAIN_QUEUE})                      -> 281
 met2idx({?REDIS_STALE_CMD, ?FCALL, ?ENQUEUE_MSG})                         -> 282;
 met2idx({?REDIS_STALE_CMD, ?FCALL, ?POLL_MAIN_QUEUE})                     -> 283;
 met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?ENQUEUE_MSG})                        -> 284;
-met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?POLL_MAIN_QUEUE})                    -> 285.
+met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?POLL_MAIN_QUEUE})                    -> 285;
+met2idx({msg_store_ops_error, write})                                     -> 286;
+met2idx({msg_store_ops_error, delete})                                    -> 287;
+met2idx({msg_store_ops_error, delete_all})                                -> 288;
+met2idx({msg_store_ops_error, find})                                      -> 289.
 
 -ifdef(TEST).
 clear_stored_rates() ->

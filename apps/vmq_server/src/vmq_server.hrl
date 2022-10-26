@@ -13,17 +13,6 @@
         }).
 -type retain_msg() :: #retain_msg{}.
 
--record(deliver,
-        {
-         qos        :: qos(),
-         %% an undefined msg_id means this message has never been sent
-         %% to the client or that it is a qos0 message.
-
-         %% TODO use `msg_id()` type instead, but currently no in scope.
-         msg_id     :: undefined | non_neg_integer(),
-         msg        :: msg()
-        }).
-
 -type deliver() :: #deliver{}.
 
 -type subscription() :: {topic(), subinfo()}.
@@ -77,4 +66,6 @@
 
 -define(PRODUCER, "producer").
 -define(CONSUMER, "consumer").
+
+-define(REMOTE_SESSION_TAKEN_OVER, remote_session_taken_over).
 -endif.

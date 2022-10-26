@@ -299,15 +299,18 @@ queue_force_disconnect_test(_) ->
 
 queue_force_disconnect_cleanup_test(Cfg) ->
     #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),
-    NonConsumingSessionPid = self(),
+    Parent = self(),
+    SessionPid1 = spawn(fun() -> mock_session(Parent) end),
     SubscriberId = {"", <<"force-client-discleanup">>},
     QueueOpts = maps:merge(vmq_queue:default_opts(), #{cleanup_on_disconnect => false,
                                                        max_offline_messages => 1000,
                                                        queue_type => fifo}),
     SessionPresent = false,
     {ok, #{session_present := SessionPresent,
-           queue_pid := QPid0}} = vmq_reg:register_subscriber_(NonConsumingSessionPid, SubscriberId, false, QueueOpts, 10),
+           queue_pid := QPid0}} = vmq_reg:register_subscriber_(SessionPid1, SubscriberId, false, QueueOpts, 10),
     {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"discleanup">>], 1}]),
+
+    SessionPid1 ! go_down,
     timer:sleep(50), % give some time to plumtree
 
     Msgs = publish_multi(RegView, SubscriberId, [<<"test">>, <<"discleanup">>]),
@@ -324,7 +327,7 @@ queue_force_disconnect_cleanup_test(Cfg) ->
 
     % SessionPresent should be again `false` and we should get a new Queue Pid
     {ok, #{session_present := SessionPresent,
-           queue_pid := QPid1}} = vmq_reg:register_subscriber_(NonConsumingSessionPid, SubscriberId, false, QueueOpts, 10),
+           queue_pid := QPid1}} = vmq_reg:register_subscriber_(SessionPid1, SubscriberId, false, QueueOpts, 10),
     true = (QPid0 =/= QPid1),
     false = is_process_alive(QPid0),
 
@@ -382,11 +385,8 @@ msg(Topic, Payload, QoS) ->
              properties=#{}}.
 
 receive_msg(QPid, QoS, Msg) ->
-    %% if we were able to persist the message
-    %% we'll set the persist flag
-    PMsg = Msg#vmq_msg{persisted=true},
     receive
-        {received, QPid, [#deliver{qos=QoS, msg=PMsg}]} ->
+        {received, QPid, [#deliver{qos=QoS, msg=Msg}]} ->
             ok;
         M ->
             exit({wrong_message, M})
