@@ -6,7 +6,7 @@
 -include("vmq_server.hrl").
 
 %% API functions
--export([start_link/2, enqueue/4]).
+-export([start_link/2, enqueue/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -25,16 +25,15 @@
 start_link(RegName, RedisNode) ->
     gen_server:start_link({local, RegName}, ?MODULE, [RedisNode], []).
 
-enqueue(Node, SubscriberId, SubInfo, Msg) ->
-    SIdBin = term_to_binary(SubscriberId),
-    RedisClient = gen_redis_producer_client(SIdBin),
+enqueue(Node, SubscriberBin, MsgBin) when is_binary(SubscriberBin) and is_binary(MsgBin) ->
+    RedisClient = gen_redis_producer_client(SubscriberBin),
     MainQueueKey = "mainQueue" ++ "::" ++ atom_to_list(Node),
     case vmq_redis:query(RedisClient, [?FCALL,
                                        ?ENQUEUE_MSG,
                                        1,
                                        MainQueueKey,
-                                       SIdBin,
-                                       term_to_binary({SubInfo, Msg})
+                                       SubscriberBin,
+                                       MsgBin
                                       ], ?FCALL, ?ENQUEUE_MSG) of
         {ok, MainQueueSize} ->
             vmq_metrics:pretimed_measurement({redis_main_queue,
@@ -108,14 +107,21 @@ handle_info(poll_redis_main_queue, #state{shard=RedisNode, interval=Interval} = 
             erlang:send_after(Interval, self(), poll_redis_main_queue);
         {ok, Msgs} ->
             lists:foreach(
-                fun([SubIdBin, SubInfoMsgBin, TimeInQueue]) ->
+                fun([SubBin, MsgBin, TimeInQueue]) ->
                     vmq_metrics:pretimed_measurement(
                         {?MODULE, time_spent_in_main_queue},
                         binary_to_integer(TimeInQueue)
                     ),
-                    SubscriberId = binary_to_term(SubIdBin),
-                    {SubInfo, Msg} = binary_to_term(SubInfoMsgBin),
-                    vmq_reg:enqueue_msg({SubscriberId, SubInfo}, Msg)
+                    case binary_to_term(SubBin) of
+                        {_, _CId} = SId ->
+                            {SubInfo, Msg} = binary_to_term(MsgBin),
+                            vmq_reg:enqueue_msg({SId, SubInfo}, Msg);
+                        NodeGroupedSubs when is_list(NodeGroupedSubs) ->
+                            vmq_shared_subscriptions:publish_to_group(binary_to_term(MsgBin),
+                                                                      NodeGroupedSubs,
+                                                                      {0,0});
+                        UnknownMsg -> lager:error("Unknown Msg in Redis Main Queue : ~p", [UnknownMsg])
+                    end
                 end,
                 Msgs
             ),

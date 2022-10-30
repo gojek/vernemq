@@ -473,7 +473,7 @@ publish_fold_fun({Node, SubscriberId, SubInfo}, _FromClientId, #publish_fold_acc
     Acc#publish_fold_acc{local_matches= N + 1};
 publish_fold_fun({Node, SubscriberId, SubInfo}, _FromClientId, #publish_fold_acc{remote_matches=RN,
                                                                                  msg=Msg} = Acc) ->
-    vmq_redis_queue:enqueue(Node, SubscriberId, SubInfo, Msg),
+    vmq_redis_queue:enqueue(Node, term_to_binary(SubscriberId), term_to_binary({SubInfo, Msg})),
     Acc#publish_fold_acc{local_matches= RN + 1};
 publish_fold_fun({_Node, _Group, SubscriberId, #{no_local := true}}, SubscriberId, Acc) ->
     %% Publisher is the same as subscriber, discard.
@@ -965,14 +965,13 @@ subscriptions_exist(OldSubs, Topics) ->
 
 -spec del_subscriber(atom(), subscriber_id()) -> ok.
 del_subscriber(vmq_reg_redis_trie, {MP, ClientId} = _SubscriberId) ->
-    {ok, <<"1">>} = vmq_redis:query(redis_client, [?FCALL,
-                                              ?DELETE_SUBSCRIBER,
-                                              0,
-                                              MP,
-                                              ClientId,
-                                              node(),
-                                              os:system_time(nanosecond)], ?FCALL, ?DELETE_SUBSCRIBER),
-    ok;
+    vmq_redis:query(redis_client, [?FCALL,
+                                        ?DELETE_SUBSCRIBER,
+                                        0,
+                                        MP,
+                                        ClientId,
+                                        node(),
+                                        os:system_time(nanosecond)], ?FCALL, ?DELETE_SUBSCRIBER);
 del_subscriber(_, SubscriberId) ->
     vmq_subscriber_db:delete(SubscriberId).
 

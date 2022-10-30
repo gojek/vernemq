@@ -18,6 +18,7 @@
          cluster_leave_myself_test/1,
          cluster_leave_dead_node_test/1,
          shared_subs_random_policy_test/1,
+         shared_subs_random_policy_online_first_test/1,
          shared_subs_prefer_local_policy_test/1,
          shared_subs_local_only_policy_test/1,
          cross_node_publish_subscribe/1,
@@ -98,6 +99,7 @@ all() ->
     ,cluster_leave_myself_test
     ,cluster_leave_dead_node_test
     ,shared_subs_random_policy_test
+    ,shared_subs_random_policy_online_first_test
     ,shared_subs_prefer_local_policy_test
     ,shared_subs_local_only_policy_test
     ,cross_node_publish_subscribe
@@ -334,28 +336,31 @@ racing_subscriber_test(Config) ->
          spawn_link(
            fun() ->
                    {_RandomNode, RandomPort} = random_node(Nodes),
-                   {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port,
-                                                                               RandomPort}]),
-                   case gen_tcp:send(Socket, Subscribe) of
-                       ok ->
-                           case packet:expect_packet(Socket, "suback", Suback) of
+                   case packet:do_client_connect(Connect, Connack, [{port, RandomPort}]) of
+                       {ok, Socket} ->
+                           case gen_tcp:send(Socket, Subscribe) of
                                ok ->
-                                   inet:setopts(Socket, [{active, true}]),
-                                   receive
-                                       {tcp_closed, Socket} ->
-                                           %% we should be kicked out by the subsequent client
-                                           ok;
-                                       {lastman, test_over} ->
-                                           ok;
-                                       M ->
-                                           exit({unknown_message, M})
+                                   case packet:expect_packet(Socket, "suback", Suback) of
+                                       ok ->
+                                           inet:setopts(Socket, [{active, true}]),
+                                           receive
+                                               {tcp_closed, Socket} ->
+                                                   %% we should be kicked out by the subsequent client
+                                                   ok;
+                                               {lastman, test_over} ->
+                                                   ok;
+                                               M ->
+                                                   exit({unknown_message, M})
+                                           end;
+                                       {error, closed} ->
+                                           ok
                                    end;
                                {error, closed} ->
+                                   %% it's possible that we can't even subscribe due to
+                                   %% a racing subscriber
                                    ok
                            end;
                        {error, closed} ->
-                           %% it's possible that we can't even subscribe due to
-                           %% a racing subscriber
                            ok
                    end
            end)
@@ -588,6 +593,37 @@ shared_subs_random_policy_test(Config) ->
     [ ok = gen_tcp:close(S) || S <- SubscriberSockets ],
     ok.
 
+shared_subs_random_policy_online_first_test(Config) ->
+    ensure_cluster(Config),
+    Nodes = nodes_(Config),
+    set_shared_subs_policy(random, nodenames(Config)),
+
+    enable_client_offline_hook(nodenames(Config)),
+
+    [OnlineSubNode | RestNodes] = Nodes,
+    ok = create_offline_subscribers(<<"$share/share/sharedtopic">>, 10, RestNodes),
+    SubscriberSocketsOnline = connect_subscribers(<<"$share/share/sharedtopic">>, 1, [OnlineSubNode]),
+
+    %% publish to shared topic on random node
+    {_, Port} = random_node(RestNodes),
+    Connect = packet:gen_connect("ss-publisher",
+        [{keepalive, 60}, {clean_session, true}]),
+    Connack = packet:gen_connack(0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
+    Payloads = publish_to_topic(Socket, <<"sharedtopic">>, 10),
+    Disconnect = packet:gen_disconnect(),
+    ok = gen_tcp:send(Socket, Disconnect),
+    ok = gen_tcp:close(Socket),
+
+    %% receive on subscriber sockets.
+    spawn_receivers(SubscriberSocketsOnline),
+    receive_msgs(Payloads),
+    receive_nothing(200),
+
+    %% cleanup
+    [ ok = gen_tcp:close(S) || S <- SubscriberSocketsOnline ],
+    ok.
+
 routing_table_survives_node_restart(Config) ->
     %% Ensure that we subscribers can still receive publishes from a
     %% node that has been restarted. I.e., this ensures that the
@@ -701,6 +737,34 @@ convert_new_msgs_to_old_format(_Config) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+enable_client_offline_hook(Nodes) ->
+    lists:foreach(
+        fun(N) ->
+            ok = rpc:call(N, vmq_plugin_mgr, enable_module_plugin, [on_client_offline, ?MODULE, hook_on_client_offline, 1])
+        end,
+        Nodes).
+
+create_offline_subscribers(Topic, Number, Nodes) ->
+    lists:foreach(fun(I) ->
+                    {_, Port} = random_node(Nodes),
+                    ClientId = "subscriber-" ++ integer_to_list(I) ++ "-node-" ++
+                        integer_to_list(Port),
+                    Connect = packet:gen_connect(ClientId,
+                        [{keepalive, 60}, {clean_session, false}]),
+                    Connack = packet:gen_connack(0),
+                    Subscribe = packet:gen_subscribe(1, [Topic], 1),
+                    Suback = packet:gen_suback(1, 1),
+                    %% TODO: make it connect to random node instead
+                    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
+                    ok = gen_tcp:send(Socket, Subscribe),
+                    ok = packet:expect_packet(Socket, "suback", Suback),
+                    Disconnect = packet:gen_disconnect(),
+                    ok = gen_tcp:send(Socket, Disconnect),
+                    ok = gen_tcp:close(Socket),
+                    %% wait for the client to be offline
+                    timer:sleep(500)
+                  end, lists:seq(1,Number)).
 
 connect_subscribers(Topic, Number, Nodes) ->
     [begin
