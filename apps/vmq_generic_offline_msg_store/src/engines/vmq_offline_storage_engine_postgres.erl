@@ -1,6 +1,6 @@
 -module(vmq_offline_storage_engine_postgres).
 
--export([open/1, close/1, write/4, delete/2, delete/3, find/2]).
+-export([open/1, close/1, write/4, delete/2, delete/3, read/3, find/2]).
 
 -include_lib("vmq_commons/src/vmq_types_common.hrl").
 
@@ -21,6 +21,12 @@ delete(Client, SIdB) ->
 
 delete(Client, SIdB, MsgRef) ->
     epgsql:equery(Client, "DELETE FROM " ++ ?TABLE ++ " WHERE sid=$1 AND msgref=$2", [SIdB, MsgRef]).
+
+read(Client, SIdB, MsgRef) ->
+    case epgsql:equery(Client, "SELECT payload FROM " ++ ?TABLE ++ " WHERE sid=$1 AND msgref=$2", [SIdB, MsgRef]) of
+        {ok, _, [{BinaryMsg}]} -> {ok, binary_to_term(BinaryMsg)};
+        E -> E
+    end.
 
 find(Client, SIdB) ->
     case epgsql:equery(Client, "SELECT payload FROM " ++ ?TABLE ++ " WHERE sid=$1", [SIdB]) of

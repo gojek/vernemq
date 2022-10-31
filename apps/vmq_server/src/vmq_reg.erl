@@ -250,7 +250,7 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason)
                     false ->
                         Fun = fun(Sid, OldNode) ->
                                       case rpc:call(OldNode, ?MODULE, get_queue_pid, [Sid]) of
-                                          {badrpc,nodedown} ->
+                                          {badrpc,_} ->
                                               case get_queue_pid(Sid) of
                                                   not_found ->
                                                       block;

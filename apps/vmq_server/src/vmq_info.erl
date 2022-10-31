@@ -175,11 +175,11 @@ subscription_row_init(Row) ->
 message_ref_row_init(Row) ->
     SubscriberId = {maps:get('__mountpoint', Row), maps:get(client_id, Row)},
     case vmq_message_store:find(SubscriberId, other) of
-        {ok, MsgRefs} ->
-            lists:foldl(fun(MsgRef, Acc) ->
+        {ok, Msgs} ->
+            lists:foldl(fun(#deliver{msg=#vmq_msg{msg_ref=MsgRef}}, Acc) ->
                                 [maps:merge(Row, #{'__msg_ref' => MsgRef,
                                                    'msg_ref' => list_to_binary(base64:encode_to_string(MsgRef))})|Acc]
-                        end, [], MsgRefs);
+                        end, [], Msgs);
         {error, _} ->
             [Row]
     end.

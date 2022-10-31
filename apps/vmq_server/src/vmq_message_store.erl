@@ -60,7 +60,14 @@ write(SubscriberId, Msg) ->
 
 read(SubscriberId, MsgRef) ->
     V1 = vmq_util:ts(),
-    Res = vmq_plugin:only(msg_store_read, [SubscriberId, MsgRef]),
+    Res = case vmq_plugin:only(msg_store_read, [SubscriberId, MsgRef]) of
+        {ok, _} = OkRes->
+            OkRes;
+        {error, Err} = E->
+            lager:error("Error: ~p", [Err]),
+            vmq_metrics:incr_msg_store_ops_error(read),
+            E
+    end,
     V2 = vmq_util:ts(),
     vmq_metrics:pretimed_measurement({vmq_message_store, read}, V2 - V1),
     Res.

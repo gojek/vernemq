@@ -262,7 +262,7 @@ queue_persistent_client_expiration_test(Cfg) ->
     Msgs = publish_multi(RegView, SubscriberId, [<<"test">>, <<"transition">>]),
     NumPubbedMsgs = length(Msgs),
 
-    timer:sleep(50), % give some time to plumtree
+    timer:sleep(500), % give some time to plumtree
     {ok, FoundMsgs} = vmq_message_store:find(SubscriberId, other),
     NumPubbedMsgs = length(FoundMsgs),
 
@@ -316,7 +316,7 @@ queue_force_disconnect_cleanup_test(Cfg) ->
     Msgs = publish_multi(RegView, SubscriberId, [<<"test">>, <<"discleanup">>]),
     NumPubbedMsgs = length(Msgs),
 
-    timer:sleep(50), % give some time to plumtree
+    timer:sleep(500), % give some time to plumtree
     {ok, FoundMsgs} = vmq_message_store:find(SubscriberId, other),
     NumPubbedMsgs = length(FoundMsgs),
 

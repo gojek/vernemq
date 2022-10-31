@@ -322,7 +322,7 @@ racing_subscriber_test(Config) ->
                  %% this is required to create proper connack
                  ok = wait_until_converged(Nodes,
                                            fun(N) ->
-                                                   case rpc:call(N, vmq_subscriber_db, read, [{"", "connect-racer"}]) of
+                                                   case rpc:call(N, vmq_subscriber_db, read, [{"", "connect-racer"}, []]) of
                                                        [] -> false;
                                                        [{_, false, _}] -> true
                                                    end
@@ -425,6 +425,9 @@ cluster_leave_test(Config) ->
                  {keepalive, 60}]),
          Connack = packet:gen_connack(1, 0),
          {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, CtrlPort}]),
+         timer:sleep(500),
+         %% The above interval will ensure msg is passed to connection process before closing the socket
+         %% Otherwise, the msg from online queue might get lost
          gen_tcp:close(Socket),
          Socket
      end || I <- lists:seq(1,ToMigrate)],

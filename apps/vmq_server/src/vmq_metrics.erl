@@ -799,6 +799,7 @@ msg_store_ops_def() ->
             write,
             delete,
             delete_all,
+            read,
             find],
     [
         m(counter, [{operation, rcn_to_str(Op)}], {msg_store_ops_error, Op}, msg_store_ops_error, <<"The number of times msg store operation failed.">>) || Op <- Ops
@@ -1618,7 +1619,8 @@ met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?POLL_MAIN_QUEUE})                    -> 285
 met2idx({msg_store_ops_error, write})                                     -> 286;
 met2idx({msg_store_ops_error, delete})                                    -> 287;
 met2idx({msg_store_ops_error, delete_all})                                -> 288;
-met2idx({msg_store_ops_error, find})                                      -> 289.
+met2idx({msg_store_ops_error, read})                                      -> 289;
+met2idx({msg_store_ops_error, find})                                      -> 290.
 
 -ifdef(TEST).
 clear_stored_rates() ->

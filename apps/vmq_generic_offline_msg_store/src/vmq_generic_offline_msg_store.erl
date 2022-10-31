@@ -9,6 +9,7 @@
     msg_store_write/2,
     msg_store_delete/1,
     msg_store_delete/2,
+    msg_store_read/2,
     msg_store_find/2]).
 
 %% gen_server callbacks
@@ -38,6 +39,9 @@ msg_store_delete(SubscriberId) ->
 
 msg_store_delete(SubscriberId, MsgRef) ->
     gen_server:call(?MODULE, {delete, SubscriberId, MsgRef}, 1000).
+
+msg_store_read(SubscriberId, MsgRef) ->
+    gen_server:call(?MODULE, {read, SubscriberId, MsgRef}, 1000).
 
 msg_store_find(SubscriberId, _Type) ->
     gen_server:call(?MODULE, {find, SubscriberId}, 1000).
@@ -151,6 +155,9 @@ handle_req({delete, SId},
 handle_req({delete, SId, MsgRef},
     #state{engine=Engine, engine_module=EngineModule}) ->
     apply(EngineModule, delete, [Engine, term_to_binary(SId), MsgRef]);
+handle_req({read, SId, MsgRef},
+    #state{engine=Engine, engine_module=EngineModule}) ->
+    apply(EngineModule, read, [Engine, term_to_binary(SId), MsgRef]);
 handle_req({find, SId},
     #state{engine=Engine, engine_module=EngineModule}) ->
     apply(EngineModule, find, [Engine, term_to_binary(SId)]).
