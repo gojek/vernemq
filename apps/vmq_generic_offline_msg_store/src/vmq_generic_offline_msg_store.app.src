@@ -20,9 +20,9 @@
       {msg_store_opts, [
                         {host, "localhost"},
                         {port, 5432},
-                        {username, "dhruvjain"},
-                        {password, ""},
-                        {database, "postgres"},
+                        {username, "vmq_test_user"},
+                        {password, "vmq_test_password"},
+                        {database, "vmq_test_database"},
                         {timeout, 4000}
                        ]}
   ]},

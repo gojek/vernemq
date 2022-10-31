@@ -60,6 +60,7 @@ msg_store_find(SubscriberId, _Type) ->
 init(_) ->
     {ok, EngineModule} = application:get_env(vmq_generic_offline_msg_store, msg_store_engine),
     {ok, Opts} = application:get_env(vmq_generic_offline_msg_store, msg_store_opts),
+    lager:info("Opts: ~p", [Opts]),
 
 %%    process_flag(trap_exit, true), TODO: Check if on connection failure, sup restarts this process otherwise handle 'DOWN' msg
     case apply(EngineModule, open, [Opts]) of

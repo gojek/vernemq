@@ -17,17 +17,17 @@
     ]}.
 
 {mapping, "offline_message_store_opts.username", "vmq_generic_offline_msg_store.msg_store_opts.username",
-    [{default, "root"},
+    [{default, "vmq_test_user"},
      {datatype, string}
     ]}.
 
 {mapping, "offline_message_store_opts.password", "vmq_generic_offline_msg_store.msg_store_opts.password",
-    [{default, "pass"},
+    [{default, "vmq_test_password"},
      {datatype, string}
     ]}.
 
 {mapping, "offline_message_store_opts.database", "vmq_generic_offline_msg_store.msg_store_opts.database",
-    [{default, "postgres"},
+    [{default, "vmq_test_database"},
      {datatype, string}
     ]}.
 

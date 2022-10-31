@@ -34,6 +34,11 @@ init_per_testcase(_Case, Config) ->
     StorageEngine = proplists:get_value(engine, Config),
     application:load(vmq_generic_offline_msg_store),
     application:set_env(vmq_generic_offline_msg_store, msg_store_engine, StorageEngine),
+    application:set_env(vmq_generic_offline_msg_store, msg_store_opts, #{username => "vmq_test_user",
+        password => "vmq_test_password",
+        database=>"vmq_test_database",
+        host => "localhost",
+        port => 5432}),
     application:ensure_all_started(vmq_generic_offline_msg_store),
     Config.
 
