@@ -598,8 +598,6 @@ shared_subs_random_policy_online_first_test(Config) ->
     Nodes = nodes_(Config),
     set_shared_subs_policy(random, nodenames(Config)),
 
-    enable_client_offline_hook(nodenames(Config)),
-
     [OnlineSubNode | RestNodes] = Nodes,
     ok = create_offline_subscribers(<<"$share/share/sharedtopic">>, 10, RestNodes),
     SubscriberSocketsOnline = connect_subscribers(<<"$share/share/sharedtopic">>, 1, [OnlineSubNode]),
@@ -737,14 +735,6 @@ convert_new_msgs_to_old_format(_Config) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-enable_client_offline_hook(Nodes) ->
-    lists:foreach(
-        fun(N) ->
-            ok = rpc:call(N, vmq_plugin_mgr, enable_module_plugin, [on_client_offline, ?MODULE, hook_on_client_offline, 1])
-        end,
-        Nodes).
-
 create_offline_subscribers(Topic, Number, Nodes) ->
     lists:foreach(fun(I) ->
                     {_, Port} = random_node(Nodes),
