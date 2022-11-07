@@ -796,7 +796,9 @@ redis_def() ->
             ?UNSUBSCRIBE,
             ?DELETE_SUBSCRIBER,
             ?FETCH_SUBSCRIBER,
-            ?FETCH_MATCHED_TOPIC_SUBSCRIBERS],
+            ?FETCH_MATCHED_TOPIC_SUBSCRIBERS,
+            ?ENQUEUE_MSG,
+            ?POLL_MAIN_QUEUE],
     REDIS_DEF_1 =
         [
             m(counter, [{cmd, rcn_to_str(?FCALL)}, {operation, rcn_to_str(OPERATION)}], {?REDIS_CMD, ?FCALL, OPERATION} , redis_cmd_total, <<"The number of redis cmd calls.">>) || OPERATION <- OPERATIONs
@@ -1582,7 +1584,21 @@ met2idx({?REDIS_STALE_CMD, ?FCALL, ?FETCH_SUBSCRIBER})                 -> 267;
 met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?FETCH_SUBSCRIBER})                -> 268;
 met2idx({?REDIS_CMD, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION})     -> 269;
 met2idx({?REDIS_CMD_ERROR, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION})  -> 270;
-met2idx({?REDIS_CMD_MISS, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION})   -> 271.
+met2idx({?REDIS_CMD_MISS, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION})   -> 271;
+met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?ENQUEUE_MSG})                       -> 272;
+met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?POLL_MAIN_QUEUE})                   -> 273;
+met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?ENQUEUE_MSG})                 -> 274;
+met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?POLL_MAIN_QUEUE})             -> 275;
+met2idx({?REDIS_CMD, ?FCALL, ?ENQUEUE_MSG})                               -> 276;
+met2idx({?REDIS_CMD, ?FCALL, ?POLL_MAIN_QUEUE})                           -> 277;
+met2idx({?REDIS_CMD_ERROR, ?FCALL, ?ENQUEUE_MSG})                         -> 278;
+met2idx({?REDIS_CMD_ERROR, ?FCALL, ?POLL_MAIN_QUEUE})                     -> 279;
+met2idx({?REDIS_CMD_MISS, ?FCALL, ?ENQUEUE_MSG})                          -> 280;
+met2idx({?REDIS_CMD_MISS, ?FCALL, ?POLL_MAIN_QUEUE})                      -> 281;
+met2idx({?REDIS_STALE_CMD, ?FCALL, ?ENQUEUE_MSG})                         -> 282;
+met2idx({?REDIS_STALE_CMD, ?FCALL, ?POLL_MAIN_QUEUE})                     -> 283;
+met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?ENQUEUE_MSG})                        -> 284;
+met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?POLL_MAIN_QUEUE})                    -> 285.
 
 -ifdef(TEST).
 clear_stored_rates() ->

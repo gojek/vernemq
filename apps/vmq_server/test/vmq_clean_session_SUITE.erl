@@ -17,15 +17,8 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
-    case proplists:get_value(vmq_md, Config) of
-        #{group := mqttv5_reg_redis_trie, tc := _} ->
-            vmq_test_utils:setup(vmq_reg_redis_trie),
-            eredis:q(whereis(redis_client), ["FLUSHDB"]);
-        #{group := mqttv4_reg_redis_trie, tc := _} ->
-            vmq_test_utils:setup(vmq_reg_redis_trie),
-            eredis:q(whereis(redis_client), ["FLUSHDB"]);
-        _ -> vmq_test_utils:setup(vmq_reg_trie)
-    end,
+    vmq_test_utils:setup(),
+    eredis:q(whereis(redis_client), ["FLUSHDB"]),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:set_config(max_client_id_size, 1000),
@@ -43,9 +36,7 @@ end_per_testcase(_, Config) ->
 all() ->
     [
      {group, mqttv4},
-     {group, mqttv5},
-     {group, mqttv4_reg_redis_trie},
-     {group, mqttv5_reg_redis_trie}
+     {group, mqttv5}
     ].
 
 groups() ->
@@ -60,9 +51,7 @@ groups() ->
      session_exp_only_at_disconnect_is_illegal],
     [
      {mqttv4, [], V4Tests},
-     {mqttv5, [shuffle], V5Tests},
-     {mqttv4_reg_redis_trie, [], V4Tests},
-     {mqttv5_reg_redis_trie, [shuffle], V5Tests}
+     {mqttv5, [shuffle], V5Tests}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

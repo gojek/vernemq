@@ -19,26 +19,14 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_group(mqttv4, Config) ->
-    vmq_test_utils:setup(vmq_reg_trie),
-    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
-    enable_on_subscribe(),
-    enable_on_publish(),
-    [{protover, 4}|Config];
-init_per_group(mqttv5, Config) ->
-    vmq_test_utils:setup(vmq_reg_trie),
-    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
-    enable_on_subscribe(),
-    enable_on_publish(),
-    [{protover, 5}|Config];
-init_per_group(mqttv4_reg_redis_trie, Config) ->
-    vmq_test_utils:setup(vmq_reg_redis_trie),
+    vmq_test_utils:setup(),
     eredis:q(whereis(redis_client), ["FLUSHDB"]),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     enable_on_subscribe(),
     enable_on_publish(),
     [{protover, 4}|Config];
-init_per_group(mqttv5_reg_redis_trie, Config) ->
-    vmq_test_utils:setup(vmq_reg_redis_trie),
+init_per_group(mqttv5, Config) ->
+    vmq_test_utils:setup(),
     eredis:q(whereis(redis_client), ["FLUSHDB"]),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     enable_on_subscribe(),
@@ -63,9 +51,7 @@ end_per_testcase(_, Config) ->
 all() ->
     [
      {group, mqttv4}, % flow control in MQTT 3 & 4 is identical
-     {group, mqttv5},
-     {group, mqttv4_reg_redis_trie}, % flow control in MQTT 3 & 4 is identical
-     {group, mqttv5_reg_redis_trie}
+     {group, mqttv5}
     ].
 
 groups() ->
@@ -76,9 +62,7 @@ groups() ->
          qos2_offline],
     [
      {mqttv4, [shuffle], Tests},
-     {mqttv5, [shuffle], [receive_max_broker | Tests]},
-     {mqttv4_reg_redis_trie, [shuffle], Tests},
-     {mqttv5_reg_redis_trie, [shuffle], [receive_max_broker | Tests]}
+     {mqttv5, [shuffle], [receive_max_broker | Tests]}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

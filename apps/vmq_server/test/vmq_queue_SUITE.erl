@@ -41,12 +41,8 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
-    case proplists:get_value(vmq_md, Config) of
-        #{group := vmq_reg_redis_trie, tc := _} ->
-            vmq_test_utils:setup(vmq_reg_redis_trie),
-            eredis:q(whereis(redis_client), ["FLUSHDB"]);
-        _ -> vmq_test_utils:setup(vmq_reg_trie)
-    end,
+    vmq_test_utils:setup(),
+    eredis:q(whereis(redis_client), ["FLUSHDB"]),
     vmq_config:set_env(queue_deliver_mode, fanout, false),
     enable_hooks(),
     Config.
@@ -57,7 +53,6 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [
-        {group, vmq_reg_trie},
         {group, vmq_reg_redis_trie}
     ].
 
@@ -74,7 +69,6 @@ groups() ->
      queue_force_disconnect_cleanup_test
     ],
     [
-        {vmq_reg_trie, [], Tests},
         {vmq_reg_redis_trie, [], Tests}
     ].
 

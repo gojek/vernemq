@@ -1,5 +1,5 @@
 -module(vmq_test_utils).
--export([setup/1,
+-export([setup/0,
          teardown/0,
          reset_tables/0,
          maybe_start_distribution/1,
@@ -7,7 +7,7 @@
          seed_rand/1,
          rand_bytes/1]).
 
-setup(RegView) ->
+setup() ->
     os:cmd(os:find_executable("epmd")++" -daemon"),
     NodeName = list_to_atom("vmq_server-" ++ integer_to_list(erlang:phash2(os:timestamp()))),
     ok = maybe_start_distribution(NodeName),
@@ -18,14 +18,10 @@ setup(RegView) ->
     application:set_env(plumtree, metadata_root, Datadir ++ "/meta/"),
     application:load(vmq_server),
     PrivDir = code:priv_dir(vmq_server),
-    case RegView of
-        vmq_reg_redis_trie ->
-            application:set_env(vmq_server, default_reg_view, vmq_reg_redis_trie),
-            application:set_env(vmq_server, systree_reg_view, vmq_reg_redis_trie),
-            application:set_env(vmq_server, redis_sentinel_endpoints, "[{\"localhost\", 26379}]"),
-            application:set_env(vmq_server, redis_lua_dir, PrivDir ++ "/lua_scripts");
-        _ -> ok
-    end,
+    application:set_env(vmq_server, default_reg_view, vmq_reg_redis_trie),
+    application:set_env(vmq_server, systree_reg_view, vmq_reg_redis_trie),
+    application:set_env(vmq_server, redis_sentinel_endpoints, "[{\"localhost\", 26379}]"),
+    application:set_env(vmq_server, redis_lua_dir, PrivDir ++ "/lua_scripts"),
     application:set_env(vmq_server, listeners, [{vmq, [{{{0,0,0,0}, random_port()}, []}]}]),
     application:set_env(vmq_server, ignore_db_config, true),
     application:load(vmq_plugin),

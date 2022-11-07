@@ -93,10 +93,8 @@ publish_(Msg0, {Node, SubscriberId, SubInfo}, QState, {Local, Remote}) when Node
                     {error, cant_enqueue}
             end
     end;
-publish_(Msg0, {Node, SubscriberId, SubInfo}, QState, {Local, Remote}) ->
-    {QoS, Msg1} = maybe_add_sub_id(SubInfo, Msg0),
-    Term = {enqueue_many, SubscriberId, [{deliver, QoS, Msg1}], #{states => [QState]}},
-    case vmq_cluster:remote_enqueue(Node, Term, true) of
+publish_(Msg, {Node, SubscriberId, SubInfo}, _QState, {Local, Remote}) ->
+    case vmq_redis_queue:enqueue(Node, SubscriberId, SubInfo, Msg) of
         ok ->
             {ok, {Local, Remote + 1}};
         E ->
