@@ -281,10 +281,10 @@ incr_router_matches_remote(V) ->
     incr_item(?METRIC_ROUTER_MATCHES_REMOTE, V).
 
 incr_stored_offline_messages(N) ->
-  incr_item(?METRIC_STORED_OFFLINE_MESSAGES, N).
+    incr_item(?METRIC_STORED_OFFLINE_MESSAGES, N).
 
 incr_removed_offline_messages(N) ->
-  incr_item(?METRIC_REMOVED_OFFLINE_MESSAGES, N).
+    incr_item(?METRIC_REMOVED_OFFLINE_MESSAGES, N).
 
 incr_msg_store_ops_error(Op) ->
     incr_item({msg_store_ops_error, Op}, 1).

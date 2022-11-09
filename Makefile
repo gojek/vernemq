@@ -3,7 +3,7 @@ ERLANG_BIN       = $(shell dirname $(shell which erl))
 GIT_VERSION      = $(shell git describe --tags)
 OVERLAY_VARS    ?=
 REBAR ?= $(BASE_DIR)/rebar3
-PSQL_MIGRATION_EXEC = ./psql_migration
+PSQL_MIGRATION_EXEC = $(BASE_DIR)/_build/default/bin/psql_migration
 
 $(if $(ERLANG_BIN),,$(warning "Warning: No Erlang found in your path, this will probably not work"))
 

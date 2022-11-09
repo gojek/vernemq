@@ -16,7 +16,7 @@
             {vmq_generic_offline_msg_store, msg_store_delete, 1, [internal]},
             {vmq_generic_offline_msg_store, msg_store_delete, 2, [internal]},
             {vmq_generic_offline_msg_store, msg_store_read, 2, [internal]},
-            {vmq_generic_offline_msg_store, msg_store_find, 2, [internal]}
+            {vmq_generic_offline_msg_store, msg_store_find, 1, [internal]}
       ]},
       {msg_store_engine, vmq_offline_storage_engine_postgres},
       {msg_store_opts, [

@@ -305,7 +305,6 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason)
                     {ok, Opts#{session_present => SessionPresent2,
                                queue_pid => QPid}};
                 _ ->
-                    lager:info("It was happening due to this"),
                     timer:sleep(100),
                     register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1, register_subscriber_retry_exhausted)
             end

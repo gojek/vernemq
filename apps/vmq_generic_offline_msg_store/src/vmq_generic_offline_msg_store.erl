@@ -10,7 +10,7 @@
     msg_store_delete/1,
     msg_store_delete/2,
     msg_store_read/2,
-    msg_store_find/2]).
+    msg_store_find/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -22,7 +22,8 @@
 
 -record(state, {
     engine,
-    engine_module
+    engine_module,
+    query_timeout
 }).
 
 %%%===================================================================
@@ -32,19 +33,19 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 msg_store_write(SubscriberId, Msg) ->
-    gen_server:call(?MODULE, {write, SubscriberId, Msg}, 1000).
+    safe_call({write, SubscriberId, Msg}).
 
 msg_store_delete(SubscriberId) ->
-    gen_server:call(?MODULE, {delete, SubscriberId}, 1000).
+    safe_call({delete, SubscriberId}).
 
 msg_store_delete(SubscriberId, MsgRef) ->
-    gen_server:call(?MODULE, {delete, SubscriberId, MsgRef}, 1000).
+    safe_call({delete, SubscriberId, MsgRef}).
 
 msg_store_read(SubscriberId, MsgRef) ->
-    gen_server:call(?MODULE, {read, SubscriberId, MsgRef}, 1000).
+    safe_call({read, SubscriberId, MsgRef}).
 
-msg_store_find(SubscriberId, _Type) ->
-    gen_server:call(?MODULE, {find, SubscriberId}, 1000).
+msg_store_find(SubscriberId) ->
+    safe_call({find, SubscriberId}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -65,11 +66,12 @@ init(_) ->
     {ok, EngineModule} = application:get_env(vmq_generic_offline_msg_store, msg_store_engine),
     {ok, Opts} = application:get_env(vmq_generic_offline_msg_store, msg_store_opts),
     lager:info("Opts: ~p", [Opts]),
+    Timeout = proplists:get_value(query_timeout, Opts, 2000),
 
 %%    process_flag(trap_exit, true), TODO: Check if on connection failure, sup restarts this process otherwise handle 'DOWN' msg
     case apply(EngineModule, open, [Opts]) of
         {ok, EngineState} ->
-            {ok, #state{engine=EngineState, engine_module=EngineModule}};
+            {ok, #state{engine=EngineState, engine_module=EngineModule, query_timeout=Timeout}};
         {error, Reason} ->
             {stop, Reason}
     end.
@@ -146,18 +148,21 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+safe_call(Request) ->
+    try gen_server:call(?MODULE, Request) catch Error:Reason -> {error, {Error, Reason}} end.
+
 handle_req({write, SId, Msg},
-    #state{engine=Engine, engine_module=EngineModule}) ->
-    apply(EngineModule, write, [Engine, term_to_binary(SId), Msg#vmq_msg.msg_ref, term_to_binary(Msg)]);
+    #state{engine=Engine, engine_module=EngineModule, query_timeout=Timeout}) ->
+    apply(EngineModule, write, [Engine, term_to_binary(SId), Msg#vmq_msg.msg_ref, term_to_binary(Msg), Timeout]);
 handle_req({delete, SId},
-    #state{engine=Engine, engine_module=EngineModule}) ->
-    apply(EngineModule, delete, [Engine, term_to_binary(SId)]);
+    #state{engine=Engine, engine_module=EngineModule, query_timeout=Timeout}) ->
+    apply(EngineModule, delete, [Engine, term_to_binary(SId), Timeout]);
 handle_req({delete, SId, MsgRef},
-    #state{engine=Engine, engine_module=EngineModule}) ->
-    apply(EngineModule, delete, [Engine, term_to_binary(SId), MsgRef]);
+    #state{engine=Engine, engine_module=EngineModule, query_timeout=Timeout}) ->
+    apply(EngineModule, delete, [Engine, term_to_binary(SId), MsgRef, Timeout]);
 handle_req({read, SId, MsgRef},
-    #state{engine=Engine, engine_module=EngineModule}) ->
-    apply(EngineModule, read, [Engine, term_to_binary(SId), MsgRef]);
+    #state{engine=Engine, engine_module=EngineModule, query_timeout=Timeout}) ->
+    apply(EngineModule, read, [Engine, term_to_binary(SId), MsgRef, Timeout]);
 handle_req({find, SId},
-    #state{engine=Engine, engine_module=EngineModule}) ->
-    apply(EngineModule, find, [Engine, term_to_binary(SId)]).
+    #state{engine=Engine, engine_module=EngineModule, query_timeout=Timeout}) ->
+    apply(EngineModule, find, [Engine, term_to_binary(SId), Timeout]).

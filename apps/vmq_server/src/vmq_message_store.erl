@@ -20,7 +20,7 @@
          read/2,
          delete/1,
          delete/2,
-         find/2]).
+         find/1]).
 
 start() ->
     Impl = application:get_env(vmq_server, message_store_impl, vmq_generic_offline_msg_store),
@@ -46,68 +46,50 @@ stop() ->
     ok.
 
 write(SubscriberId, Msg) ->
-    V1 = vmq_util:ts(),
-    case vmq_plugin:only(msg_store_write, [SubscriberId, Msg]) of
+    case vmq_util:timed_measurement({?MODULE, write}, vmq_plugin, only, [msg_store_write, [SubscriberId, Msg]]) of
         {ok, N} ->
             vmq_metrics:incr_stored_offline_messages(N);
         {error, Err} ->
             lager:error("Error: ~p", [Err]),
             vmq_metrics:incr_msg_store_ops_error(write)
     end,
-    V2 = vmq_util:ts(),
-    vmq_metrics:pretimed_measurement({vmq_message_store, write}, V2 - V1),
     ok.
 
 read(SubscriberId, MsgRef) ->
-    V1 = vmq_util:ts(),
-    Res = case vmq_plugin:only(msg_store_read, [SubscriberId, MsgRef]) of
+    case vmq_util:timed_measurement({?MODULE, read}, vmq_plugin, only, [msg_store_read, [SubscriberId, MsgRef]]) of
         {ok, _} = OkRes->
             OkRes;
         {error, Err} = E->
             lager:error("Error: ~p", [Err]),
             vmq_metrics:incr_msg_store_ops_error(read),
             E
-    end,
-    V2 = vmq_util:ts(),
-    vmq_metrics:pretimed_measurement({vmq_message_store, read}, V2 - V1),
-    Res.
+    end.
 
 delete(SubscriberId) ->
-    V1 = vmq_util:ts(),
-    case vmq_plugin:only(msg_store_delete, [SubscriberId]) of
+    case vmq_util:timed_measurement({?MODULE, delete_all}, vmq_plugin, only, [msg_store_delete, [SubscriberId]]) of
         {ok, N} ->
             vmq_metrics:incr_removed_offline_messages(N);
         {error, Err} ->
             lager:error("Error: ~p", [Err]),
             vmq_metrics:incr_msg_store_ops_error(delete_all)
     end,
-    V2 = vmq_util:ts(),
-    vmq_metrics:pretimed_measurement({vmq_message_store, delete_all}, V2 - V1),
     ok.
 
 delete(SubscriberId, MsgRef) ->
-    V1 = vmq_util:ts(),
-    case vmq_plugin:only(msg_store_delete, [SubscriberId, MsgRef]) of
+    case vmq_util:timed_measurement({?MODULE, delete}, vmq_plugin, only, [msg_store_delete, [SubscriberId, MsgRef]]) of
         {ok, N} ->
             vmq_metrics:incr_removed_offline_messages(N);
         {error, Err} ->
             lager:error("Error: ~p", [Err]),
             vmq_metrics:incr_msg_store_ops_error(delete)
     end,
-    V2 = vmq_util:ts(),
-    vmq_metrics:pretimed_measurement({vmq_message_store, delete}, V2 - V1),
     ok.
 
-find(SubscriberId, Type) when Type =:= queue_init;
-                              Type =:= other ->
-    V1 = vmq_util:ts(),
-    Res = case vmq_plugin:only(msg_store_find, [SubscriberId, Type]) of
+find(SubscriberId) ->
+    case vmq_util:timed_measurement({?MODULE, find}, vmq_plugin, only, [msg_store_find, [SubscriberId]]) of
         {ok, _} = OkRes -> OkRes;
         {error, Err} = ErrRes ->
             lager:error("Error: ~p", Err),
             vmq_metrics:incr_msg_store_ops_error(find),
             ErrRes
-    end,
-    V2 = vmq_util:ts(),
-    vmq_metrics:pretimed_measurement({vmq_message_store, find}, V2 - V1),
-    Res.
+    end.

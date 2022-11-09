@@ -114,7 +114,7 @@ queue_crash_test(Cfg) ->
            queue_pid := NewQPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
     receive_persisted_msg(NewQPid, 1, Msg),
     {online, fanout, 0, 1, false} = vmq_queue:status(NewQPid),
-    {ok, []} = vmq_message_store:find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId).
 
 queue_fifo_test(Cfg) ->
     #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),
@@ -138,7 +138,7 @@ queue_fifo_test(Cfg) ->
            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
 
     ok = receive_multi(QPid, 1, Msgs),
-    {ok, []} = vmq_message_store:find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId).
 
 queue_lifo_test(Cfg) ->
     #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),
@@ -161,7 +161,7 @@ queue_lifo_test(Cfg) ->
            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
 
     ok = receive_multi(QPid, 1, lists:reverse(Msgs)), %% reverse list to get lifo
-    {ok, []} = vmq_message_store:find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId).
 
 queue_fifo_offline_drop_test(Cfg) ->
     #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),
@@ -186,7 +186,7 @@ queue_fifo_offline_drop_test(Cfg) ->
            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
     {KeptMsgs, _} = lists:split(10, Msgs),
     ok = receive_multi(QPid, 1, KeptMsgs),
-    {ok, []} = vmq_message_store:find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId).
 
 
 queue_lifo_offline_drop_test(Cfg) ->
@@ -214,7 +214,7 @@ queue_lifo_offline_drop_test(Cfg) ->
            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
     {KeptMsgs, _} = lists:split(10, lists:reverse(Msgs)),
     ok = receive_multi(QPid, 1, KeptMsgs),
-    {ok, []} = vmq_message_store:find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId).
 
 
 queue_offline_transition_test(Cfg) ->
@@ -239,7 +239,7 @@ queue_offline_transition_test(Cfg) ->
     {ok, #{session_present := true,
            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
     ok = receive_multi(QPid, 1, Msgs),
-    {ok, []} = vmq_message_store:find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId).
 
 queue_persistent_client_expiration_test(Cfg) ->
     #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),
@@ -263,14 +263,14 @@ queue_persistent_client_expiration_test(Cfg) ->
     NumPubbedMsgs = length(Msgs),
 
     timer:sleep(500), % give some time to plumtree
-    {ok, FoundMsgs} = vmq_message_store:find(SubscriberId, other),
+    {ok, FoundMsgs} = vmq_message_store:find(SubscriberId),
     NumPubbedMsgs = length(FoundMsgs),
 
     %% let's wait for the persistent-client-expiration to kick in
     timer:sleep(3000),
 
     not_found = vmq_queue_sup_sup:get_queue_pid(SubscriberId),
-    {ok, []} = vmq_message_store:find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId).
 
 queue_force_disconnect_test(_) ->
     Parent = self(),
@@ -317,7 +317,7 @@ queue_force_disconnect_cleanup_test(Cfg) ->
     NumPubbedMsgs = length(Msgs),
 
     timer:sleep(500), % give some time to plumtree
-    {ok, FoundMsgs} = vmq_message_store:find(SubscriberId, other),
+    {ok, FoundMsgs} = vmq_message_store:find(SubscriberId),
     NumPubbedMsgs = length(FoundMsgs),
 
     vmq_queue:force_disconnect(QPid0, ?ADMINISTRATIVE_ACTION, true),
@@ -331,7 +331,7 @@ queue_force_disconnect_cleanup_test(Cfg) ->
     true = (QPid0 =/= QPid1),
     false = is_process_alive(QPid0),
 
-    {ok, []} = vmq_message_store:find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId).
 
 publish_multi(RegView, {_, ClientId}, Topic) ->
     publish_multi(RegView, ClientId, Topic, []).
