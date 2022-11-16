@@ -22,6 +22,9 @@
          delete/2,
          find/1]).
 
+-define(RETRY_INTERVAL, 2000).
+-define(NR_OF_RETRY, 20).
+
 start() ->
     Impl = application:get_env(vmq_server, message_store_impl, vmq_generic_offline_msg_store),
     Ret = vmq_plugin_mgr:enable_system_plugin(Impl, [internal]),
@@ -46,50 +49,74 @@ stop() ->
     ok.
 
 write(SubscriberId, Msg) ->
+    write_with_retry(SubscriberId, Msg, ?NR_OF_RETRY).
+write_with_retry(SubscriberId, Msg, N) when N > 0 ->
     case vmq_util:timed_measurement({?MODULE, write}, vmq_plugin, only, [msg_store_write, [SubscriberId, Msg]]) of
-        {ok, N} ->
-            vmq_metrics:incr_stored_offline_messages(N);
+        {ok, Count} ->
+            vmq_metrics:incr_stored_offline_messages(Count);
+        {error, no_matching_hook_found} = ErrRes -> ErrRes;
         {error, Err} ->
             lager:error("Error: ~p", [Err]),
-            vmq_metrics:incr_msg_store_ops_error(write)
-    end,
-    ok.
+            vmq_metrics:incr_msg_store_ops_error(write),
+            timer:sleep(?RETRY_INTERVAL),
+            write_with_retry(SubscriberId, Msg, N-1)
+    end;
+write_with_retry(_SubscriberId, _Msg, _N) -> ok.
 
 read(SubscriberId, MsgRef) ->
+    read_with_retry(SubscriberId, MsgRef, ?NR_OF_RETRY).
+read_with_retry(SubscriberId, MsgRef, N) when N > 0 ->
     case vmq_util:timed_measurement({?MODULE, read}, vmq_plugin, only, [msg_store_read, [SubscriberId, MsgRef]]) of
-        {ok, _} = OkRes->
-            OkRes;
-        {error, Err} = E->
+        {ok, _} = OkRes -> OkRes;
+        {error, no_matching_hook_found} = ErrRes -> ErrRes;
+        {error, Err} ->
             lager:error("Error: ~p", [Err]),
             vmq_metrics:incr_msg_store_ops_error(read),
-            E
-    end.
+            timer:sleep(?RETRY_INTERVAL),
+            read_with_retry(SubscriberId, MsgRef, N-1)
+    end;
+read_with_retry(_SubscriberId, _MsgRef, _N) -> {error, retry_exhausted}.
 
 delete(SubscriberId) ->
+    delete_all_with_retry(SubscriberId, ?NR_OF_RETRY).
+delete_all_with_retry(SubscriberId, N) when N > 0 ->
     case vmq_util:timed_measurement({?MODULE, delete_all}, vmq_plugin, only, [msg_store_delete, [SubscriberId]]) of
-        {ok, N} ->
-            vmq_metrics:incr_removed_offline_messages(N);
+        {ok, Count} ->
+            vmq_metrics:incr_removed_offline_messages(Count);
+        {error, no_matching_hook_found} = ErrRes -> ErrRes;
         {error, Err} ->
             lager:error("Error: ~p", [Err]),
-            vmq_metrics:incr_msg_store_ops_error(delete_all)
-    end,
-    ok.
+            vmq_metrics:incr_msg_store_ops_error(delete_all),
+            timer:sleep(?RETRY_INTERVAL),
+            delete_all_with_retry(SubscriberId, N-1)
+    end;
+delete_all_with_retry(_SubscriberId, _N) -> ok.
 
 delete(SubscriberId, MsgRef) ->
+    delete_with_retry(SubscriberId, MsgRef, ?NR_OF_RETRY).
+delete_with_retry(SubscriberId, MsgRef, N) when N > 0 ->
     case vmq_util:timed_measurement({?MODULE, delete}, vmq_plugin, only, [msg_store_delete, [SubscriberId, MsgRef]]) of
-        {ok, N} ->
-            vmq_metrics:incr_removed_offline_messages(N);
+        {ok, Count} ->
+            vmq_metrics:incr_removed_offline_messages(Count);
+        {error, no_matching_hook_found} = ErrRes -> ErrRes;
         {error, Err} ->
             lager:error("Error: ~p", [Err]),
-            vmq_metrics:incr_msg_store_ops_error(delete)
-    end,
-    ok.
+            vmq_metrics:incr_msg_store_ops_error(delete),
+            timer:sleep(?RETRY_INTERVAL),
+            delete_with_retry(SubscriberId, MsgRef, N-1)
+    end;
+delete_with_retry(_SId, _MsgRef, _N) -> ok.
 
 find(SubscriberId) ->
+    find_with_retry(SubscriberId, ?NR_OF_RETRY).
+find_with_retry(SubscriberId, N) when N > 0 ->
     case vmq_util:timed_measurement({?MODULE, find}, vmq_plugin, only, [msg_store_find, [SubscriberId]]) of
         {ok, _} = OkRes -> OkRes;
-        {error, Err} = ErrRes ->
+        {error, no_matching_hook_found} = ErrRes -> ErrRes;
+        {error, Err} ->
             lager:error("Error: ~p", Err),
             vmq_metrics:incr_msg_store_ops_error(find),
-            ErrRes
-    end.
+            timer:sleep(?RETRY_INTERVAL),
+            find_with_retry(SubscriberId, N-1)
+    end;
+find_with_retry(_SId, _N) -> {error, retry_exhausted}.

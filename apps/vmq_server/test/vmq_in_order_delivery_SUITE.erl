@@ -56,10 +56,13 @@ all() ->
 
 groups() ->
     Tests =
-        [qos1_online,
+        [
+         qos1_online,
          qos2_online,
          qos1_offline,
-         qos2_offline],
+         qos2_offline,
+         qos1_offline_node_restart
+        ],
     [
      {mqttv4, [shuffle], Tests},
      {mqttv5, [shuffle], [receive_max_broker | Tests]}
@@ -80,6 +83,9 @@ qos1_offline(Config) ->
 
 qos2_offline(Config) ->
     lists:foreach(fun(I) -> qos2_offline_test(I, Config) end, lists:seq(1, 30)).
+
+qos1_offline_node_restart(Config) ->
+    qos1_offline_node_restart_test(20, Config).
 
 receive_max_broker(Config) ->
     ReceiveMax = ?NR_OF_MSGS div 2,
@@ -122,6 +128,24 @@ qos1_offline_test(MaxInflightMsgs, Config) ->
     SubSocket1 = setup_con(Topic, 1, Config),
     PubSocket = setup_pub(Topic, fun setup_pub_qos1/4, Config),
     gen_tcp:close(SubSocket1),
+    SubSocket2 = setup_con(Topic, 1, true, Config), % session present
+    ok = recv_qos1(SubSocket2, Topic, MaxInflightMsgs, true, Config), %% dup=true
+    ok = gen_tcp:close(SubSocket2),
+    ok = gen_tcp:close(PubSocket),
+    teardown_con(Config).
+
+qos1_offline_node_restart_test(MaxInflightMsgs, Config) ->
+    set_flow_control_config(MaxInflightMsgs, Config),
+    Topic = vmq_cth:utopic(Config) ++ "/off/qos1/node_restart",
+    SubSocket1 = setup_con(Topic, 1, Config),
+    PubSocket = setup_pub(Topic, fun setup_pub_qos1/4, Config),
+    gen_tcp:close(SubSocket1),
+    timer:sleep(2000),
+    vmq_test_utils:teardown(),
+    vmq_test_utils:setup(),
+    enable_on_subscribe(),
+    enable_on_publish(),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     SubSocket2 = setup_con(Topic, 1, true, Config), % session present
     ok = recv_qos1(SubSocket2, Topic, MaxInflightMsgs, true, Config), %% dup=true
     ok = gen_tcp:close(SubSocket2),
