@@ -5,6 +5,7 @@ CREATE TABLE messages (
     sid bytea,
     msgref bytea,
     payload bytea,
+    created_time TIMESTAMPTZ DEFAULT Now(),
 
     PRIMARY KEY(sid, msgref)
 );

@@ -48,7 +48,7 @@ read(Client, SIdB, MsgRef, Timeout) ->
     end.
 
 find(Client, SIdB, Timeout) ->
-    case equery(Client, "SELECT payload FROM " ++ ?TABLE ++ " WHERE sid=$1", [SIdB], Timeout) of
+    case equery(Client, "SELECT payload FROM " ++ ?TABLE ++ " WHERE sid=$1 ORDER BY created_time ASC", [SIdB], Timeout) of
         {ok, _, MsgsInB} ->
             DMsgs = lists:foldr(fun({MsgB}, Acc) ->
             Msg = binary_to_term(MsgB),
