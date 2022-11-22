@@ -26,12 +26,15 @@ start_link() ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init(_) ->
-    ClusterEndpoints = vmq_schema_util:parse_list(application:get_env(vmq_server,
-                                                                      redis_queue_shard_endpoints,
-                                                                      "[{\"127.0.0.1\", 6379}]"
-                                                                      )),
-    Opts = vmq_schema_util:parse_list(application:get_env(vmq_server, redis_queue_opts, "[{database, 1}]")),
-    NumEndpoints = init_redis(ClusterEndpoints, Opts, 0),
+    ConnectOptionsList = vmq_schema_util:parse_list(application:get_env(vmq_server,
+                                                                        msg_queue_redis_shards_connect_options,
+                                                                        "[[
+                                                                           {host,\"127.0.0.1\"},
+                                                                           {port,6379},
+                                                                           {database,1}
+                                                                         ]]"
+                                                                       )),
+    NumEndpoints = init_redis(ConnectOptionsList, 0),
 
     NumMainQWorkers = num_main_q_workers_per_redis_node(),
     SupFlags =
@@ -51,13 +54,13 @@ init(_) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
-init_redis([], _Opts, Id) ->
+init_redis([], Id) ->
     Id;
-init_redis([{Host, Port} | ClusterEndpoints], Opts, Id) ->
+init_redis([ConnectOptions | ConnectOptionsList], Id) ->
     ProducerRedisClient = gen_redis_client_name(Id, ?PRODUCER),
     ConsumerRedisClient = gen_redis_client_name(Id, ?CONSUMER),
-    {ok, _pid1} = eredis:start_link(Host, Port, [{name, {local, ProducerRedisClient}} | Opts]),
-    {ok, _pid2} = eredis:start_link(Host, Port, [{name, {local, ConsumerRedisClient}} | Opts]),
+    {ok, _pid1} = eredis:start_link([{name, {local, ProducerRedisClient}} | ConnectOptions]),
+    {ok, _pid2} = eredis:start_link([{name, {local, ConsumerRedisClient}} | ConnectOptions]),
 
     LuaDir = application:get_env(vmq_server, redis_lua_dir, "./etc/lua"),
     {ok, EnqueueMsgScript} = file:read_file(LuaDir ++ "/enqueue_msg.lua"),
@@ -66,7 +69,7 @@ init_redis([{Host, Port} | ClusterEndpoints], Opts, Id) ->
     {ok, <<"enqueue_msg">>} = eredis:q(ProducerRedisClient, [?FUNCTION, "LOAD", "REPLACE", EnqueueMsgScript]),
     {ok, <<"poll_main_queue">>} = eredis:q(ConsumerRedisClient, [?FUNCTION, "LOAD", "REPLACE", PollMainQueueScript]),
 
-    init_redis(ClusterEndpoints, Opts, Id + 1).
+    init_redis(ConnectOptionsList, Id + 1).
 
 num_main_q_workers_per_redis_node() ->
     application:get_env(vmq_server, main_queue_workers_per_redis_shard, 1).
