@@ -128,7 +128,7 @@ find_with_retry(SubscriberId, N) when N >= 0 ->
         {ok, _} = OkRes -> OkRes;
         {error, no_matching_hook_found} = ErrRes -> ErrRes;
         {error, Err} ->
-            lager:error("Error: ~p", Err),
+            lager:error("Error: ~p", [Err]),
             vmq_metrics:incr_msg_store_ops_error(find),
             timer:sleep(?RETRY_INTERVAL),
             find_with_retry(SubscriberId, N-1)

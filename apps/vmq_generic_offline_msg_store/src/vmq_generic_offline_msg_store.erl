@@ -23,7 +23,8 @@
 -record(state, {
     engine,
     engine_module,
-    query_timeout
+    query_timeout,
+    options
 }).
 
 %%%===================================================================
@@ -65,13 +66,12 @@ msg_store_find(SubscriberId) ->
 init(_) ->
     {ok, EngineModule} = application:get_env(vmq_generic_offline_msg_store, msg_store_engine),
     {ok, Opts} = application:get_env(vmq_generic_offline_msg_store, msg_store_opts),
-    lager:info("Opts: ~p", [Opts]),
     Timeout = proplists:get_value(query_timeout, Opts, 2000),
 
-%%    process_flag(trap_exit, true), TODO: Check if on connection failure, sup restarts this process otherwise handle 'DOWN' msg
+    process_flag(trap_exit, true),
     case apply(EngineModule, open, [Opts]) of
         {ok, EngineState} ->
-            {ok, #state{engine=EngineState, engine_module=EngineModule, query_timeout=Timeout}};
+            {ok, #state{engine=EngineState, engine_module=EngineModule, query_timeout=Timeout, options=Opts}};
         {error, Reason} ->
             {stop, Reason}
     end.
@@ -116,7 +116,16 @@ handle_cast(_Request, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(_Info, State) ->
+handle_info({'EXIT', _, _},
+            #state{engine_module=EngineModule, options=Opts}) ->
+    case apply(EngineModule, open, [Opts]) of
+        {ok, EngineState} ->
+            {noreply, #state{engine=EngineState}};
+        {error, Reason} ->
+            {stop, Reason}
+    end;
+handle_info(Info, State) ->
+    lager:info("Unknown info: ~p", [Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

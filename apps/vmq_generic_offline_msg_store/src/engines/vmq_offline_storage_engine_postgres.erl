@@ -26,7 +26,13 @@
 
 % API
 open(Opts) ->
-    epgsql:connect(Opts).
+    case epgsql:connect(Opts) of
+        {ok, _} = OkResponse -> OkResponse;
+        {error, Reason} ->
+            lager:error("Error connecting db: ~p", [Reason]),
+            timer:sleep(2000),
+            open(Opts)
+    end.
 
 write(Client, SIdB, MsgRef, MsgB, Timeout) ->
     equery(Client,
