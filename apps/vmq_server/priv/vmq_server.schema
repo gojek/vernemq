@@ -24,6 +24,15 @@
     "vmq_server.redis_queue_sleep_interval", [{default, 0}, {datatype, integer}]}.
 
 %% @doc Rolls out all_queues_setup_check.
+{mapping, "message_store_retry_interval", "vmq_server.message_store_retry_interval", [{default, 2000},
+                                                                                      {datatype, integer}
+                                                                                     ]}.
+%% @doc Rolls out all_queues_setup_check.
+{mapping, "message_store_nr_of_retries", "vmq_server.message_store_nr_of_retries", [{default, 2},
+                                                                                    {datatype, integer}
+                                                                                   ]}.
+
+%% @doc Rolls out all_queues_setup_check.
 {mapping, "all_queues_setup_check_rollout", "vmq_server.all_queues_setup_check_rollout", [
                                                                                           {default, on},
                                                                                           {datatype, flag}

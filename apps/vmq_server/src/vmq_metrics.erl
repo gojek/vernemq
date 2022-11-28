@@ -86,6 +86,7 @@
          incr_removed_offline_messages/1,
 
          incr_msg_store_ops_error/1,
+         incr_msg_store_retry_exhausted/1,
 
          incr_redis_cmd/1,
          incr_redis_cmd_miss/1,
@@ -287,7 +288,10 @@ incr_removed_offline_messages(N) ->
     incr_item(?METRIC_REMOVED_OFFLINE_MESSAGES, N).
 
 incr_msg_store_ops_error(Op) ->
-    incr_item({msg_store_ops_error, Op}, 1).
+    incr_item({?METRIC_MSG_STORE_OPS_ERRORS, Op}, 1).
+
+incr_msg_store_retry_exhausted(Op) ->
+    incr_item({?METRIC_MSG_STORE_RETRY_EXHAUSTED, Op}, 1).
 
 incr_redis_cmd({CMD, OPERATION}) ->
     incr_item({?REDIS_CMD, CMD, OPERATION}, 1).
@@ -794,15 +798,15 @@ internal_defs() ->
             ], []).
 
 msg_store_ops_def() ->
-    Ops =
-        [
-            write,
-            delete,
-            delete_all,
-            read,
-            find],
+    Ops = [?WRITE,
+           ?DELETE,
+           ?DELETE_ALL,
+           ?READ,
+           ?FIND],
     [
-        m(counter, [{operation, rcn_to_str(Op)}], {msg_store_ops_error, Op}, msg_store_ops_error, <<"The number of times msg store operation failed.">>) || Op <- Ops
+        m(counter, [{operation, rcn_to_str(Op)}], {?METRIC_MSG_STORE_OPS_ERRORS, Op}, ?METRIC_MSG_STORE_OPS_ERRORS, <<"The number of times msg store operation failed.">>) || Op <- Ops
+    ] ++ [
+        m(counter, [{operation, rcn_to_str(Op)}], {?METRIC_MSG_STORE_RETRY_EXHAUSTED, Op}, ?METRIC_MSG_STORE_RETRY_EXHAUSTED, <<"The number of times msg store operation retry exhausted.">>) || Op <- Ops
     ].
 
 redis_def() ->
@@ -1616,11 +1620,16 @@ met2idx({?REDIS_STALE_CMD, ?FCALL, ?ENQUEUE_MSG})                         -> 282
 met2idx({?REDIS_STALE_CMD, ?FCALL, ?POLL_MAIN_QUEUE})                     -> 283;
 met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?ENQUEUE_MSG})                        -> 284;
 met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?POLL_MAIN_QUEUE})                    -> 285;
-met2idx({msg_store_ops_error, write})                                     -> 286;
-met2idx({msg_store_ops_error, delete})                                    -> 287;
-met2idx({msg_store_ops_error, delete_all})                                -> 288;
-met2idx({msg_store_ops_error, read})                                      -> 289;
-met2idx({msg_store_ops_error, find})                                      -> 290.
+met2idx({?METRIC_MSG_STORE_OPS_ERRORS, ?WRITE})                           -> 286;
+met2idx({?METRIC_MSG_STORE_OPS_ERRORS, ?DELETE})                          -> 287;
+met2idx({?METRIC_MSG_STORE_OPS_ERRORS, ?DELETE_ALL})                      -> 288;
+met2idx({?METRIC_MSG_STORE_OPS_ERRORS, ?READ})                            -> 289;
+met2idx({?METRIC_MSG_STORE_OPS_ERRORS, ?FIND})                            -> 290;
+met2idx({?METRIC_MSG_STORE_RETRY_EXHAUSTED, ?WRITE})                      -> 291;
+met2idx({?METRIC_MSG_STORE_RETRY_EXHAUSTED, ?DELETE})                     -> 292;
+met2idx({?METRIC_MSG_STORE_RETRY_EXHAUSTED, ?DELETE_ALL})                 -> 293;
+met2idx({?METRIC_MSG_STORE_RETRY_EXHAUSTED, ?READ})                       -> 294;
+met2idx({?METRIC_MSG_STORE_RETRY_EXHAUSTED, ?FIND})                       -> 295.
 
 -ifdef(TEST).
 clear_stored_rates() ->
