@@ -23,7 +23,8 @@
     plugin_receive_loop/2,
     to_vmq_subtopics/2,
     peertoa/1,
-    terminate_reason/1
+    terminate_reason/1,
+    terminate_proto_reason/1
 ]).
 
 -define(TO_SESSION, to_session_fsm).
@@ -144,3 +145,20 @@ terminate_reason(?NORMAL_DISCONNECT) -> normal;
 terminate_reason(?SESSION_TAKEN_OVER) -> normal;
 terminate_reason(?REMOTE_SESSION_TAKEN_OVER) -> normal;
 terminate_reason(Reason) -> Reason.
+
+-spec terminate_proto_reason(any()) -> any().
+terminate_proto_reason(Reason) ->
+    case Reason of
+        not_authorized -> 'REASON_NOT_AUTHORIZED';
+        normal_disconnect -> 'REASON_NORMAL_DISCONNECT';
+        session_taken_over -> 'REASON_SESSION_TAKEN_OVER';
+        administrative_action -> 'REASON_ADMINISTRATIVE_ACTION';
+        disconnect_keep_alive -> 'REASON_DISCONNECT_KEEP_ALIVE';
+        disconnect_migration -> 'REASON_DISCONNECT_MIGRATION';
+        bad_authentication_method -> 'REASON_BAD_AUTHENTICATION_METHOD';
+        remote_session_taken_over -> 'REASON_REMOTE_SESSION_TAKEN_OVER';
+        mqtt_client_disconnect -> 'REASON_MQTT_CLIENT_DISCONNECT';
+        receive_max_exceeded -> 'REASON_RECEIVE_MAX_EXCEEDED';
+        protocol_error -> 'REASON_PROTOCOL_ERROR';
+        _ -> 'REASON_UNSPECIFIED'
+    end.

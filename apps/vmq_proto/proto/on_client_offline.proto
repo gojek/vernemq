@@ -7,7 +7,23 @@ option go_package = "source.golabs.io/courier/apis-go/eventssidecar/v1";
 package eventssidecar.v1;
 
 message OnClientOffline {
+    enum Reason {
+        REASON_UNSPECIFIED = 0;
+        REASON_NOT_AUTHORIZED = 1;
+        REASON_NORMAL_DISCONNECT = 2;
+        REASON_SESSION_TAKEN_OVER = 3;
+        REASON_ADMINISTRATIVE_ACTION = 4;
+        REASON_DISCONNECT_KEEP_ALIVE = 5;
+        REASON_DISCONNECT_MIGRATION = 6;
+        REASON_BAD_AUTHENTICATION_METHOD = 7;
+        REASON_REMOTE_SESSION_TAKEN_OVER = 8;
+        REASON_MQTT_CLIENT_DISCONNECT = 9;
+        REASON_RECEIVE_MAX_EXCEEDED = 10;
+        REASON_PROTOCOL_ERROR = 11;
+    }
+    
     google.protobuf.Timestamp timestamp = 1;
     string client_id = 2;
     string mountpoint = 3;
+    Reason reason = 4;
 }

@@ -556,7 +556,7 @@ queue_down_terminate(shutdown, State) ->
 queue_down_terminate(Reason, #state{queue_pid = QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
-terminate(Reason, #state{clean_session = CleanSession} = State) ->
+terminate(Reason, #state{clean_session = CleanSession, queue_pid = QueuePid} = State) ->
     _ =
         case CleanSession of
             true -> ok;
@@ -564,6 +564,9 @@ terminate(Reason, #state{clean_session = CleanSession} = State) ->
         end,
     %% TODO: the counter update is missing the last will message
     maybe_publish_last_will(State, Reason),
+    vmq_queue:set_last_disconnect_reason(
+        QueuePid, vmq_mqtt_fsm_util:terminate_proto_reason(Reason)
+    ),
     {stop, terminate_reason(Reason), []}.
 
 terminate_reason(publish_not_authorized_3_1_1) -> normal;
