@@ -173,15 +173,15 @@ ssl_certs_opts_override_test(_Config) ->
                 end
         end,
 
-    lists:foreach(
-      fun({ConfName, IntName} = L) ->
-              try
-                  TestFun(ConfFun(ConfName), IntName)
-              catch C:E ->
-                      ct:pal("Exception while running: ~p~n~p", [L, {C,E, erlang:get_stacktrace()}]),
-                      throw(E)
-              end
-      end,
+        lists:foreach(
+            fun({ConfName, IntName} = L) ->
+                    try
+                        TestFun(ConfFun(ConfName), IntName)
+                    catch C:E:ST ->
+                            ct:pal("Exception while running: ~p~n~p", [L, {C,E, ST}]),
+                            throw(E)
+                    end
+            end,
       [
        {"ssl", mqtts},
        {"wss", mqttwss},
@@ -303,7 +303,7 @@ allowed_protocol_versions_override_test(_Config) ->
     [4] = expect(Conf, [vmq_server, listeners, mqttwss,{{127,0,0,1}, 900}, allowed_protocol_versions]).
 
 
--define(stacktrace, try throw(foo) catch foo -> erlang:get_stacktrace() end).
+    -define(stacktrace, try throw(foo) catch _:foo:Stacktrace -> Stacktrace end).
 
 expect(Conf, Setting) ->
     Schema = cuttlefish_schema:files([code:priv_dir(vmq_server) ++ "/vmq_server.schema"]),

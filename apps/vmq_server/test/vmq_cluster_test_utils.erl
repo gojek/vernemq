@@ -105,13 +105,10 @@ wait_until_connected(Node1, Node2) ->
 start_node(Name, Config, Case) ->
     CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
     %% have the slave nodes monitor the runner node, so they can't outlive it
-    NodeConfig = [
-        {monitor_master, true},
-        {erl_flags, "-smp"} %% smp for the eleveldb god
-    ],
+    NodeConfig = #{name => Name, args => "-smp"},  %% peer module format
     VmqServerPrivDir = code:priv_dir(vmq_server),
     ct:log("Starting node ~p with Opts = ~p", [Name, NodeConfig]),
-    case ct_slave:start(Name, NodeConfig) of
+    case peer:start(NodeConfig) of
         {ok, Node} ->
             true = rpc:block_call(Node, code, set_path, [CodePath]),
             PrivDir = proplists:get_value(priv_dir, Config),
@@ -161,7 +158,7 @@ start_node(Name, Config, Case) ->
                     end, 60, 500),
             Node;
         {error, already_started, Node} ->
-            ct_slave:stop(Name),
+            peer:stop(Name),
             wait_until_offline(Node),
             start_node(Name, Config, Case)
     end.

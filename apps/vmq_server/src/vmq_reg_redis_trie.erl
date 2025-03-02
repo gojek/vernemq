@@ -841,7 +841,7 @@ show_complex_topics_test(_) ->
                 [<<"#">>]
             ],
             [
-                [iolist_to_binary((Topic))]
+                [erlang:iolist_to_binary((Topic))]
              || Topic <- get_complex_topics()
             ]
         )
