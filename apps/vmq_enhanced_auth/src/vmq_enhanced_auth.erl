@@ -712,9 +712,7 @@ simple_acl(_) ->
                     }
                 ]
             ],
-            lists:sort([
-                [Match] || [Match] <- ets:match(vmq_enhanced_auth_acl_read_user, '$1')
-            ])
+            lists:sort([[Match] || [Match] <- ets:match(vmq_enhanced_auth_acl_read_user, '$1')])
         ),
         ?_assertEqual(
             [
@@ -729,9 +727,7 @@ simple_acl(_) ->
                     }
                 ]
             ],
-            lists:sort([
-                [Match] || [Match] <- ets:match(vmq_enhanced_auth_acl_write_user, '$1')
-            ])
+            lists:sort([[Match] || [Match] <- ets:match(vmq_enhanced_auth_acl_write_user, '$1')])
         ),
         ?_assertEqual(
             [
@@ -933,9 +929,7 @@ simple_acl(_) ->
                 [{[<<"p">>, <<"q">>, {<<"c">>, <<":">>, 3}, <<"+">>], 1, <<>>}],
                 [{[<<"p">>, <<"q">>, {<<"u">>, <<":">>, 2}, <<"r">>], 1, <<>>}]
             ],
-            lists:sort([
-                [Match] || [Match] <- ets:match(vmq_enhanced_auth_acl_read_token, '$1')
-            ])
+            lists:sort([[Match] || [Match] <- ets:match(vmq_enhanced_auth_acl_read_token, '$1')])
         ),
         ?_assertEqual(
             [
@@ -949,9 +943,7 @@ simple_acl(_) ->
                 ],
                 [{[<<"write-topic">>, <<"p">>, <<"q">>, {<<"c">>, <<":">>, 3}, <<"+">>], 1, <<>>}]
             ],
-            lists:sort([
-                [Match] || [Match] <- ets:match(vmq_enhanced_auth_acl_write_token, '$1')
-            ])
+            lists:sort([[Match] || [Match] <- ets:match(vmq_enhanced_auth_acl_write_token, '$1')])
         ),
         ?_assertEqual(
             {<<"a/b ">>, <<"ab_topic">>},
