@@ -82,7 +82,7 @@ jobs:
       - run: sudo apt-get -y install libsnappy-dev
       - run: sudo apt-get -y install pcregrep
       - run: make rel
-      - run: make db-setup
+      # - run: make db-setup
       - run: pwd
       - run: sh ./run-tests-with-retry.sh .
 
@@ -112,6 +112,6 @@ jobs:
       - run: sudo apt-get -y install libsnappy-dev
       - run: sudo apt-get -y install pcregrep
       - run: make rel
-      - run: make db-setup
+      # - run: make db-setup
       - run: pwd
       - run: sh ./run-tests-with-retry.sh .
