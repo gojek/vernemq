@@ -51,7 +51,7 @@
  {<<"jsx">>,{pkg,<<"jsx">>,<<"3.1.0">>},0},
  {<<"jwerl">>,
   {git,"https://github.com/G-Corp/jwerl.git",
-       {ref,"ebbc2ae6979f1c154ae7ac4bd7570d843022932c"}},
+       {ref,"6e778543ef7470e9e8ae32700f5e5a8cc25e00a4"}},
   0},
  {<<"lager">>,{pkg,<<"lager">>,<<"3.9.2">>},0},
  {<<"luerl">>,
