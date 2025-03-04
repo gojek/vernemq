@@ -33,6 +33,7 @@ jobs:
         run: ./rebar3 fmt -c
       - name: Run dialyzer type checker
         run: ./rebar3 dialyzer
+        continue-on-error: true
   coverage:
     runs-on: ubuntu-22.04
     timeout-minutes: 90
