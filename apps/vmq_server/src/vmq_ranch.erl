@@ -27,6 +27,7 @@
 -export([system_continue/3]).
 -export([system_terminate/4]).
 -export([system_code_change/4]).
+-export([start_link/3]).
 
 -define(TO_SESSION, to_session_fsm).
 
@@ -46,51 +47,92 @@ start_link(Ref, _Socket, Transport, Opts) ->
     Pid = proc_lib:spawn_link(?MODULE, init, [Ref, self(), Transport, Opts]),
     {ok, Pid}.
 
+start_link(Ref, Transport, Opts) ->
+    Pid = proc_lib:spawn_link(?MODULE, init, [Ref, self(), Transport, Opts]),
+    {ok, Pid}.
+
 init(Ref, Parent, Transport, Opts) ->
     {ok, Socket} = ranch:handshake(Ref),
 
     case peer_info(Socket, Transport, Opts) of
         {ok, {Peer, NewOpts}} ->
             FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),
+
             FsmState = FsmMod:init(Peer, NewOpts),
+
             MaskedSocket = mask_socket(Transport, Socket),
+
             %% tune buffer sizes
+
             CfgBufSizes = proplists:get_value(buffer_sizes, Opts, undefined),
+
             case CfgBufSizes of
                 undefined ->
-                    {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
-                    BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
-                    setopts(MaskedSocket, [{buffer, BufSize}]);
+                    case getopts(MaskedSocket, [sndbuf, recbuf, buffer]) of
+                        {error, Reason} ->
+                            %% If the socket already closed we don't want to
+
+                            %% go through teardown, because no session was initialized
+
+                            lager:debug("getopts error, socket already closed: ~p", [Reason]);
+                        {ok, BufSizes} ->
+                            BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
+
+                            setopts(MaskedSocket, [{buffer, BufSize}]),
+
+                            start_accepting_messages(
+                                MaskedSocket, FsmState, FsmMod, Transport, Parent
+                            )
+                    end;
                 [SndBuf, RecBuf, Buffer] ->
-                    setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}])
-            end,
-            %% start accepting messages
-            active_once(MaskedSocket),
-            process_flag(trap_exit, true),
-            _ = vmq_metrics:incr_socket_open(),
-            loop(#st{
-                socket = MaskedSocket,
-                fsm_state = FsmState,
-                fsm_mod = FsmMod,
-                proto_tag = Transport:messages(),
-                parent = Parent
-            });
+                    setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}]),
+
+                    start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent)
+            end;
         {error, enotconn} ->
             %% If the client already disconnected we don't want to
+
             %% know about it - it's not an error.
+
             ok;
         {error, {proxy_protocol_error, Error}} ->
             lager:warning("Proxy Protocol Error: ~p~n", [Error]),
+
             ok;
         {error, Reason} ->
             lager:debug("could not get socket peername: ~p", [Reason]),
+
             %% It's not really "ok", but there's no reason for the
+
             %% listener to crash just because this socket had an
+
             %% error.
+
             %%
+
             %% not going through teardown, because no session was initialized
+
             ok
     end.
+
+start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent) ->
+    active_once(MaskedSocket),
+
+    process_flag(trap_exit, true),
+
+    _ = vmq_metrics:incr_socket_open(),
+
+    loop(#st{
+        socket = MaskedSocket,
+
+        fsm_state = FsmState,
+
+        fsm_mod = FsmMod,
+
+        proto_tag = Transport:messages(),
+
+        parent = Parent
+    }).
 
 -spec peer_info(any(), any(), list(any())) -> {ok, {peer(), list(any())}} | {error, any()}.
 peer_info(Socket, Transport, Opts) ->
@@ -162,14 +204,18 @@ loop_({exit, Reason, State}) ->
     _ = internal_flush(State),
     teardown(State, Reason).
 
-teardown(#st{socket = Socket}, Reason) ->
+teardown(#st{socket = Socket, fsm_mod = FsmMod, fsm_state = FsmState}, Reason) ->
     case Reason of
         normal ->
             lager:debug("session normally stopped", []);
         shutdown ->
             lager:debug("session stopped due to shutdown", []);
+        keep_alive_timeout ->
+            lager:debug("session stopped due to keep_alive_timeout", []);
         _ ->
-            lager:warning("session stopped abnormally due to '~p'", [Reason])
+            SubscriberId = apply(FsmMod, subscriber, [FsmState]),
+
+            lager:warning("session for ~p stopped abnormally due to '~p'", [SubscriberId, Reason])
     end,
     _ = vmq_metrics:incr_socket_close(),
     close(Socket),
@@ -195,7 +241,7 @@ setopts({ssl, Socket}, Opts) ->
 setopts(Socket, Opts) ->
     inet:setopts(Socket, Opts).
 
-handle_message({Proto, _, Data}, #st{proto_tag = {Proto, _, _}, fsm_mod = FsmMod} = State) ->
+handle_message({Proto, _, Data}, #st{proto_tag = {Proto, _, _, _}, fsm_mod = FsmMod} = State) ->
     #st{
         fsm_state = FsmState0,
         socket = Socket,
@@ -257,11 +303,11 @@ handle_message({Proto, _, Data}, #st{proto_tag = {Proto, _, _}, fsm_mod = FsmMod
             ),
             {exit, Reason, State}
     end;
-handle_message({ProtoClosed, _}, #st{proto_tag = {_, ProtoClosed, _}, fsm_mod = FsmMod} = State) ->
+handle_message({ProtoClosed, _}, #st{proto_tag = {_, ProtoClosed, _, _}, fsm_mod = FsmMod} = State) ->
     %% we regard a tcp_closed as 'normal'
     _ = FsmMod:msg_in({disconnect, ?TCP_CLOSED}, State#st.fsm_state),
     {exit, normal, State};
-handle_message({ProtoErr, _, Error}, #st{proto_tag = {_, _, ProtoErr}} = State) ->
+handle_message({ProtoErr, _, Error}, #st{proto_tag = {_, _, ProtoErr, _}} = State) ->
     _ = vmq_metrics:incr_socket_error(),
     {exit, Error, State};
 handle_message(
@@ -284,7 +330,7 @@ handle_message({set_sock_opts, Opts}, #st{socket = S} = State) ->
     setopts(S, Opts),
     State;
 handle_message(restart_work, #st{throttled = true} = State) ->
-    #st{proto_tag = {Proto, _, _}, socket = Socket} = State,
+    #st{proto_tag = {Proto, _, _, _}, socket = Socket} = State,
     handle_message({Proto, Socket, <<>>}, State#st{throttled = false});
 handle_message({'EXIT', _Parent, Reason}, #st{fsm_state = FsmState0, fsm_mod = FsmMod} = State) ->
     %% TODO: this should probably not be a normal disconnect...

@@ -62,6 +62,7 @@ register_cli() ->
     vmq_server_upgrade_cmd(),
     vmq_server_metrics_cmd(),
     vmq_server_metrics_reset_cmd(),
+    vmq_cluster_join_cmd(),
 
     vmq_mgmt_add_api_key_cmd(),
     vmq_mgmt_create_api_key_cmd(),
@@ -85,6 +86,7 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "node", "upgrade"], upgrade_usage()),
 
     clique:register_usage(["vmq-admin", "cluster"], cluster_usage()),
+    clique:register_usage(["vmq-admin", "cluster", "join"], join_usage()),
 
     clique:register_usage(["vmq-admin", "metrics"], metrics_usage()),
     clique:register_usage(["vmq-admin", "metrics", "show"], fun metrics_show_usage/0),
@@ -366,6 +368,43 @@ vmq_server_upgrade_cmd() ->
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
+vmq_cluster_join_cmd() ->
+    Cmd = ["vmq-admin", "cluster", "join"],
+
+    KeySpecs = [
+        {'discovery-node', [
+            {typecast, fun(Node) ->
+                lager:info("Typecasting discovery node: ~p", [Node]),
+                list_to_atom(Node)
+            end}
+        ]}
+    ],
+
+    FlagSpecs = [],
+
+    Callback = fun
+        (_, [], []) ->
+            lager:error("No discovery node provided for cluster join"),
+            Text = clique_status:text(
+                "You have to provide a discovery node (example discovery-node=vernemq1@127.0.0.1)"
+            ),
+            [clique_status:alert([Text])];
+        (_, [{'discovery-node', Node}], _) ->
+            lager:info("Joining cluster with discovery node: ~p", [Node]),
+            case vmq_peer_service:join(Node) of
+                ok ->
+                    lager:info("Successfully joined the cluster via vmq_peer_service"),
+                    vmq_cluster_mon:recheck(),
+                    [clique_status:text("Done")];
+                {error, Reason} ->
+                    lager:error("Cluster join failed. Node: ~p, Reason: ~p", [Node, Reason]),
+                    {error, {{badrpc, Reason}, Node}}
+            end
+    end,
+
+    lager:info("Registering vmq-admin cluster join command"),
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
 vmq_mgmt_create_api_key_cmd() ->
     Cmd = ["vmq-admin", "api-key", "create"],
     KeySpecs = [],
@@ -466,6 +505,13 @@ stop_usage() ->
         "  Stops the server application within this node. This is typically \n"
         "  not necessary since the server application is stopped automatically\n",
         "  when the service is stopped.\n"
+    ].
+
+join_usage() ->
+    [
+        "vmq-admin cluster join discovery-node=<Node>\n\n",
+        "  The discovery node will be used to find out about the \n",
+        "  nodes in the cluster.\n\n"
     ].
 
 upgrade_usage() ->

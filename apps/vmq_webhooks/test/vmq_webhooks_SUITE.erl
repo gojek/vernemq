@@ -6,6 +6,8 @@
 -export([
          init_per_suite/1,
          end_per_suite/1,
+         init_per_group/2,
+         end_per_group/2,
          init_per_testcase/2,
          end_per_testcase/2,
          all/0
@@ -14,23 +16,31 @@
 -compile([export_all]).
 -compile([nowarn_export_all]).
 
-init_per_suite(_Config) ->
+-define(HTTP_PORT, 34567).
+
+init_per_suite(Config) ->
     PrivDir = code:priv_dir(vmq_server),
     application:set_env(vmq_server, redis_lua_dir, PrivDir ++ "/lua_scripts"),
-    {ok, StartedApps} = application:ensure_all_started(vmq_server),
+    {ok, _} = application:ensure_all_started(vmq_server),
     ok = vmq_plugin_mgr:enable_plugin(vmq_webhooks),
     {ok, _} = application:ensure_all_started(cowboy),
-    start_endpoint(),
     cover:start(),
-    [{started_apps, StartedApps} |_Config].
+    Config.
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
     vmq_plugin_mgr:disable_plugin(vmq_webhooks),
-    stop_endpoint(),
     application:stop(cowboy),
     application:stop(vmq_server),
-    [ application:stop(App) || App <- proplists:get_value(started_apps, _Config, []) ],
-   _Config.
+    [ application:stop(App) || App <- proplists:get_value(started_apps, Config, []) ],
+        Config.
+    
+    init_per_group(http, Config) ->
+        webhooks_handler:start_endpoint_clear(?HTTP_PORT),
+        Config.
+
+    end_per_group(http, Config) ->
+        webhooks_handler:stop_endpoint_clear(),
+        Config.
 
 init_per_testcase(_Case, Config) ->
     vmq_webhooks_cache:purge_all(),
@@ -39,51 +49,59 @@ init_per_testcase(_Case, Config) ->
 end_per_testcase(_, Config) ->
     Config.
 
-all() ->
-    [
-      auth_on_register_m5_test,
-      auth_on_publish_m5_test,
-      auth_on_publish_m5_no_payload_test,
-      auth_on_publish_m5_modify_props_test,
-      auth_on_subscribe_m5_test,
-      on_register_m5_test,
-      on_publish_m5_test,
-      on_subscribe_m5_test,
-      on_unsubscribe_m5_test,
-      on_deliver_m5_test,
-      on_deliver_m5_modify_props_test,
-      on_auth_m5_test,
+    all() ->
+        [
+         {group, http}
+        ].
+    
+    groups() ->
+        [
+         {http, http()}
+        ].
 
-      auth_on_register_test,
-      auth_on_publish_test,
-      auth_on_publish_no_payload_test,
-      auth_on_subscribe_test,
-      on_register_test,
-      on_publish_test,
-      on_subscribe_test,
-      on_unsubscribe_test,
-      on_deliver_test,
-      on_offline_message_test,
-      on_client_wakeup_test,
-      on_client_offline_test,
-      on_client_gone_test,
-      on_session_expired_test,
-      base64payload_test,
-      on_delivery_complete_test,
-      auth_on_register_undefined_creds_test,
-      cache_auth_on_register,
-      cache_auth_on_publish,
-      cache_auth_on_subscribe,
-      cache_expired_entry,
-      cli_allow_query_parameters_test
-    ].
+        http() ->
+            [
+             auth_on_register_m5_test,
+             auth_on_publish_m5_test,
+             auth_on_publish_m5_no_payload_test,
+             auth_on_publish_m5_modify_props_test,
+             auth_on_subscribe_m5_test,
+             on_register_m5_test,
+             on_publish_m5_test,
+             on_subscribe_m5_test,
+             on_unsubscribe_m5_test,
+             on_deliver_m5_test,
+             on_deliver_m5_modify_props_test,
+             on_auth_m5_test,
+        
+        
+             auth_on_register_test,
+             auth_on_publish_test,
+             auth_on_publish_no_payload_test,
+             auth_on_subscribe_test,
+             on_register_test,
+             on_publish_test,
+             on_subscribe_test,
+             on_unsubscribe_test,
+             on_deliver_test,
+             on_offline_message_test,
+             on_client_wakeup_test,
+             on_client_offline_test,
+             on_client_gone_test,
+             on_session_expired_test,
+             base64payload_test,
+             auth_on_register_undefined_creds_test,
+             cache_auth_on_register,
+             cache_auth_on_publish,
+             cache_auth_on_subscribe,
+             cache_expired_entry,
+             cli_allow_query_parameters_test
+            ].
 
 
-start_endpoint() ->
-    webhooks_handler:start_endpoint().
+            start_endpoint_clear() ->
+                webhooks_handler:start_endpoint_clear(?HTTP_PORT).
 
-stop_endpoint() ->
-    webhooks_handler:stop_endpoint().
 
 %% Test cases
 cache_expired_entry(_) ->

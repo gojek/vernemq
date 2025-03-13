@@ -141,41 +141,43 @@ recv_data(Socket, Want0) ->
             end
     end.
 
-simple_prometheus_test(_Cfg) ->
-    %% we have to setup the listener here, because vmq_test_utils is overriding
-    %% the default set in vmq_server.app.src
-    vmq_server_cmd:listener_start(8888, [{http, true},
-                                         {config_mod, vmq_metrics_http},
-                                         {config_fun, routes}]),
-    application:ensure_all_started(inets),
-    SubSocket = sample_subscribe(),
-    {ok, {_Status, _Headers, Body}} = httpc:request("http://localhost:8888/metrics"),
-    Lines = re:split(Body, "\n"),
-    Node = atom_to_list(node()),
-    true = lists:member(
-             list_to_binary(
-               "mqtt_subscribe_received{node=\"" ++ Node ++ "\",mqtt_version=\"4\"} 1"), Lines),
-
-    true = lists:member(
-             list_to_binary(
-               "plugin_histogram_count{node=\"" ++ Node ++ "\"} 10"), Lines),
-    true = lists:member(
-             list_to_binary(
-               "plugin_histogram_sum{node=\"" ++ Node ++ "\"} 100"), Lines),
-    true = lists:member(
-             list_to_binary(
-               "plugin_histogram_bucket{node=\"" ++ Node ++ "\",le=\"10\"} 4"), Lines),
-    true = lists:member(
-             list_to_binary(
-               "plugin_histogram_bucket{node=\"" ++ Node ++ "\",le=\"100\"} 6"), Lines),
-    true = lists:member(
-             list_to_binary(
-               "plugin_histogram_bucket{node=\"" ++ Node ++ "\",le=\"1000\"} 8"), Lines),
-    true = lists:member(
-             list_to_binary(
-               "plugin_histogram_bucket{node=\"" ++ Node ++ "\",le=\"+Inf\"} 10"), Lines),
-
-    gen_tcp:close(SubSocket).
+    simple_prometheus_test(_) ->
+        %% we have to setup the listener here, because vmq_test_utils is overriding
+        %% the default set in vmq_server.app.src
+        Port = vmq_test_utils:get_free_port(),
+        Url = "http://localhost:" ++ integer_to_list(Port) ++ "/metrics",
+        vmq_server_cmd:listener_start(Port, [{http, true},
+                                             {config_mod, vmq_metrics_http},
+                                             {config_fun, routes}]),
+        application:ensure_all_started(inets),
+        SubSocket = sample_subscribe(),
+        {ok, {_Status, _Headers, Body}} = httpc:request(Url),
+        Lines = re:split(Body, "\n"),
+        Node = atom_to_list(node()),
+        true = lists:member(
+                 list_to_binary(
+                   "mqtt_subscribe_received{node=\"" ++ Node ++ "\",mqtt_version=\"4\"} 1"), Lines),
+    
+        true = lists:member(
+                 list_to_binary(
+                   "plugin_histogram_count{node=\"" ++ Node ++ "\"} 10"), Lines),
+        true = lists:member(
+                 list_to_binary(
+                   "plugin_histogram_sum{node=\"" ++ Node ++ "\"} 100"), Lines),
+        true = lists:member(
+                 list_to_binary(
+                   "plugin_histogram_bucket{node=\"" ++ Node ++ "\",le=\"10\"} 4"), Lines),
+        true = lists:member(
+                 list_to_binary(
+                   "plugin_histogram_bucket{node=\"" ++ Node ++ "\",le=\"100\"} 6"), Lines),
+        true = lists:member(
+                 list_to_binary(
+                   "plugin_histogram_bucket{node=\"" ++ Node ++ "\",le=\"1000\"} 8"), Lines),
+        true = lists:member(
+                 list_to_binary(
+                   "plugin_histogram_bucket{node=\"" ++ Node ++ "\",le=\"+Inf\"} 10"), Lines),
+    
+        gen_tcp:close(SubSocket).
 
 simple_cli_test(_Cfg) ->
     SubSocket = sample_subscribe(),

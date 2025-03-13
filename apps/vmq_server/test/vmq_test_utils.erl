@@ -7,6 +7,7 @@
          get_suite_rand_seed/0,
          seed_rand/1,
          rand_bytes/1]).
+-export([get_free_port/0]).
 
 setup() ->
     os:cmd(os:find_executable("epmd")++" -daemon"),
@@ -137,3 +138,9 @@ seed_rand(Config) ->
 rand_bytes(N) ->
     L = [ rand:uniform(256)-1 || _ <- lists:seq(1,N)],
     list_to_binary(L).
+
+    get_free_port() ->
+        {ok, Socket} = gen_tcp:listen(0, [binary, {active, once}]),
+        {ok, Port} = inet:port(Socket),
+        ok = gen_tcp:close(Socket),
+        Port.

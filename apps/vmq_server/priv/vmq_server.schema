@@ -637,7 +637,7 @@
 %% - listener.wss.default = 127.0.0.1:880
 {mapping, "listener.tcp.$name", "vmq_server.listeners", [
                                                             {default, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
-                                                            {datatype, ip},
+                                                            {datatype, [ip, domain_socket]},
                                                             {include_default, "default"}
                                                            ]}.
 
@@ -762,7 +762,7 @@
  [
   {default, "3,4,131"},
   {datatype, string},
-  {commented, "3,4"}
+  {commented, "3,4,5"}
  ]}.
 
 {mapping, "listener.tcp.$name.allowed_protocol_versions", "vmq_server.listeners",
@@ -1787,3 +1787,4 @@
 %% @doc This option specifies the password for redis as message store
 {mapping, "message_store.redis.password", "vmq_server.message_store.redis.password",
     [{datatype, atom}]}.
+

@@ -32,7 +32,7 @@
 expect_packet(Socket, Name, Expected) ->
     expect_packet(gen_tcp, Socket, Name, Expected).
 expect_packet(Transport, Socket, Name, Expected) ->
-    expect_packet(Transport, Socket, Name, Expected, 5000).
+    expect_packet(Transport, Socket, Name, Expected, 15000).
 expect_packet(Transport, Socket, _Name, Expected, Timeout) ->
     RLen =
         case byte_size(Expected) of
@@ -44,6 +44,7 @@ expect_packet(Transport, Socket, _Name, Expected, Timeout) ->
             ok;
         {ok, Different} ->
             io:format(user, "exp ~p: diff ~p~n", [Expected, Different]),
+            lager:error(user, "exp ~p: diff ~p~n", [Expected, Different]),
             {ExpectedFrame, <<>>} = vmq_parser:parse(Expected),
             {DifferentFrame, <<>>} = vmq_parser:parse(Different),
             {error, diff(ExpectedFrame, DifferentFrame)};

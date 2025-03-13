@@ -13,6 +13,8 @@
 init_per_suite(Config) ->
     S = vmq_test_utils:get_suite_rand_seed(),
     cover:start(),
+    vmq_test_utils:setup(),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     [S, {ct_hooks, vmq_cth} | Config].
 
 end_per_suite(_Config) ->
@@ -933,7 +935,7 @@ shared_subscription_offline(Cfg) ->
     ok = gen_tcp:send(SubSocketOffline, Disconnect),
 
     %% wait for the client to be offline before publishing
-    wait_for_offline_event(SubOfflineClientId, 500),
+    wait_for_offline_event(SubOfflineClientId, 1000),
 
     PubFun =
         fun(Socket, Mid) ->

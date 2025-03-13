@@ -33,6 +33,7 @@
     terminate/2,
     code_change/3
 ]).
+-export([recheck/0]).
 
 -include("vmq_server.hrl").
 
@@ -54,8 +55,18 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+recheck() ->
+    case vmq_peer_service:call_event_handler(?MODULE, recheck, infinity) of
+        ok ->
+            ok;
+        E ->
+            lager:warning("error during cluster checkup due to ~p", [E]),
+            E
+    end.
 
 -spec nodes() -> [any()].
 nodes() ->
