@@ -104,12 +104,48 @@ jobs:
           - "26.0"
           - "25.0"
           - "23.3.4.19"
+    services:
+      postgres:
+        image: postgres
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: vmq_test_user
+          POSTGRES_PASSWORD: vmq_test_password
+          POSTGRES_DB: vmq_test_database
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      memcached:
+        image: memcached
+        ports:
+          - 11211:11211
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redissentinel:
+        image: bitnami/redis-sentinel
+        ports:
+          - 26379:26379
+        options: >-
+          --health-cmd "redis-cli -p 26379 ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
             
     steps:
       - uses: actions/checkout@v2.0.0
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: 27.0
+          otp-version: ${{ matrix.otp }}
       - run: sudo apt-get -y install libsnappy-dev
       - run: sudo apt-get -y install pcregrep
       - run: make rel

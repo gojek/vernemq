@@ -53,10 +53,10 @@ all() ->
 
 groups() ->
     Tests =
-    [simple_systree_test,
+    [simple_prometheus_test,
+     simple_systree_test,
      histogram_systree_test,
      simple_graphite_test,
-     simple_prometheus_test,
      simple_cli_test],
     [
         {mqtt, [], Tests}
