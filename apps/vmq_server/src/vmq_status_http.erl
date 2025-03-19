@@ -118,7 +118,7 @@ counter_val(C) ->
 
 listeners() ->
     lists:foldl(
-        fun({Type, Ip, Port, Status, MP, MaxConns, PP}, Acc) ->
+        fun({Type, Ip, Port, Status, MP, MaxConns, PP, _}, Acc) ->
             [
                 [
                     {type, Type},

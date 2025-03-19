@@ -5,8 +5,7 @@ FULLPATH=$DIR/_build/all_tests+test/logs/retry.spec
 
 echo $FULLPATH
 
-./rebar3 as all_tests dialyzer || echo "Dialyzer failed, continuing..."
-./rebar3 as all_tests do eunit, ct ||
+./rebar3 as all_tests do dialyzer, eunit, ct ||
       (echo -e "\nContents of retry.spec\n" &&
       cat $FULLPATH &&
       echo -e "\nRetry suites:" &&

@@ -23,8 +23,7 @@
 -export([get_cluster_members/1, pmap/2, wait_until/3, wait_until_left/2,
          wait_until_joined/1, wait_until_joined/2, wait_until_offline/1, wait_until_disconnected/2,
          wait_until_connected/2, start_node/3, partition_cluster/2, heal_cluster/2,
-         ensure_cluster/1,start_peer/2,
-         stop_peer/2,init_distribution/1,random_node_with_port/1]).
+         ensure_cluster/1, start_peer/2, stop_peer/2, init_distribution/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -96,7 +95,7 @@ wait_until_disconnected(Node1, Node2) ->
 wait_until_connected(Node1, Node2) ->
     wait_until(fun() -> pong == rpc:call(Node1, net_adm, ping, [Node2]) end, 60 * 2, 500).
 
-start_node(Name, _Config, Case) ->
+start_node(Name, Config, Case) ->
     ct:pal("Start Node ~p for Case ~p~n", [Name, Case]),
     CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
     %% have the slave nodes monitor the runner node, so they can't outlive it
@@ -105,26 +104,10 @@ start_node(Name, _Config, Case) ->
     ct:log("Starting node ~p with Opts = ~p", [Name, NodeConfig]),
     case start_peer(Name, CodePath) of
         {ok, Peer, Node} ->
-            %true = rpc:block_call(Node, code, set_path, [CodePath]),
-            VmqServerPrivDir = code:priv_dir(vmq_server),
-            EnhancedAuthPrivDir = code:priv_dir(vmq_enhanced_auth),
-            {ok, NodeWorkingDir} = rpc:call(Node, file, get_cwd, []),
-            NodeDir = filename:join([NodeWorkingDir, Node, Case]),
+            % ok = rpc:block_call(Node, code, set_path, [CodePath]),
+            PrivDir = proplists:get_value(priv_dir, Config),
+            NodeDir = filename:join([PrivDir, Node, Case]),
             ok = rpc:call(Node, application, load, [vmq_server]),
-            ok = rpc:call(Node, application, load, [vmq_plugin]),
-            ok = rpc:call(Node, application, load, [vmq_swc]),
-            ok = rpc:call(Node, application, load, [vmq_enhanced_auth]),
-            ok = rpc:call(Node, application, set_env, [eredis, host, "127.0.0.1"]),
-            ok = rpc:call(Node, application, set_env, [eredis, port, 6379]),
-            {ok, RedisClient} = rpc:call(Node, eredis, start_link, [[{host, "127.0.0.1"}, {port, 6379}]]),
-            rpc:call(Node, eredis, q, [RedisClient, ["PING"]]),
-            ok = rpc:call(Node, application, set_env, [vmq_server, metadata_impl, vmq_swc]),
-            ok = rpc:call(Node, application, set_env, [vmq_server, max_drain_time, 5000]),
-            ok = rpc:call(Node, application, set_env, [vmq_server, max_msgs_per_drain_step, 40]),
-            ok = rpc:call(Node, application, set_env, [vmq_server, mqtt_connect_timeout, 12000]),
-            ok = rpc:call(Node, application, set_env, [vmq_server, coordinate_registrations, true]),
-            ok = rpc:call(Node, application, set_env, [vmq_server, allow_register_during_netsplit, true]),
-            ok = rpc:call(Node, application, set_env, [vmq_server, allow_register_during_netsplit, true]),
             ok =
                 rpc:call(Node,
                          application,
@@ -145,69 +128,35 @@ start_node(Name, _Config, Case) ->
                          application,
                          set_env,
                          [vmq_server, redis_lua_dir, VmqServerPrivDir ++ "/lua_scripts"]),
-            ok = rpc:call(Node, application, set_env, [vmq_swc,
-                                                       data_dir,
-                                                       NodeDir]),
-            
-            ok = rpc:call(Node, application, set_env, [vmq_server, 
-                          complex_trie_file, 
-                          filename:join([VmqServerPrivDir, "vmq.trie"])]),                                           
-            ok = rpc:call(Node, application, set_env, [vmq_swc,
-                                                       metadata_root,
-                                                       NodeDir ++ "/meta/"]),
-            ok = rpc:call(Node, application, set_env, [vmq_server,
-                                                       listeners,
-                                                       [{vmq, [{{{127,0,0,1},
-                                                                 random_port(Node)},
-                                                                []}]}
-                                                       ]]),
+            ok = rpc:call(Node, application, load, [vmq_plugin]),
             ok = rpc:call(Node, application, load, [lager]),
             ok = rpc:call(Node, application, set_env, [lager, log_root, NodeDir]),
-            ok = rpc:call(Node, application, set_env, [lager, log_level, debug]),
             ok = rpc:call(Node, application, set_env, [vmq_plugin, wait_for_proc, vmq_server_sup]),
-            ok = rpc:call(Node, application, set_env, [vmq_plugin,
-                                                       plugin_dir,
-                                                       NodeDir]),
-            ok = rpc:call(Node, application, set_env, [vmq_enhanced_auth,
-                                                       acl_file,
-                                                       filename:join([EnhancedAuthPrivDir, "default.acl"])]),
+            ok = rpc:call(Node, application, set_env, [vmq_plugin, plugin_dir, NodeDir]),
             ok =
                 rpc:call(Node,
                          application,
                          set_env,
                          [vmq_plugin, default_schema_dir, [VmqServerPrivDir]]),
+
             {ok, _} = rpc:call(Node, application, ensure_all_started, [vmq_server]),
-            {ok, _} = rpc:call(Node, application, ensure_all_started, [vmq_swc]),
-            % {ok, _} = rpc:call(Node, application, ensure_all_started, [vmq_enhanced_auth]),
-            ok = wait_until(
-                fun() ->
-                    case rpc:call(Node, vmq_cluster_mon, nodes, []) of
-                        {error, no_matching_hook} ->
-                            lager:error("No hook matched for cluster_members on node ~p", [Node]),
-                            false;
-                        Members when is_list(Members) ->
-                            ct:pal("Current cluster members on node ~p: ~p", [Node, Members]),
-                            ct:pal("Checking if vmq_server_sup process is running on node ~p", [Node]),
-                            case rpc:call(Node, erlang, whereis, [vmq_server_sup]) of
-                                undefined ->
-                                    ct:pal("vmq_server_sup process is not running on node ~p", [Node]),
-                                    false;
-                                P when is_pid(P) ->
-                                    ct:pal("vmq_server_sup process is running on node ~p with PID: ~p", [Node, P]),
-                                    true
-                            end;
-                        Other ->
-                            ct:pal("Unexpected result from cluster_members hook on node ~p: ~p", [Node, Other]),
-                            false
-                    end
-                end,
-                60,  % Timeout in seconds
-                500  % Retry interval in milliseconds
-            ),
+            ok =
+                wait_until(fun() ->
+                              case rpc:call(Node, vmq_cluster_mon, nodes, []) of
+                                  Members when is_list(Members) ->
+                                      case rpc:call(Node, erlang, whereis, [vmq_server_sup]) of
+                                          undefined -> false;
+                                          P when is_pid(P) -> true
+                                      end;
+                                  _ -> false
+                              end
+                           end,
+                           60,
+                           500),
             {ok, Peer, Node};
-            Other ->
-                ct:pal("wait_until/3 timed out or failed. Result: ~p", [Other]),
-                Other
+        Other ->
+            ct:pal("wait_until/3 timed out or failed. Result: ~p", [Other]),
+            Other
     end.
 
 -if(?OTP_RELEASE >= 25).
@@ -223,22 +172,31 @@ start_peer(NodeName, CodePath) ->
     {ok, Peer, Node} = peer:start(Opts),
     {ok, Peer, Node}.
 
-stop_peer(Peer, _Node) ->
-    %% peer:stop/1 is not idempotent
+stop_peer(Peer, Node) ->
     try
         %% Close Redis client connections
-        case rpc:call(_Node, erlang, whereis, [eredis]) of
-            undefined -> 
+        case rpc:call(Node, erlang, whereis, [eredis]) of
+            {badrpc, nodedown} ->
+                %% Node is already down, no need to stop Redis
+                ct:pal("Node ~p is already down, skipping Redis client stop", [Node]),
+                ok;
+            undefined ->
                 ok;
             RedisPid when is_pid(RedisPid) ->
-                ct:pal("Stopping Redis client on node ~p", [_Node]),
-                rpc:call(_Node, eredis, stop, [])
+                ct:pal("Stopping Redis client on node ~p", [Node]),
+                rpc:call(Node, eredis, stop, [])
         end,
 
         %% Stop the peer node
         peer:stop(Peer)
     catch
-        exit:_:_Stacktrace ->
+        exit:{noproc, {gen_server, call, _}} ->
+            %% Ignore the error if the peer is already stopped
+            ct:pal("Peer ~p is already stopped, ignoring...", [Peer]),
+            ok;
+        exit:Reason:Stacktrace ->
+            ct:pal("Unexpected error stopping peer ~p: ~p~nStacktrace: ~p",
+                   [Peer, Reason, Stacktrace]),
             ok
     end.
 
@@ -278,7 +236,7 @@ stop_peer(Node, _) ->
     try
         %% Close Redis client connections
         case rpc:call(Node, erlang, whereis, [eredis]) of
-            undefined -> 
+            undefined ->
                 ok;
             RedisPid when is_pid(RedisPid) ->
                 ct:pal("Stopping Redis client on node ~p", [Node]),
@@ -337,30 +295,14 @@ heal_cluster(ANodes, BNodes) ->
          [{Node1, Node2} || Node1 <- ANodes, Node2 <- BNodes]),
     ok.
 
-    
 ensure_cluster(Config) ->
-    [{_, Node1, _}|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
-    lager:info("Node1 ~p and other nodes ~p", [Node1, OtherNodes]),
-    % [begin
-    %      {ok, _} = rpc:call(Node, vmq_server_cmd, node_join, [Node1])
-    %  end || {_Peer, Node, _} <- OtherNodes],
+    Nodes = proplists:get_value(nodes, Config),
     {_, NodeNames, _} = lists:unzip3(Nodes),
     Expected = lists:sort(NodeNames),
     ok = vmq_cluster_test_utils:wait_until_joined(NodeNames, Expected),
-    [?assertEqual({Node, Expected}, {Node,
-                                     lists:sort(vmq_cluster_test_utils:get_cluster_members(Node))})
+    [?assertEqual({Node, Expected},
+                  {Node,
+                   lists:sort(
+                       vmq_cluster_test_utils:get_cluster_members(Node))})
      || Node <- NodeNames],
     ok.
-
-    random_node_with_port(Case) ->
-        Name =
-            list_to_atom(atom_to_list(Case)
-                         ++ "-"
-                         ++ integer_to_list(erlang:system_time(second))
-                         ++ "-"
-                         ++ integer_to_list(erlang:unique_integer([positive]))),
-        Port = vmq_test_utils:get_free_port(),
-        {Name, Port}.
-
-        random_port(Node) ->
-            10000 + (erlang:phash2(Node) rem 10000).

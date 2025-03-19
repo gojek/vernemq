@@ -11,8 +11,7 @@
     listener_stop/2,
     listener_stop/3,
     listener_delete/2,
-    metrics/0,
-    node_join/1
+    metrics/0
 ]).
 
 node_start() ->
@@ -29,18 +28,6 @@ node_upgrade() ->
 node_upgrade(InstructionFile) ->
     vmq_server_cli:command(
         ["vmq-admin", "node", "upgrade", "--upgrade-now", "--instruction-file=" ++ InstructionFile],
-        false
-    ).
-
-node_join(DiscoveryNode) ->
-    vmq_server_cli:command(
-        [
-            "vmq-admin",
-            "cluster",
-            "join",
-            "discovery-node=" ++
-                atom_to_list(DiscoveryNode)
-        ],
         false
     ).
 

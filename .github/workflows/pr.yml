@@ -21,7 +21,7 @@ env:
 jobs:
   code_checks:
     name: Check code style and quality
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v2.0.0
       - uses: erlef/setup-beam@v1
@@ -35,7 +35,7 @@ jobs:
         run: ./rebar3 dialyzer
         continue-on-error: true
   coverage:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     needs: code_checks
     services:
@@ -101,8 +101,8 @@ jobs:
           - ubuntu-20.04
         otp:
           - "27.0"
-          - "26.2"
-          - "25.3"
+          - "26.0"
+          - "25.0"
           - "23.3.4.19"
             
     steps:

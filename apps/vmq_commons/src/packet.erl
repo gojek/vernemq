@@ -44,7 +44,6 @@ expect_packet(Transport, Socket, _Name, Expected, Timeout) ->
             ok;
         {ok, Different} ->
             io:format(user, "exp ~p: diff ~p~n", [Expected, Different]),
-            lager:error(user, "exp ~p: diff ~p~n", [Expected, Different]),
             {ExpectedFrame, <<>>} = vmq_parser:parse(Expected),
             {DifferentFrame, <<>>} = vmq_parser:parse(Different),
             {error, diff(ExpectedFrame, DifferentFrame)};

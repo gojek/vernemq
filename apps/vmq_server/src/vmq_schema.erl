@@ -399,61 +399,23 @@ extract(Prefix, Suffix, Val, Conf) ->
     NameSubPrefix = lists:flatten([Prefix, ".$name"]),
     [
         begin
+            {ok, Addr} = inet:parse_address(StrAddr),
             Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
             V1 = Val(Name, RootDefault, undefined),
             V2 = Val(Name, RootDefault, V1),
             V3 = Val(Name, cuttlefish:conf_get(Prefix4, Conf, Default), V2),
 
-            AddrPort =
-
-                case Result of
-
-                    {StrAddr, P} ->
-
-                        {ok, Addr} = parse_addr(StrAddr),
-
-                        {Addr, P};
-
-                    {local, StrAddr, P} ->
-
-                        {ok, Addr} = parse_addr("local:" ++ StrAddr),
-
-                        {Addr, P}
-
-                end,
+            AddrPort = {Addr, Port},
             {AddrPort, {list_to_atom(Suffix), V3}}
         end
-     || {[_, _, Name], Result} <- lists:filter(
+     || {[_, _, Name], {StrAddr, Port}} <- lists:filter(
             fun({K, _V}) ->
                 cuttlefish_variable:is_fuzzy_match(K, string:tokens(NameSubPrefix, "."))
             end,
             Conf
         ),
-        not lists:member(Name, Mappings ++ ExcludeRootSuffixes),
-
-        Result =/= true
+        not lists:member(Name, Mappings ++ ExcludeRootSuffixes)
     ].
-
-
-    parse_addr(StrA) ->
-
-        case string:split(StrA, ":") of
-    
-            ["local", DomainSocket] ->
-    
-                {ok, {local, DomainSocket}};
-    
-            _ ->
-    
-                case inet:parse_address(StrA) of
-    
-                    {ok, Ip} -> {ok, Ip};
-    
-                    {error, einval} -> {error, {invalid_args, [{address, StrA}]}}
-    
-                end
-    
-        end.
 
 validate_eccs("") ->
     ssl:eccs();

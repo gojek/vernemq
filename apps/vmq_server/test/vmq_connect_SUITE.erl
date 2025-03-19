@@ -55,15 +55,15 @@ all() ->
 
 groups() ->
     Tests =
-        [anon_denied_test,
+        [invalid_id_0_311_test,
+         uname_no_password_denied_test,
+         uname_password_denied_test,
+         anon_denied_test,
          anon_success_test,
          invalid_id_0_test,
-         invalid_id_0_311_test,
          invalid_id_missing_test,
          invalid_id_24_test,
          invalid_protonum_test,
-         uname_no_password_denied_test,
-         uname_password_denied_test,
          uname_password_success_test,
          change_subscriber_id_test
         ],
@@ -100,6 +100,7 @@ invalid_id_0_test(Config) ->
     ok = close(Socket, Config).
 
 invalid_id_0_311_test(Config) ->
+    ct:sleep(5000),
     Connect = packet:gen_connect(empty, [{keepalive,10},{proto_ver,4}]),
     Connack = packet:gen_connack(0),
     ok = vmq_plugin_mgr:enable_module_plugin(

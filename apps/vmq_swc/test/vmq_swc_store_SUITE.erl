@@ -13,9 +13,9 @@
 %% ===================================================================
 
 init_per_suite(Config) ->
-    lager:start(),
+    % lager:start(),
     %% this might help, might not...
-    os:cmd("killall epmd"),
+    % os:cmd("killall epmd"),
     os:cmd(os:find_executable("epmd")++" -daemon"),
     {ok, Hostname} = inet:gethostname(),
     case net_kernel:start([list_to_atom("runner@"++Hostname), shortnames]) of
