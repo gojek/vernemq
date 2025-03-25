@@ -103,7 +103,6 @@ jobs:
           - "27.0"
           - "26.0"
           - "25.0"
-          - "23.3.4.19"
     services:
       postgres:
         image: postgres
