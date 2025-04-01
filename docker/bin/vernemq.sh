@@ -88,11 +88,22 @@ fi
 
 if env | grep "DOCKER_VERNEMQ_ERLANG__PROCESS_LIMIT" -q; then
     sed -i.bak -r "s/\+P .+/+P ${DOCKER_VERNEMQ_ERLANG__PROCESS_LIMIT}/" /vernemq/etc/vm.args
-    sed -i.bak -r "s/-env ERL_MAX_ETS_TABLES .+/-env ERL_MAX_ETS_TABLES ${DOCKER_VERNEMQ_ERLANG__PROCESS_LIMIT}/" /vernemq/etc/vm.args
 fi
 
 if env | grep "DOCKER_VERNEMQ_ERLANG__MAX_PORTS" -q; then
     sed -i.bak -r "s/-env ERL_MAX_PORTS .+/-env ERL_MAX_PORTS ${DOCKER_VERNEMQ_ERLANG__MAX_PORTS}/" /vernemq/etc/vm.args
+fi
+
+if env | grep "DOCKER_VERNEMQ_ERLANG__MAX_ETS_TABLES" -q; then
+    sed -i.bak -r "s/-env ERL_MAX_ETS_TABLES .+/-env ERL_MAX_ETS_TABLES ${DOCKER_VERNEMQ_ERLANG__MAX_ETS_TABLES}/" /vernemq/etc/vm.args
+fi
+
+if env | grep "DOCKER_VERNEMQ_ERLANG__FULLSWEEP_AFTER" -q; then
+    sed -i.bak -r "s/-env ERL_FULLSWEEP_AFTER .+/-env ERL_FULLSWEEP_AFTER ${DOCKER_VERNEMQ_ERLANG__FULLSWEEP_AFTER}/" /vernemq/etc/vm.args
+fi
+
+if env | grep "DOCKER_VERNEMQ_ERLANG__ASYNC_THREADS" -q; then
+    sed -i.bak -r "s/\+A .+/+A ${DOCKER_VERNEMQ_ERLANG__ASYNC_THREADS}/" /vernemq/etc/vm.args
 fi
 
 if [ -f /vernemq/etc/vernemq.conf.local ]; then
