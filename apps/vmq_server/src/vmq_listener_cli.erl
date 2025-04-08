@@ -32,6 +32,10 @@ register_server_cli() ->
         ["vmq-admin", "listener", "restart"],
         vmq_listener_restart_usage()
     ),
+    clique:register_usage(
+        ["vmq-admin", "listener", "show"],
+        vmq_listener_show_usage()
+    ),
     vmq_listener_start_cmd(),
     vmq_listener_stop_cmd(),
     vmq_listener_delete_cmd(),
@@ -433,4 +437,15 @@ vmq_listener_restart_usage() ->
     [
         "vmq-admin listener restart address=IpAddr port=Port\n\n",
         "  Restarts accepting new connections for a stopped listener.\n\n"
+    ].
+
+vmq_listener_show_usage() ->
+    [
+        "vmq-admin listener show\n\n",
+        "  Shows information about listeners..\n\n",
+        "Options\n\n",
+        "  -m, --mqtt\n"
+        "      Shows additional MQTT information\n"
+        "  -t, --tls\n"
+        "      Shows additional TLS/SSL information\n\n"
     ].
