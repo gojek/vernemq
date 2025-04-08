@@ -1,6 +1,6 @@
 # Build container
 FROM erlang:27.0-alpine as builder
-RUN apk add --no-cache snappy-dev openssl-dev alpine-sdk bsd-compat-headers bash
+RUN apk add --no-cache snappy-dev openssl-dev alpine-sdk bsd-compat-headers gcompat libgcc libc6-compat bash
 WORKDIR /builder
 COPY . /builder
 RUN make rel
@@ -9,7 +9,7 @@ RUN make rel
 FROM alpine:3.11
 
 RUN apk --no-cache --update --available upgrade && \
-    apk add --no-cache ncurses-libs openssl libstdc++ jq curl bash snappy-dev gcompat libgcc libc6-compat && \
+    apk add --no-cache ncurses-libs openssl libstdc++ jq curl bash snappy-dev && \
     addgroup --gid 10000 vernemq && \
     adduser --uid 10000 -H -D -G vernemq -h /vernemq vernemq && \
     install -d -o vernemq -g vernemq /vernemq
