@@ -316,7 +316,7 @@ vmq_listener_show_cmd() ->
         fun(_, [], []) ->
             Table =
                 lists:foldl(
-                    fun({Type, Ip, Port, Status, MP, MaxConns, PP}, Acc) ->
+                    fun({Type, Ip, Port, Status, MP, MaxConns, PP, _}, Acc) ->
                         [
                             [
                                 {type, Type},
