@@ -183,7 +183,6 @@ listeners(select, AddTLSInfo, AddMQTTInfo) ->
                 Opts,
                 vmq_config:get_env(max_connections)
             ),
-            ActiveConnections = maps:get(active_connections, ConfigMap),
             % the highest number of connections seen
             AllConnections = maps:get(all_connections, ConfigMap),
             Status = maps:get(status, ConfigMap),
@@ -193,6 +192,11 @@ listeners(select, AddTLSInfo, AddMQTTInfo) ->
                     _ -> inet:ntoa(Ip)
                 end,
             StrPort = integer_to_list(Port),
+            ProxyProtocol = proplists:get_value(
+                proxy_protocol,
+                Opts,
+                false
+            ),
             AllowedProtocolVersionsList = proplists:get_value(allowed_protocol_versions, Opts, ""),
             AllowedProtocolVersions = vmq_util:mqtt_version_to_string(AllowedProtocolVersionsList),
             AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, ""),
@@ -213,7 +217,7 @@ listeners(select, AddTLSInfo, AddMQTTInfo) ->
                 Status,
                 MountPoint,
                 MaxConnections,
-                ActiveConnections,
+                ProxyProtocol,
                 AllConnections
             ],
             Base2 =
