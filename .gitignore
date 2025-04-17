@@ -22,3 +22,5 @@ vernemq.iml
 
 .vscode/
 erlang_ls.config
+
+*.DS_Store

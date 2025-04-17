@@ -547,6 +547,3 @@ exp_nothing(Timeout) ->
         Timeout ->
             ok
     end.
-
-                              
-                             
