@@ -13,6 +13,7 @@
 
 -compile([export_all]).
 -compile([nowarn_export_all]).
+-define(HTTP_PORT, 34567).
 
 init_per_suite(_Config) ->
     PrivDir = code:priv_dir(vmq_server),
@@ -80,7 +81,7 @@ all() ->
 
 
 start_endpoint() ->
-    webhooks_handler:start_endpoint().
+    webhooks_handler:start_endpoint(?HTTP_PORT).
 
 stop_endpoint() ->
     webhooks_handler:stop_endpoint().
@@ -546,5 +547,3 @@ exp_nothing(Timeout) ->
         Timeout ->
             ok
     end.
-                              
-                             

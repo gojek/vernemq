@@ -14,6 +14,7 @@
     set_interval/2,
     extract_version/1
 ]).
+-export([mqtt_version_to_string/1]).
 
 ts() ->
     {Mega, Sec, Micro} = os:timestamp(),
@@ -99,3 +100,21 @@ extract_version_test(_) ->
         ?_assertEqual(nomatch, extract_version("new_line_test_file.acl"))
     ].
 -endif.
+
+mqtt_version_to_string([]) ->
+    "";
+mqtt_version_to_string(VersionList) ->
+    VersionString = lists:map(
+        fun(Version) ->
+            case Version of
+                3 -> "mqtt 3.1";
+                4 -> "mqtt 3.1.1";
+                5 -> "mqtt 5";
+                131 -> "mqtt 3.1 (bridge)";
+                132 -> "mqtt 3.1.1 (bridge)";
+                _ -> "unknown"
+            end
+        end,
+        VersionList
+    ),
+    string:join(VersionString, ", ").
