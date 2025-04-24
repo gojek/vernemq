@@ -933,7 +933,7 @@ shared_subscription_offline(Cfg) ->
     ok = gen_tcp:send(SubSocketOffline, Disconnect),
 
     %% wait for the client to be offline before publishing
-    wait_for_offline_event(SubOfflineClientId, 1000),
+    wait_for_offline_event(SubOfflineClientId, 500),
 
     PubFun =
         fun(Socket, Mid) ->
