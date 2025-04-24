@@ -53,10 +53,10 @@ all() ->
 
 groups() ->
     Tests =
-    [simple_systree_test,
+    [simple_prometheus_test,
+     simple_systree_test,
      histogram_systree_test,
      simple_graphite_test,
-     simple_prometheus_test,
      simple_cli_test],
     [
         {mqtt, [], Tests}
@@ -144,9 +144,9 @@ recv_data(Socket, Want0) ->
 simple_prometheus_test(_Cfg) ->
     %% we have to setup the listener here, because vmq_test_utils is overriding
     %% the default set in vmq_server.app.src
-    vmq_server_cmd:listener_start(8888, [{http, true},
-                                         {config_mod, vmq_metrics_http},
-                                         {config_fun, routes}]),
+    % vmq_server_cmd:listener_start(8888, [{http, true},
+    %                                      {config_mod, vmq_metrics_http},
+    %                                      {config_fun, routes}]),
     application:ensure_all_started(inets),
     SubSocket = sample_subscribe(),
     {ok, {_Status, _Headers, Body}} = httpc:request("http://localhost:8888/metrics"),
