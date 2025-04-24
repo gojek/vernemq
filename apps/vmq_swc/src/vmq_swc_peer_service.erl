@@ -51,7 +51,7 @@ attempt_join(Node) ->
     lager:info("Sent join request to: ~p~n", [Node]),
     case net_kernel:connect_node(Node) of
         false ->
-            lager:info(("Unable to connect to ~p~n"), [Node]),
+            lager:info("Unable to connect to ~p~n", [Node]),
             {error, not_reachable};
         true ->
             {ok, Local} = vmq_swc_peer_service_manager:get_local_state(),
