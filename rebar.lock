@@ -10,7 +10,7 @@
  {<<"certifi">>,{pkg,<<"certifi">>,<<"2.8.0">>},1},
  {<<"clique">>,
   {git,"https://github.com/vernemq/clique.git",
-       {ref,"8dda8f0224084f49ed3528d1d549c6343e53e249"}},
+       {ref,"213d60fe70cf2badb851f2392da184715c645546"}},
   0},
  {<<"corman">>,
   {git,"https://github.com/EchoTeam/corman.git",
