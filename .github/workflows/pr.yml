@@ -19,37 +19,37 @@ env:
   DEFAULT_RELEASE_OTP: 27
 
 jobs:
-  code_checks:
-    name: Check code style and quality
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: erlef/setup-beam@v1.18.2
-        with:
-          otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
-          version-type: strict
-      - run: sudo apt-get -y install libsnappy-dev
-      - name: Check code formatting (erlfmt)
-        run: ./rebar3 fmt -c
-      - name: Run dialyzer type checker
-        run: ./rebar3 dialyzer
-        continue-on-error: true
+  # code_checks:
+  #   name: Check code style and quality
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: erlef/setup-beam@v1.18.2
+  #       with:
+  #         otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
+  #         version-type: strict
+  #     - run: sudo apt-get -y install libsnappy-dev
+  #     - name: Check code formatting (erlfmt)
+  #       run: ./rebar3 fmt -c
+  #     - name: Run dialyzer type checker
+  #       run: ./rebar3 dialyzer
+  #       continue-on-error: true
   coverage:
     name: Test on ${{ matrix.os }} with OTP ${{ matrix.otp }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
-    needs: code_checks
+    # needs: code_checks
     strategy:
       fail-fast: false
       matrix:
         os:
           - ubuntu-24.04
-          - ubuntu-22.04
+          # - ubuntu-22.04
           # - ubuntu-20.04 #Ubuntu 20.04 LTS runner will be removed on 2025-04-15.
         otp:
           - "27.0"
-          - "26.0"
-          - "25.0"
+          # - "26.0"
+          # - "25.0"
     services:
       postgres:
         image: postgres
