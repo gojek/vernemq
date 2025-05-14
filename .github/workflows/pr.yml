@@ -139,7 +139,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - name: Run tests
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1.18.2
         with:
@@ -151,3 +150,31 @@ jobs:
       - run: make db-setup
       - run: pwd
       - run: sh ./run-tests-with-retry.sh .
+      # - name: Release Smoke tests
+      #   run: |
+      #     # Release and Start the server
+      #     make rel
+      #     # Debug any configuration problem before release starts
+      #     ./_build/default/rel/vernemq/bin/vernemq config generate -l debug
+      #     # Allow anonymous connections
+      #     echo "allow_anonymous = on" >> _build/default/rel/vernemq/etc/vernemq.conf
+      #     ./_build/default/rel/vernemq/bin/vernemq start
+      #     # Wait for port to come up
+      #     timeout 300 sh -c 'until nc -z $0 $1; do sleep 1; done' localhost 1883
+      #     # Ping the server
+      #     ./_build/default/rel/vernemq/bin/vernemq ping | grep -q pong
+      #     # Simple publish/subscribe test
+      #     mosquitto_sub -p 1883 -W 1 -C 1 -t 'tests/simple' >/dev/null &
+      #     export SUB_PID=$!
+      #     mosquitto_pub -p 1883 -t 'tests/simple' -m 'simple-test'
+      #     kill ${SUB_PID} 2>/dev/null || true
+      #     echo "Simple publish/subscribe: ok"
+      #     # Multiple publish/subscribe test (Send each line on a file)
+      #     export EXPECT_MSGS=$(wc -l ./THANKS | cut -d' ' -f1)
+      #     mosquitto_sub -p 1883 -W 1 -C ${EXPECT_MSGS} -t 'tests/multi' >/dev/null &
+      #     export SUB_PID=$!
+      #     mosquitto_pub -p 1883 -t 'tests/multi' -f ./THANKS
+      #     kill ${SUB_PID} 2>/dev/null || true
+      #     echo "Multiple publish/subscribe: ok"
+      #     # Stop the server
+      #     ./_build/default/rel/vernemq/bin/vernemq stop
