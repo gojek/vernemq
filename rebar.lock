@@ -62,7 +62,7 @@
   0},
  {<<"luerl">>,
   {git,"https://github.com/rvirding/luerl.git",
-       {ref,"4252c678e9015371e31fc6e6524e697696d5c6ad"}},
+       {ref,"09c489cd9893db99fcd00c89022305e14a14cc93"}},
   0},
  {<<"mcd">>,
   {git,"https://github.com/mths1/mcd.git",
