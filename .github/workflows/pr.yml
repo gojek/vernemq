@@ -35,62 +35,10 @@ jobs:
         run: ./rebar3 dialyzer
         continue-on-error: true
   coverage:
-    runs-on: ubuntu-22.04
-    needs: code_checks
-    services:
-      postgres:
-        image: postgres
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_USER: vmq_test_user
-          POSTGRES_PASSWORD: vmq_test_password
-          POSTGRES_DB: vmq_test_database
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      memcached:
-        image: memcached
-        ports:
-          - 11211:11211
-      redis:
-        image: redis
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redissentinel:
-        image: bitnami/redis-sentinel
-        ports:
-          - 26379:26379
-        options: >-
-          --health-cmd "redis-cli -p 26379 ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: erlef/setup-beam@v1.18.2
-        with:
-          otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
-          version-type: strict
-      - run: sudo apt-get -y install libsnappy-dev
-      - run: sudo apt-get -y install pcregrep
-      - run: make rel
-      - run: make db-setup
-      - run: pwd
-      - run: sh ./run-tests-with-retry.sh .
-
-  tests:
     name: Test on ${{ matrix.os }} with OTP ${{ matrix.otp }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
-
+    needs: code_checks
     strategy:
       fail-fast: false
       matrix:
@@ -150,31 +98,3 @@ jobs:
       - run: make db-setup
       - run: pwd
       - run: sh ./run-tests-with-retry.sh .
-      # - name: Release Smoke tests
-      #   run: |
-      #     # Release and Start the server
-      #     make rel
-      #     # Debug any configuration problem before release starts
-      #     ./_build/default/rel/vernemq/bin/vernemq config generate -l debug
-      #     # Allow anonymous connections
-      #     echo "allow_anonymous = on" >> _build/default/rel/vernemq/etc/vernemq.conf
-      #     ./_build/default/rel/vernemq/bin/vernemq start
-      #     # Wait for port to come up
-      #     timeout 300 sh -c 'until nc -z $0 $1; do sleep 1; done' localhost 1883
-      #     # Ping the server
-      #     ./_build/default/rel/vernemq/bin/vernemq ping | grep -q pong
-      #     # Simple publish/subscribe test
-      #     mosquitto_sub -p 1883 -W 1 -C 1 -t 'tests/simple' >/dev/null &
-      #     export SUB_PID=$!
-      #     mosquitto_pub -p 1883 -t 'tests/simple' -m 'simple-test'
-      #     kill ${SUB_PID} 2>/dev/null || true
-      #     echo "Simple publish/subscribe: ok"
-      #     # Multiple publish/subscribe test (Send each line on a file)
-      #     export EXPECT_MSGS=$(wc -l ./THANKS | cut -d' ' -f1)
-      #     mosquitto_sub -p 1883 -W 1 -C ${EXPECT_MSGS} -t 'tests/multi' >/dev/null &
-      #     export SUB_PID=$!
-      #     mosquitto_pub -p 1883 -t 'tests/multi' -f ./THANKS
-      #     kill ${SUB_PID} 2>/dev/null || true
-      #     echo "Multiple publish/subscribe: ok"
-      #     # Stop the server
-      #     ./_build/default/rel/vernemq/bin/vernemq stop
