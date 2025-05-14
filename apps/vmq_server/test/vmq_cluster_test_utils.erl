@@ -104,15 +104,14 @@ wait_until_connected(Node1, Node2) ->
 
 start_node(Name, Config, Case) ->
     CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
-    %% have the slave nodes monitor the runner node, so they can't outlive it
-    NodeConfig = [
-        {monitor_master, true},
-        {erl_flags, "-smp"} %% smp for the eleveldb god
-    ],
+    Opts =
+        #{name => Name,
+          wait_boot => infinity,
+          args => ["-kernel", "prevent_overlapping_partitions", "false", "-pz" | CodePath]},
     VmqServerPrivDir = code:priv_dir(vmq_server),
-    ct:log("Starting node ~p with Opts = ~p", [Name, NodeConfig]),
-    case ct_slave:start(Name, NodeConfig) of
-        {ok, Node} ->
+    ct:log("Starting node ~p with Opts = ~p", [Name, Opts]),
+    case peer:start(Opts) of
+        {ok, Peer, Node} ->
             true = rpc:block_call(Node, code, set_path, [CodePath]),
             PrivDir = proplists:get_value(priv_dir, Config),
             NodeDir = filename:join([PrivDir, Node, Case]),
@@ -159,11 +158,9 @@ start_node(Name, Config, Case) ->
                                 _ -> false
                             end
                     end, 60, 500),
-            Node;
-        {error, already_started, Node} ->
-            ct_slave:stop(Name),
-            wait_until_offline(Node),
-            start_node(Name, Config, Case)
+            {ok, Peer, Node};
+        Other ->
+            Other
     end.
 
 partition_cluster(ANodes, BNodes) ->

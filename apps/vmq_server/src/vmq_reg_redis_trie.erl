@@ -834,11 +834,11 @@ show_complex_topics_test(_) ->
     [
         ?_assertEqual(
             [
-                [<<"abc/xyz/+/1/+">>],
-                [<<"abc/+/1/2">>],
-                [<<"abc/xyz/+/1">>],
                 [<<"abc/xyz/+/2">>],
-                [<<"#">>]
+                [<<"abc/xyz/+/1/+">>],
+                [<<"#">>],
+                [<<"abc/+/1/2">>],
+                [<<"abc/xyz/+/1">>]
             ],
             [
                 [iolist_to_binary((Topic))]

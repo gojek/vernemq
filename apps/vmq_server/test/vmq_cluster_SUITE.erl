@@ -39,6 +39,8 @@
     hook_auth_on_subscribe/3
 ]).
 
+-define(stacktrace, try throw(foo) catch _:foo:Stacktrace -> Stacktrace end).
+
 -compile(nowarn_deprecated_function).
 
 -include_lib("common_test/include/ct.hrl").
@@ -1211,13 +1213,14 @@ receive_msgs(Payloads, Wait) ->
         #mqtt_publish{payload = Payload} ->
             true = lists:member(Payload, Payloads),
             receive_msgs(Payloads -- [Payload])
-    after Wait -> throw({wait_for_messages_timeout, Payloads, erlang:get_stacktrace()})
+    after Wait -> ST = ?stacktrace, throw({wait_for_messages_timeout, Payloads, ST})
     end.
 
 receive_nothing(Wait) ->
     receive
-        X -> throw({received_unexpected_msgs, X, erlang:get_stacktrace()})
-    after Wait -> ok
+        X -> ST = ?stacktrace, throw({received_unexpected_msgs, X, ST})
+    after
+        Wait -> ok
     end.
 
 recv_and_forward_msg(Socket, Dest, Rest) ->
