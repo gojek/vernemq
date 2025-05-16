@@ -504,7 +504,7 @@ racing_subscriber_test(Config) ->
 cluster_self_leave_subscriber_reaper_test(Config) ->
     ok = ensure_cluster(Config),
     {_, [{_, Node, Port} | RestNodesWithPorts] = _Nodes} = lists:keyfind(nodes, 1, Config),
-    {RestNodes, _} = lists:unzip3(RestNodesWithPorts),
+    {_, RestNodes, _} = lists:unzip3(RestNodesWithPorts),
     Topic = "cluster/leave/topic",
     ToMigrate = 8,
     %% create ToMigrate sessions
