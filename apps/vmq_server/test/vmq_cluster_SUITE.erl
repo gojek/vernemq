@@ -121,6 +121,7 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [
+        shared_subs_random_policy_dead_node_message_reaper_test,
         multiple_connect_test,
         multiple_connect_unclean_test,
         distributed_subscribe_test,
@@ -142,8 +143,7 @@ all() ->
         shared_subs_local_only_policy_test,
         shared_subs_local_only_policy_test_with_local_caching,
         cross_node_publish_subscribe,
-        routing_table_survives_node_restart,
-        shared_subs_random_policy_dead_node_message_reaper_test
+        routing_table_survives_node_restart
     ].
 
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

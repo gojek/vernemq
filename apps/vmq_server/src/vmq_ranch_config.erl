@@ -95,7 +95,6 @@ delete_listener(Addr, Port) ->
 delete_listener(Ref) ->
     ranch:stop_listener(Ref).
 
-
 start_listener(Type, Addr, Port, Opts) when is_list(Opts) ->
     TCPOpts = vmq_config:get_env(tcp_listen_options),
     TransportOpts = TCPOpts ++ transport_opts_for_type(Type, Opts),
