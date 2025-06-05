@@ -39,7 +39,8 @@
 -record(state, {
     fall = 3,
     timer = undefined,
-    recheck_interval = 500
+    recheck_interval = 500,
+    redis_no_conn_count = 0
 }).
 -define(VMQ_CLUSTER_STATUS, vmq_status).
 
@@ -174,18 +175,30 @@ handle_info(recheck, State) ->
     of
         {ok, LiveNodes} when is_list(LiveNodes) ->
             LiveNodesAtom = update_cluster_status(LiveNodes, []),
+            filter_dead_nodes(LiveNodesAtom, State#state.fall),
+            NewState = State#state{redis_no_conn_count = 0}; % Reset on success
         {error, no_connection} ->
             lager:error("Redis not connected on node ~p", [node()]),
             ets:insert(?VMQ_CLUSTER_STATUS, {node(), false, State#state.fall + 1}),
+            NewCount = State#state.redis_no_conn_count + 1,
+            if
+                NewCount >= 10 ->
+                    lager:error("Restarting Redis client after ~p consecutive no_connection errors", [NewCount]),
+                    supervisor:restart_child(vmq_server_sup, eredis),
+                    NewState = State#state{redis_no_conn_count = 0};
+                true ->
+                    NewState = State#state{redis_no_conn_count = NewCount}
+            end;
         Res ->
-            lager:error("~p", [Res])
+            lager:error("~p", [Res]),
+            NewState = State
     end,
     NewTRef = erlang:send_after(
         State#state.recheck_interval,
         self(),
         recheck
     ),
-    {noreply, State#state{
+    {noreply, NewState#state{
         timer = NewTRef
     }};
 handle_info(Info, State) ->
