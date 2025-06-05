@@ -174,7 +174,9 @@ handle_info(recheck, State) ->
     of
         {ok, LiveNodes} when is_list(LiveNodes) ->
             LiveNodesAtom = update_cluster_status(LiveNodes, []),
-            filter_dead_nodes(LiveNodesAtom, State#state.fall);
+        {error, no_connection} ->
+            lager:error("Redis not connected on node ~p", [node()]),
+            ets:insert(?VMQ_CLUSTER_STATUS, {node(), false, State#state.fall + 1}),
         Res ->
             lager:error("~p", [Res])
     end,
