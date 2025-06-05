@@ -39,7 +39,7 @@ query(Client, QueryCmd, Cmd, Operation, Timeout) ->
                 Res;
             {error, no_connection} ->
                 vmq_metrics:incr_redis_cmd_err({Cmd, Operation}),
-                lager:debug("Cannot ~p:~p due to ~p", [Cmd, Operation, no_connection]),
+                lager:error("Cannot ~p:~p due to ~p", [Cmd, Operation, no_connection]),
                 {error, no_connection};
             {error, Reason} ->
                 vmq_metrics:incr_redis_cmd_err({Cmd, Operation}),
