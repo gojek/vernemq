@@ -724,7 +724,7 @@ check_user(#mqtt_connect{username = User, password = Password, properties = Prop
                             State2 = State1#state{queue_pid = QPid, next_msg_id = MsgId},
                             check_will(F, SessionPresent, State2);
                         {error, Reason} ->
-                            lager:warning(
+                            lager:error(
                                 "can't register client ~p with username ~p due to ~p",
                                 [SubscriberId, User, Reason]
                             ),
@@ -777,7 +777,7 @@ check_user(#mqtt_connect{username = User, password = Password, properties = Prop
                         queue_pid = QPid, username = User, next_msg_id = MsgId
                     });
                 {error, Reason} ->
-                    lager:warning(
+                    lager:error(
                         "can't register client ~p due to reason ~p",
                         [SubscriberId, Reason]
                     ),
