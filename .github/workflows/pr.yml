@@ -15,16 +15,24 @@ jobs:
     name: Check code style and quality
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v2.0.0
-      - uses: erlef/setup-beam@v1
-        with:
-          otp-version: 24.2
-          version-type: strict
-      - run: sudo apt-get -y install libsnappy-dev
-      - name: Check code formatting (erlfmt)
-        run: ./rebar3 fmt -c
-      - name: Run dialyzer type checker
-        run: ./rebar3 dialyzer
+      - uses: actions/checkout@v2
+
+      - name: Run Erlang 23 tasks in Docker (code checks)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace ubuntu:20.04 bash -c "
+            apt update &&
+            DEBIAN_FRONTEND=noninteractive apt install -y curl git build-essential libssl-dev autoconf libncurses5-dev libwxgtk3.0-gtk3-dev libgl1-mesa-dev libglu1-mesa-dev libpng-dev libssh-dev unixodbc-dev xsltproc fop libxml2-utils libncurses-dev openjdk-11-jdk libsnappy-dev &&
+            curl -O https://erlang.org/download/otp_src_23.3.tar.gz &&
+            tar -xzf otp_src_23.3.tar.gz &&
+            cd otp_src_23.3 &&
+            ./configure &&
+            make -j$(nproc) &&
+            make install &&
+            cd /workspace &&
+            ./rebar3 fmt -c &&
+            ./rebar3 dialyzer
+          "
+
   coverage:
     runs-on: ubuntu-22.04
     needs: code_checks
@@ -65,14 +73,25 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v2.0.0
-      - uses: erlef/setup-beam@v1
-        with:
-          otp-version: 24.2
-          version-type: strict
-      - run: sudo apt-get -y install libsnappy-dev
-      - run: sudo apt-get -y install pcregrep
-      - run: make rel
-      - run: make db-setup
-      - run: pwd
-      - run: sh ./run-tests-with-retry.sh .
+      - uses: actions/checkout@v2
+
+      - name: Run Erlang 23 tasks in Docker (test & coverage)
+        run: |
+          docker run --rm \
+            --network host \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            ubuntu:20.04 bash -c "
+              apt update &&
+              DEBIAN_FRONTEND=noninteractive apt install -y curl git build-essential libssl-dev autoconf libncurses5-dev libwxgtk3.0-gtk3-dev libgl1-mesa-dev libglu1-mesa-dev libpng-dev libssh-dev unixodbc-dev xsltproc fop libxml2-utils libncurses-dev openjdk-11-jdk libsnappy-dev pcregrep &&
+              curl -O https://erlang.org/download/otp_src_23.3.tar.gz &&
+              tar -xzf otp_src_23.3.tar.gz &&
+              cd otp_src_23.3 &&
+              ./configure &&
+              make -j$(nproc) &&
+              make install &&
+              cd /workspace &&
+              make rel &&
+              make db-setup &&
+              sh ./run-tests-with-retry.sh .
+            "
