@@ -21,7 +21,8 @@
     start_link/0,
     nodes/0,
     status/0,
-    is_node_alive/1
+    is_node_alive/1,
+    redis_status/0
 ]).
 
 %% gen_server callbacks
@@ -40,7 +41,8 @@
     fall = 3,
     timer = undefined,
     recheck_interval = 500,
-    redis_no_conn_count = 0
+    redis_no_conn_count = 0,
+    redis_down_since = undefined
 }).
 -define(VMQ_CLUSTER_STATUS, vmq_status).
 
@@ -81,6 +83,13 @@ is_node_alive(Node) ->
     catch
         _:_ ->
             false
+    end.
+
+-spec redis_status() -> up | down.
+redis_status() ->
+    case whereis(?MODULE) of
+        undefined -> down;
+        Pid -> gen_server:call(Pid, redis_status)
     end.
 
 %%%===================================================================
@@ -132,6 +141,16 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(redis_status, _From, State) ->
+    Now = erlang:monotonic_time(second),
+    RedisDown = State#state.redis_down_since,
+    Status =
+        case RedisDown of
+            undefined -> up;
+            TS when Now - TS >= 300 -> down;
+            _ -> up
+        end,
+    {reply, Status, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -160,6 +179,7 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(recheck, State) ->
+    Now = erlang:monotonic_time(second),
     case
         vmq_redis:query(
             vmq_redis_client,
@@ -177,11 +197,18 @@ handle_info(recheck, State) ->
             LiveNodesAtom = update_cluster_status(LiveNodes, []),
             filter_dead_nodes(LiveNodesAtom, State#state.fall),
             % Reset on success
-            NewState = State#state{redis_no_conn_count = 0};
+            NewState = State#state{
+                redis_no_conn_count = 0,
+                redis_down_since = undefined
+            };
         {error, no_connection} ->
-            lager:error("Redis not connected on node ~p", [node()]),
-            ets:insert(?VMQ_CLUSTER_STATUS, {node(), false, State#state.fall + 1}),
+            lager:error("Redis not connected to node ~p", [node()]),
             NewCount = State#state.redis_no_conn_count + 1,
+            NewDownSince =
+                case State#state.redis_down_since of
+                    undefined -> Now;
+                    TS -> TS
+                end,
             if
                 NewCount >= 10 ->
                     lager:error(
@@ -190,9 +217,15 @@ handle_info(recheck, State) ->
                         ]
                     ),
                     supervisor:restart_child(vmq_server_sup, eredis),
-                    NewState = State#state{redis_no_conn_count = 0};
+                    NewState = State#state{
+                        redis_no_conn_count = 0,
+                        redis_down_since = NewDownSince
+                    };
                 true ->
-                    NewState = State#state{redis_no_conn_count = NewCount}
+                    NewState = State#state{
+                        redis_no_conn_count = NewCount,
+                        redis_down_since = NewDownSince
+                    }
             end;
         Res ->
             lager:error("~p", [Res]),
