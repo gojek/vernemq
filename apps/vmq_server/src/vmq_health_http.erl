@@ -26,6 +26,8 @@ routes() ->
         {"/redis-health", ?MODULE, redis_health}
     ].
 
+init(Req, redis_health) ->
+    redis_health_init(Req, []);
 init(Req, Opts) ->
     {Code, Payload} =
         case check_health_concerns() of
