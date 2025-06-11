@@ -193,7 +193,6 @@ handle_info(recheck, State) ->
         {ok, LiveNodes} when is_list(LiveNodes) ->
             LiveNodesAtom = update_cluster_status(LiveNodes, []),
             filter_dead_nodes(LiveNodesAtom, State#state.fall),
-            % Reset on success
             NewState = State#state{
                 redis_no_conn_count = 0,
                 redis_down_since = undefined
@@ -206,20 +205,23 @@ handle_info(recheck, State) ->
                     undefined -> Now;
                     TS -> TS
                 end,
-            case NewDownSince of
-                TS when Now - TS >= 300 ->
-                    lager:error("Restarting Redis client after 5 minutes of no_connection errors"),
-                    supervisor:restart_child(vmq_server_sup, eredis),
-                    NewState = State#state{
-                        redis_no_conn_count = NewCount,
-                        redis_down_since = NewDownSince
-                    };
-                _ ->
-                    NewState = State#state{
-                        redis_no_conn_count = NewCount,
-                        redis_down_since = NewDownSince
-                    }
-            end;
+            NewState =
+                if
+                    NewDownSince =/= undefined andalso Now - NewDownSince >= 300 ->
+                        lager:error(
+                            "Restarting Redis client after 5 minutes of no_connection errors"
+                        ),
+                        supervisor:restart_child(vmq_server_sup, eredis),
+                        State#state{
+                            redis_no_conn_count = NewCount,
+                            redis_down_since = undefined
+                        };
+                    true ->
+                        State#state{
+                            redis_no_conn_count = NewCount,
+                            redis_down_since = NewDownSince
+                        }
+                end;
         Res ->
             lager:error("~p", [Res]),
             NewState = State
