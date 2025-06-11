@@ -142,12 +142,9 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call(redis_status, _From, State) ->
-    Now = erlang:monotonic_time(second),
-    RedisDown = State#state.redis_down_since,
     Status =
-        case RedisDown of
-            undefined -> up;
-            TS when Now - TS >= 300 -> down;
+        case State#state.redis_no_conn_count of
+            N when N >= 10 -> down;
             _ -> up
         end,
     {reply, Status, State};
@@ -209,19 +206,15 @@ handle_info(recheck, State) ->
                     undefined -> Now;
                     TS -> TS
                 end,
-            if
-                NewCount >= 10 ->
-                    lager:error(
-                        "Restarting Redis client after ~p consecutive no_connection errors", [
-                            NewCount
-                        ]
-                    ),
+            case NewDownSince of
+                TS when Now - TS >= 300 ->
+                    lager:error("Restarting Redis client after 5 minutes of no_connection errors"),
                     supervisor:restart_child(vmq_server_sup, eredis),
                     NewState = State#state{
-                        redis_no_conn_count = 0,
+                        redis_no_conn_count = NewCount,
                         redis_down_since = NewDownSince
                     };
-                true ->
+                _ ->
                     NewState = State#state{
                         redis_no_conn_count = NewCount,
                         redis_down_since = NewDownSince
