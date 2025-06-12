@@ -48,11 +48,47 @@ redis_healthcheck_test(_) ->
                                          {config_mod, vmq_health_http},
                                          {config_fun, routes}]),
     application:ensure_all_started(inets),
-    {ok, {_Status, _Headers, Body}} = httpc:request("http://localhost:8889/redis-health"),
-    JsonResponse = jsx:decode(list_to_binary(Body), [return_maps, {labels, binary}]),
-    Status = maps:get(<<"status">>, JsonResponse),
-    %% Accept either <<"OK">> or <<"DOWN">> depending on Redis state
-    case Status of
-        <<"OK">> -> ok;
-        <<"DOWN">> -> ok
-    end.
+
+    % 1. Redis should be available: expect "OK"
+    {ok, {_Status1, _Headers1, Body1}} = httpc:request("http://localhost:8889/redis-health"),
+    JsonResponse1 = jsx:decode(list_to_binary(Body1), [return_maps, {labels, binary}]),
+    <<"OK">> = maps:get(<<"status">>, JsonResponse1),
+
+    % 2. Simulate Redis unavailable: stop Redis depending on environment
+    CI = os:getenv("CI"),
+    OS = os:type(),
+    _ = case CI of
+        "true" ->
+            % GitHub Actions: stop Docker container
+            os:cmd("docker stop $(docker ps --filter 'name=redissentinel' --format '{{.Names}}')");
+        _ ->
+            case OS of
+                {unix, darwin} ->
+                    os:cmd("brew services stop redis");
+                {unix, linux} ->
+                    os:cmd("sudo systemctl stop redis-server");
+                _ ->
+                    ok
+            end
+    end,
+    timer:sleep(7000),
+
+    {ok, {_Status2, _Headers2, Body2}} = httpc:request("http://localhost:8889/redis-health"),
+    JsonResponse2 = jsx:decode(list_to_binary(Body2), [return_maps, {labels, binary}]),
+
+    % 3. Start Redis again
+    _ = case CI of
+        "true" ->
+            os:cmd("docker start $(docker ps -a --filter 'name=redissentinel' --format '{{.Names}}')");
+        _ ->
+            case OS of
+                {unix, darwin} ->
+                    os:cmd("brew services start redis");
+                {unix, linux} ->
+                    os:cmd("sudo systemctl start redis-server");
+                _ ->
+                    ok
+            end
+    end,
+
+    <<"DOWN">> = maps:get(<<"status">>, JsonResponse2).
