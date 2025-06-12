@@ -198,7 +198,7 @@ handle_info(recheck, State) ->
                 redis_down_since = undefined
             };
         {error, no_connection} ->
-            lager:error("Redis not connected to node ~p", [node()]),
+            lager:error("Cluster recheck failed due to no connection with redis"),
             NewCount = State#state.redis_no_conn_count + 1,
             NewDownSince =
                 case State#state.redis_down_since of
