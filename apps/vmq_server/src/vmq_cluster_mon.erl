@@ -197,9 +197,16 @@ handle_info(recheck, State) ->
                 redis_no_conn_count = 0,
                 redis_down_since = undefined
             };
-        {error, no_connection} ->
-            lager:error("Cluster recheck failed due to no connection with redis"),
-            NewCount = State#state.redis_no_conn_count + 1,
+        {error, Reason} ->
+            NewCount =
+                case Reason of
+                    no_connection ->
+                        lager:error("cluster recheck failed due to no connection with redis"),
+                        State#state.redis_no_conn_count + 1;
+                    _ ->
+                        lager:warning("reason ~p~n", [Reason]),
+                        State#state.redis_no_conn_count
+                end,
             NewDownSince =
                 case State#state.redis_down_since of
                     undefined -> Now;
@@ -209,9 +216,14 @@ handle_info(recheck, State) ->
                 if
                     NewDownSince =/= undefined andalso Now - NewDownSince >= 300 ->
                         lager:error(
-                            "Restarting Redis client after 5 minutes of no_connection errors"
+                            "restarting Redis client after 5 minutes of errors"
                         ),
-                        supervisor:restart_child(vmq_server_sup, eredis),
+                        case supervisor:terminate_child(vmq_server_sup, eredis) of
+                            ok ->
+                                lager:info("terminated eredis child");
+                            {error, Err} ->
+                                lager:error("failed to terminate eredis child: ~p", [Err])
+                        end,
                         State#state{
                             redis_no_conn_count = NewCount,
                             redis_down_since = undefined
