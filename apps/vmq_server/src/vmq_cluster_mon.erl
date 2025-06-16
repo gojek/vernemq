@@ -204,7 +204,7 @@ handle_info(recheck, State) ->
                         lager:error("cluster recheck failed due to no connection with redis"),
                         State#state.redis_no_conn_count + 1;
                     _ ->
-                        lager:warning("reason ~p~n", [Reason]),
+                        lager:error("redis error ~p~n", [Reason]),
                         State#state.redis_no_conn_count
                 end,
             NewDownSince =
@@ -218,11 +218,24 @@ handle_info(recheck, State) ->
                         lager:error(
                             "restarting Redis client after 5 minutes of errors"
                         ),
-                        case supervisor:terminate_child(vmq_server_sup, eredis) of
-                            ok ->
-                                lager:info("terminated eredis child");
-                            {error, Err} ->
-                                lager:error("failed to terminate eredis child: ~p", [Err])
+                        TermResult = supervisor:terminate_child(vmq_server_sup, eredis),
+                        StartResult = supervisor:restart_child(vmq_server_sup, eredis),
+                        case {TermResult, StartResult} of
+                            {ok, ok} ->
+                                lager:error("terminated and restarted eredis child");
+                            {ok, {error, Err}} ->
+                                lager:error("terminated eredis child, failed to restart: ~p", [Err]);
+                            {{error, TermErr}, ok} ->
+                                lager:error(
+                                    "failed to terminate eredis child: ~p, restarted successfully",
+                                    [TermErr]
+                                );
+                            {{error, TermErr}, {error, StartErr}} ->
+                                lager:error(
+                                    "failed to terminate eredis child: ~p, failed to restart: ~p", [
+                                        TermErr, StartErr
+                                    ]
+                                )
                         end,
                         State#state{
                             redis_no_conn_count = NewCount,
