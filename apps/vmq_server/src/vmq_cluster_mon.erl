@@ -201,7 +201,13 @@ handle_info(recheck, State) ->
             NewCount =
                 case Reason of
                     no_connection ->
-                        lager:error("cluster recheck failed due to no connection with redis"),
+                        lager:error("cluster recheck failed due to no_connection with redis"),
+                        State#state.redis_no_conn_count + 1;
+                    {timeout, _} ->
+                        lager:error("cluster recheck failed due to timeout with redis"),
+                        State#state.redis_no_conn_count + 1;
+                    {noproc, _} ->
+                        lager:error("cluster recheck failed due to eredis noproc"),
                         State#state.redis_no_conn_count + 1;
                     _ ->
                         lager:error("redis error ~p~n", [Reason]),
@@ -218,25 +224,7 @@ handle_info(recheck, State) ->
                         lager:error(
                             "restarting Redis client after 5 minutes of errors"
                         ),
-                        TermResult = supervisor:terminate_child(vmq_server_sup, eredis),
-                        StartResult = supervisor:restart_child(vmq_server_sup, eredis),
-                        case {TermResult, StartResult} of
-                            {ok, ok} ->
-                                lager:error("terminated and restarted eredis child");
-                            {ok, {error, Err}} ->
-                                lager:error("terminated eredis child, failed to restart: ~p", [Err]);
-                            {{error, TermErr}, ok} ->
-                                lager:error(
-                                    "failed to terminate eredis child: ~p, restarted successfully",
-                                    [TermErr]
-                                );
-                            {{error, TermErr}, {error, StartErr}} ->
-                                lager:error(
-                                    "failed to terminate eredis child: ~p, failed to restart: ~p", [
-                                        TermErr, StartErr
-                                    ]
-                                )
-                        end,
+                        restart_eredis_child(),
                         State#state{
                             redis_no_conn_count = NewCount,
                             redis_down_since = undefined
@@ -323,3 +311,50 @@ filter_dead_nodes(Nodes, Fall) ->
 
 ensure_no_local_client() ->
     vmq_redis:query(vmq_redis_client, ["SCARD", node()], ?SCARD, ?ENSURE_NO_LOCAL_CLIENT).
+
+%% Helper: Check if any Sentinel endpoint resolves via DNS
+check_sentinel_dns([]) ->
+    false;
+check_sentinel_dns([{Host, _Port} | Rest]) when is_list(Host); is_binary(Host) ->
+    HostStr =
+        case Host of
+            Bin when is_binary(Bin) -> binary_to_list(Bin);
+            Str -> Str
+        end,
+    case inet:gethostbyname(HostStr) of
+        {ok, _} -> true;
+        _ -> check_sentinel_dns(Rest)
+    end.
+
+%% Helper: Restart eredis only if DNS resolves
+restart_eredis_child() ->
+    SentinelEndpoints = vmq_schema_util:parse_list(
+        application:get_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]")
+    ),
+    case check_sentinel_dns(SentinelEndpoints) of
+        true ->
+            terminate_eredis(),
+            restart_eredis();
+        false ->
+            lager:error("Skip restarting eredis: No Sentinel endpoint resolves (DNS failure)")
+    end.
+
+%% Helper: Terminate eredis child
+terminate_eredis() ->
+    TermResult = supervisor:terminate_child(vmq_server_sup, eredis),
+    case TermResult of
+        {error, Err} ->
+            lager:error("Failed to terminate eredis child: ~p", [Err]);
+        Result ->
+            lager:error("Terminated eredis child: ~p", [Result])
+    end.
+
+%% Helper: Restart eredis child
+restart_eredis() ->
+    StartResult = supervisor:restart_child(vmq_server_sup, eredis),
+    case StartResult of
+        {error, Err} ->
+            lager:error("Failed to restart eredis child: ~p", [Err]);
+        Result ->
+            lager:error("Restarted eredis child: ~p", [Result])
+    end.
