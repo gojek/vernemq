@@ -41,8 +41,10 @@
     fall = 3,
     timer = undefined,
     recheck_interval = 500,
-    redis_no_conn_count = 0,
-    redis_down_since = undefined
+    redis_down_since = undefined,
+    redis_last_restart = undefined,
+    redis_down_status_threshold = 5,
+    redis_restart_threshold = 300
 }).
 -define(VMQ_CLUSTER_STATUS, vmq_status).
 
@@ -112,6 +114,8 @@ init([]) ->
 
     Fall = application:get_env(vmq_server, cluster_node_liveness_fall, 3),
     RecheckInterval = application:get_env(vmq_server, cluster_node_liveness_check_interval, 500),
+    RedisDownStatusThreshold = application:get_env(vmq_server, redis_down_status_threshold, 5),
+    RedisRestartThreshold = application:get_env(vmq_server, redis_restart_threshold, 300),
 
     case ensure_no_local_client() of
         {ok, <<"0">>} ->
@@ -119,7 +123,9 @@ init([]) ->
             {ok, #state{
                 fall = Fall,
                 timer = Tref,
-                recheck_interval = RecheckInterval
+                recheck_interval = RecheckInterval,
+                redis_down_status_threshold = RedisDownStatusThreshold,
+                redis_restart_threshold = RedisRestartThreshold
             }};
         {ok, _} ->
             {stop, reaping_in_progress};
@@ -143,9 +149,16 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call(redis_status, _From, State) ->
     Status =
-        case State#state.redis_no_conn_count of
-            N when N >= 10 -> down;
-            _ -> up
+        case State#state.redis_down_since of
+            undefined ->
+                up;
+            DownSince ->
+                Now = erlang:monotonic_time(second),
+                Threshold = State#state.redis_down_status_threshold,
+                case Now - DownSince >= Threshold of
+                    true -> down;
+                    false -> up
+                end
         end,
     {reply, Status, State};
 handle_call(_Request, _From, State) ->
@@ -194,44 +207,35 @@ handle_info(recheck, State) ->
             LiveNodesAtom = update_cluster_status(LiveNodes, []),
             filter_dead_nodes(LiveNodesAtom, State#state.fall),
             NewState = State#state{
-                redis_no_conn_count = 0,
-                redis_down_since = undefined
+                redis_down_since = undefined,
+                redis_last_restart = undefined
             };
         {error, Reason} ->
-            NewCount =
-                case Reason of
-                    no_connection ->
-                        lager:error("cluster recheck failed due to no_connection with redis"),
-                        State#state.redis_no_conn_count + 1;
-                    {timeout, _} ->
-                        lager:error("cluster recheck failed due to timeout with redis"),
-                        State#state.redis_no_conn_count + 1;
-                    {noproc, _} ->
-                        lager:error("cluster recheck failed due to eredis noproc"),
-                        State#state.redis_no_conn_count + 1;
-                    _ ->
-                        lager:error("redis error ~p~n", [Reason]),
-                        State#state.redis_no_conn_count
-                end,
+            lager:error("cluster recheck failed due to error ~p~n", [Reason]),
             NewDownSince =
                 case State#state.redis_down_since of
                     undefined -> Now;
                     TS -> TS
                 end,
+            LastRestart = State#state.redis_last_restart,
+            RestartThreshold = State#state.redis_restart_threshold,
+            ShouldRestart =
+                (Now - NewDownSince) >= RestartThreshold andalso
+                    (LastRestart =:= undefined orelse Now - LastRestart >= RestartThreshold),
             NewState =
                 if
-                    NewDownSince =/= undefined andalso Now - NewDownSince >= 300 ->
-                        lager:error(
-                            "restarting Redis client after 5 minutes of errors"
-                        ),
-                        restart_eredis_child(),
+                    ShouldRestart ->
+                        lager:error("Restarting Redis client after ~p seconds of errors", [
+                            RestartThreshold
+                        ]),
+                        terminate_eredis(),
+                        start_eredis(),
                         State#state{
-                            redis_no_conn_count = NewCount,
-                            redis_down_since = undefined
+                            redis_down_since = NewDownSince,
+                            redis_last_restart = Now
                         };
                     true ->
                         State#state{
-                            redis_no_conn_count = NewCount,
                             redis_down_since = NewDownSince
                         }
                 end;
@@ -312,33 +316,6 @@ filter_dead_nodes(Nodes, Fall) ->
 ensure_no_local_client() ->
     vmq_redis:query(vmq_redis_client, ["SCARD", node()], ?SCARD, ?ENSURE_NO_LOCAL_CLIENT).
 
-%% Helper: Check if any Sentinel endpoint resolves via DNS
-check_sentinel_dns([]) ->
-    false;
-check_sentinel_dns([{Host, _Port} | Rest]) when is_list(Host); is_binary(Host) ->
-    HostStr =
-        case Host of
-            Bin when is_binary(Bin) -> binary_to_list(Bin);
-            Str -> Str
-        end,
-    case inet:gethostbyname(HostStr) of
-        {ok, _} -> true;
-        _ -> check_sentinel_dns(Rest)
-    end.
-
-%% Helper: Restart eredis only if DNS resolves
-restart_eredis_child() ->
-    SentinelEndpoints = vmq_schema_util:parse_list(
-        application:get_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]")
-    ),
-    case check_sentinel_dns(SentinelEndpoints) of
-        true ->
-            terminate_eredis(),
-            restart_eredis();
-        false ->
-            lager:error("Skip restarting eredis: No Sentinel endpoint resolves (DNS failure)")
-    end.
-
 %% Helper: Terminate eredis child
 terminate_eredis() ->
     TermResult = supervisor:terminate_child(vmq_server_sup, eredis),
@@ -349,12 +326,13 @@ terminate_eredis() ->
             lager:error("Terminated eredis child: ~p", [Result])
     end.
 
-%% Helper: Restart eredis child
-restart_eredis() ->
-    StartResult = supervisor:restart_child(vmq_server_sup, eredis),
+%% Helper: Start eredis child
+start_eredis() ->
+    Spec = vmq_server_sup:eredis_child_spec(),
+    StartResult = supervisor:start_child(vmq_server_sup, Spec),
     case StartResult of
         {error, Err} ->
-            lager:error("Failed to restart eredis child: ~p", [Err]);
+            lager:error("Failed to start eredis child: ~p", [Err]);
         Result ->
-            lager:error("Restarted eredis child: ~p", [Result])
+            lager:error("Start eredis child: ~p", [Result])
     end.
