@@ -67,8 +67,9 @@ down_redis_healthcheck_test(_) ->
     % Set Redis endpoint to an unreachable address to simulate down
     application:set_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1111\", 26379}]"),
     supervisor:terminate_child(vmq_server_sup, eredis),
-    timer:sleep(4000),
+    timer:sleep(2000),
     {ok, {_Status, _Headers, Body}} = httpc:request("http://localhost:8890/redis-health"),
     JsonResponse = jsx:decode(list_to_binary(Body), [return_maps, {labels, binary}]),
     application:set_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]"),
+    timer:sleep(2000),
     <<"DOWN">> = maps:get(<<"status">>, JsonResponse).
