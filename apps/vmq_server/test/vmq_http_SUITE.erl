@@ -9,7 +9,8 @@
 
 -export([
           simple_healthcheck_test/1,
-          redis_healthcheck_test/1
+          ok_redis_healthcheck_test/1,
+          down_redis_healthcheck_test/1
         ]).
 
 init_per_suite(_Config) ->
@@ -29,7 +30,11 @@ end_per_testcase(_, Config) ->
     Config.
 
 all() ->
-    [simple_healthcheck_test, redis_healthcheck_test].
+    [
+        simple_healthcheck_test, 
+        ok_redis_healthcheck_test, 
+        down_redis_healthcheck_test
+    ].
 
 simple_healthcheck_test(_) ->
     %% we have to setup the listener here, because vmq_test_utils is overriding
@@ -42,53 +47,28 @@ simple_healthcheck_test(_) ->
     JsonResponse = jsx:decode(list_to_binary(Body), [return_maps, {labels, binary}]),
     <<"OK">> = maps:get(<<"status">>, JsonResponse).
 
-redis_healthcheck_test(_) ->
+ok_redis_healthcheck_test(_) ->
     %% Setup the listener for the test
     vmq_server_cmd:listener_start(8889, [{http, true},
                                          {config_mod, vmq_health_http},
                                          {config_fun, routes}]),
     application:ensure_all_started(inets),
+    % Redis should be available: expect "OK"
+    {ok, {_Status, _Headers, Body}} = httpc:request("http://localhost:8889/redis-health"),
+    JsonResponse = jsx:decode(list_to_binary(Body), [return_maps, {labels, binary}]),
+    <<"OK">> = maps:get(<<"status">>, JsonResponse).
 
-    % 1. Redis should be available: expect "OK"
-    {ok, {_Status1, _Headers1, Body1}} = httpc:request("http://localhost:8889/redis-health"),
-    JsonResponse1 = jsx:decode(list_to_binary(Body1), [return_maps, {labels, binary}]),
-    <<"OK">> = maps:get(<<"status">>, JsonResponse1),
-
-    % 2. Simulate Redis unavailable: stop Redis depending on environment
-    CI = os:getenv("CI"),
-    OS = os:type(),
-    _ = case CI of
-        "true" ->
-            % GitHub Actions: stop Docker container
-            os:cmd("docker stop $(docker ps --filter 'name=redissentinel' --format '{{.Names}}')");
-        _ ->
-            case OS of
-                {unix, darwin} ->
-                    os:cmd("brew services stop redis");
-                {unix, linux} ->
-                    os:cmd("sudo systemctl stop redis-server");
-                _ ->
-                    ok
-            end
-    end,
-    timer:sleep(7000),
-
-    {ok, {_Status2, _Headers2, Body2}} = httpc:request("http://localhost:8889/redis-health"),
-    JsonResponse2 = jsx:decode(list_to_binary(Body2), [return_maps, {labels, binary}]),
-
-    % 3. Start Redis again
-    _ = case CI of
-        "true" ->
-            os:cmd("docker start $(docker ps -a --filter 'name=redissentinel' --format '{{.Names}}')");
-        _ ->
-            case OS of
-                {unix, darwin} ->
-                    os:cmd("brew services start redis");
-                {unix, linux} ->
-                    os:cmd("sudo systemctl start redis-server");
-                _ ->
-                    ok
-            end
-    end,
-
-    <<"DOWN">> = maps:get(<<"status">>, JsonResponse2).
+down_redis_healthcheck_test(_) ->
+    %% Setup the listener for the test
+    vmq_server_cmd:listener_start(8890, [{http, true},
+                                         {config_mod, vmq_health_http},
+                                         {config_fun, routes}]),
+    application:ensure_all_started(inets),
+    % Set Redis endpoint to an unreachable address to simulate down
+    application:set_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1111\", 26379}]"),
+    supervisor:terminate_child(vmq_server_sup, eredis),
+    timer:sleep(4000),
+    {ok, {_Status, _Headers, Body}} = httpc:request("http://localhost:8890/redis-health"),
+    JsonResponse = jsx:decode(list_to_binary(Body), [return_maps, {labels, binary}]),
+    application:set_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]"),
+    <<"DOWN">> = maps:get(<<"status">>, JsonResponse).
