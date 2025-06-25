@@ -220,14 +220,17 @@ handle_info(recheck, State) ->
             LastRestart = State#state.redis_last_restart,
             RestartThreshold = State#state.redis_restart_threshold,
             ShouldRestart =
-                (Now - NewDownSince) >= RestartThreshold andalso
-                    (LastRestart =:= undefined orelse Now - LastRestart >= RestartThreshold),
+                case Reason of
+                    {noproc, _} ->
+                        true;
+                    _ ->
+                        (Now - NewDownSince) >= RestartThreshold andalso
+                            (LastRestart =:= undefined orelse Now - LastRestart >= RestartThreshold)
+                end,
             NewState =
                 if
                     ShouldRestart ->
-                        lager:error("Restarting Redis client after ~p seconds of errors", [
-                            RestartThreshold
-                        ]),
+                        lager:error("Restarting Redis client due to ~p", [Reason]),
                         terminate_eredis(),
                         start_eredis(),
                         State#state{
