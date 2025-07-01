@@ -76,7 +76,9 @@ metrics(Opts) ->
     Metrics = lists:filtermap(
         fun({Id, Val}) ->
             case maps:find(Id, IdDef) of
-                {ok, #metric_def{type = Type, id = Id, name = Name, labels = GotLabels, description = Description}} ->
+                {ok, #metric_def{
+                    type = Type, id = Id, name = Name, labels = GotLabels, description = Description
+                }} ->
                     Keep = has_label(WantLabels, GotLabels),
                     case Keep of
                         true ->
@@ -109,7 +111,6 @@ incr(Entry) ->
 -spec incr(any(), non_neg_integer()) -> 'ok'.
 incr(Entry, N) ->
     incr_item(Entry, N).
-
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -159,7 +160,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-
 %% don't do the update
 incr_item(_, 0) ->
     ok;
@@ -175,8 +175,7 @@ incr_item(Entry, Val) when Val > 0 ->
         end,
     atomics:add(ARef, met2idx(Entry), Val).
 
-
-metric_values() -> 
+metric_values() ->
     lists:map(
         fun(#metric_def{id = Id}) ->
             try counter_val(Id) of
@@ -258,7 +257,6 @@ aggregate_by_name(Metrics) ->
         Metrics
     ),
     maps:values(AggrMetrics).
-
 
 met2idx({?REGISTER_AUTH_ERROR, ?INVALID_SIGNATURE}) -> 1;
 met2idx({?REGISTER_AUTH_ERROR, ?USERNAME_RID_MISMATCH}) -> 2;

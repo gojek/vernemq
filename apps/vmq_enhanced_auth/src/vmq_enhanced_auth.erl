@@ -184,7 +184,8 @@ auth_on_register(
         true ->
             {Result, Claims} = verify(Password, ?SecretKey),
             if
-                Result =:= ok -> check_rid(Claims, UserName);
+                Result =:= ok ->
+                    check_rid(Claims, UserName);
                 %else block
                 true ->
                     vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?INVALID_SIGNATURE}),
@@ -596,9 +597,10 @@ check_rid(Claims, UserName) ->
     case maps:find(rid, Claims) of
         {ok, Value} ->
             if
-                Value =:= UserName -> ok;
+                Value =:= UserName ->
+                    ok;
                 %else block
-                true -> 
+                true ->
                     vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?USERNAME_RID_MISMATCH}),
                     {error, ?USERNAME_RID_MISMATCH}
             end;
