@@ -6,7 +6,8 @@
         kernel,
         stdlib,
         clique,
-        jwerl
+        jwerl,
+        lager
     ]},
     {mod, {vmq_enhanced_auth_app, []}},
     {env, [

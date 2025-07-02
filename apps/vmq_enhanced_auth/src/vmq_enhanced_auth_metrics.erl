@@ -8,7 +8,6 @@
 -export([
     start_link/0,
     metrics/0,
-    metrics/1,
     incr/1,
     incr/2
 ]).
@@ -37,6 +36,7 @@
 }).
 
 -type metric_def() :: #metric_def{}.
+-type metric_val() :: {Id :: metric_id(), Val :: any()}.
 -type metric_label() :: {atom(), string()}.
 -type metric_id() ::
     atom()
@@ -54,12 +54,6 @@ start_link() ->
 
 -spec metrics() -> [{metric_def(), non_neg_integer()}].
 metrics() ->
-    metrics(#{aggregate => false}).
-
--spec metrics(map()) -> [{metric_def(), non_neg_integer()}].
-metrics(Opts) ->
-    WantLabels = maps:get(labels, Opts, []),
-
     MetricDefs = metrics_defs(),
     MetricValues = metric_values(),
 
@@ -79,13 +73,7 @@ metrics(Opts) ->
                 {ok, #metric_def{
                     type = Type, id = Id, name = Name, labels = GotLabels, description = Description
                 }} ->
-                    Keep = has_label(WantLabels, GotLabels),
-                    case Keep of
-                        true ->
-                            {true, {Type, GotLabels, Id, Name, Description, Val}};
-                        _ ->
-                            false
-                    end;
+                    {true, {Type, GotLabels, Id, Name, Description, Val}};
                 error ->
                     %% this could happen if metric definitions does
                     %% not correspond to the ids returned with the
@@ -96,13 +84,7 @@ metrics(Opts) ->
         end,
         MetricValues
     ),
-
-    case Opts of
-        #{aggregate := true} ->
-            aggregate_by_name(Metrics);
-        _ ->
-            Metrics
-    end.
+    Metrics.
 
 -spec incr(any()) -> 'ok'.
 incr(Entry) ->
@@ -116,6 +98,7 @@ incr(Entry, N) ->
 %%% gen_server callbacks
 %%%===================================================================
 
+-spec init(_) -> {ok, #state{}}.
 init([]) ->
     AllEntries = [Id || #metric_def{id = Id} <- metrics_defs()],
     NumEntries = length(AllEntries),
@@ -175,6 +158,7 @@ incr_item(Entry, Val) when Val > 0 ->
         end,
     atomics:add(ARef, met2idx(Entry), Val).
 
+-spec metric_values() -> [metric_val()].
 metric_values() ->
     lists:map(
         fun(#metric_def{id = Id}) ->
@@ -187,13 +171,13 @@ metric_values() ->
         metrics_defs()
     ).
 
--spec metrics_defs() -> none().
+-spec metrics_defs() -> [metric_def()].
 metrics_defs() ->
     [
         m(
             counter,
             [
-                {reason, ?INVALID_SIGNATURE}
+                {reason, atom_to_list(?INVALID_SIGNATURE)}
             ],
             {?REGISTER_AUTH_ERROR, ?INVALID_SIGNATURE},
             ?REGISTER_AUTH_ERROR,
@@ -202,7 +186,7 @@ metrics_defs() ->
         m(
             counter,
             [
-                {reason, ?MISSING_RID}
+                {reason, atom_to_list(?MISSING_RID)}
             ],
             {?REGISTER_AUTH_ERROR, ?MISSING_RID},
             ?REGISTER_AUTH_ERROR,
@@ -211,7 +195,7 @@ metrics_defs() ->
         m(
             counter,
             [
-                {reason, ?USERNAME_RID_MISMATCH}
+                {reason, atom_to_list(?USERNAME_RID_MISMATCH)}
             ],
             {?REGISTER_AUTH_ERROR, ?USERNAME_RID_MISMATCH},
             ?REGISTER_AUTH_ERROR,
@@ -219,6 +203,7 @@ metrics_defs() ->
         )
     ].
 
+-spec m(atom(), [metric_label()], metric_id(), atom(), 'undefined' | binary()) -> metric_def().
 m(Type, Labels, UniqueId, Name, Description) ->
     #metric_def{
         type = Type,
@@ -231,32 +216,6 @@ m(Type, Labels, UniqueId, Name, Description) ->
 counter_val(Entry) ->
     ARef = persistent_term:get(?MODULE),
     atomics:get(ARef, met2idx(Entry)).
-
-has_label([], _) ->
-    true;
-has_label(WantLabels, GotLabels) when is_list(WantLabels), is_list(GotLabels) ->
-    lists:all(
-        fun(T1) ->
-            lists:member(T1, GotLabels)
-        end,
-        WantLabels
-    ).
-
-aggregate_by_name(Metrics) ->
-    AggrMetrics = lists:foldl(
-        fun({#metric_def{name = Name} = D1, V1}, Acc) ->
-            case maps:find(Name, Acc) of
-                {ok, {_D2, V2}} ->
-                    Acc#{Name => {D1#metric_def{labels = []}, V1 + V2}};
-                error ->
-                    %% Remove labels when aggregating.
-                    Acc#{Name => {D1#metric_def{labels = []}, V1}}
-            end
-        end,
-        #{},
-        Metrics
-    ),
-    maps:values(AggrMetrics).
 
 met2idx({?REGISTER_AUTH_ERROR, ?INVALID_SIGNATURE}) -> 1;
 met2idx({?REGISTER_AUTH_ERROR, ?USERNAME_RID_MISMATCH}) -> 2;
