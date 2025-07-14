@@ -1145,22 +1145,17 @@ encode_payload(Hook, Args, Opts) when
                     {topics,
                         lists:map(
                             fun
-                                ([T, Q]) when is_integer(Q) ->
+                                ([T, {QoS, Qopts}]) ->
+                                    [
+                                        {topic, T},
+                                        {qos, QoS},
+                                        {options, Qopts}
+                                    ];
+                                ([T, Q]) ->
                                     [
                                         {topic, T},
                                         {qos, Q}
-                                    ];
-                                ([T, {QoS, Qopts}]) ->
-                                        [
-                                            {topic, T},
-                                            {qos, QoS},
-                                            {options, Qopts}
-                                        ];
-                                ([T, Q]) ->
-                                        [
-                                            {topic, T},
-                                            {qos, [Q]}
-                                        ]
+                                    ]
                             end,
                             Topics
                         )};
