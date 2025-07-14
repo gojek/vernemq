@@ -21,6 +21,8 @@ setup() ->
     PrivDir = code:priv_dir(vmq_server),
     application:set_env(vmq_server, default_reg_view, vmq_reg_redis_trie),
     application:set_env(vmq_server, systree_reg_view, vmq_reg_redis_trie),
+    application:set_env(vmq_server, redis_down_status_threshold, 1),
+    application:set_env(vmq_server, redis_restart_threshold, 3),
     application:set_env(vmq_server, redis_sentinel_endpoints, "[{\"localhost\", 26379}]"),
     application:set_env(vmq_server, redis_lua_dir, PrivDir ++ "/lua_scripts"),
     application:set_env(vmq_server, ignore_db_config, true),

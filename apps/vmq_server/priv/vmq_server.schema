@@ -1787,3 +1787,15 @@
 %% @doc This option specifies the password for redis as message store
 {mapping, "message_store.redis.password", "vmq_server.message_store.redis.password",
     [{datatype, atom}]}.
+
+%% @doc This option specifies the number of seconds after which Redis is considered DOWN for health/status.
+{mapping, "redis_down_status_threshold", "vmq_server.redis_down_status_threshold", [
+    {default, 5},
+    {datatype, integer}
+]}.
+
+%% @doc This option specifies the number of seconds after which Redis will be restarted if still down.
+{mapping, "redis_restart_threshold", "vmq_server.redis_restart_threshold", [
+    {default, 300},
+    {datatype, integer}
+]}.
