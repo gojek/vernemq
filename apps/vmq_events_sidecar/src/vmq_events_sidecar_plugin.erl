@@ -424,11 +424,17 @@ send_event(HookName, EventPayload, Criterion) ->
             next;
         [{_}] ->
             vmq_metrics:incr_sidecar_events(HookName),
-            case sample(HookName, Criterion) of
+            case bypass_client(HookName, EventPayload, Criterion) of
                 true ->
+                    lager:info("bypass sampling for topic: ~p with ~p", [Criterion, EventPayload]),
                     process_event(HookName, EventPayload);
-                _ ->
-                    ok
+                false ->
+                    case sample(HookName, Criterion) of
+                        true ->
+                            process_event(HookName, EventPayload);
+                        _ ->
+                            ok
+                    end
             end
     end.
 
@@ -510,3 +516,26 @@ check(Hook, Criterion) ->
                     false
             end
     end.
+
+bypass_client(HookName, EventPayload, Criterion) ->
+    case HookName of
+        on_publish ->
+            {_, ClientId, _, _, _, _, _, _} = EventPayload,
+            should_bypass_sampling(Criterion, ClientId);
+        on_deliver ->
+            {_, ClientId, _, _, _, _, _, _, _} = EventPayload,
+            should_bypass_sampling(Criterion, ClientId);
+        _ ->
+            false
+    end.
+
+-spec should_bypass_sampling(binary() | undefined, binary()) -> boolean().
+should_bypass_sampling(Criterion, ClientId) when is_binary(Criterion), is_binary(ClientId) ->
+    case binary:match(Criterion, <<"ping_v2">>) of
+        nomatch ->
+            false;
+        _ ->
+            binary:match(ClientId, <<"com.gojek.partner.ios">>) =/= nomatch
+    end;
+should_bypass_sampling(_, _) ->
+    false.
