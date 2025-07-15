@@ -83,13 +83,3 @@
     vmq_schema_translate:translate_sampling("on_delivery_complete", Conf)
   end
 }.
-
-%% @doc Configure the criterion pattern to check for bypass
-{mapping, "vmq_events_sidecar.bypass_criterion", "vmq_events_sidecar.bypass_criterion",
- [{datatype, string},
-  {default, "default"}]}.
-
-%% @doc Configure the client ID pattern to identify clients for bypass
-{mapping, "vmq_events_sidecar.client_pattern", "vmq_events_sidecar.client_pattern",
- [{datatype, string},
-  {default, "default"}]}.
