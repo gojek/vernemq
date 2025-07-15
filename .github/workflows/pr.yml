@@ -45,7 +45,6 @@ jobs:
         os:
           - ubuntu-24.04
           - ubuntu-22.04
-          # - ubuntu-20.04 #Ubuntu 20.04 LTS runner will be removed on 2025-04-15.
         otp:
           - "27.0"
           - "26.0"
