@@ -530,8 +530,8 @@ bypass_client(HookName, EventPayload, Criterion) ->
 
 -spec should_bypass_sampling(binary() | undefined, binary()) -> boolean().
 should_bypass_sampling(Criterion, ClientId) when is_binary(Criterion), is_binary(ClientId) ->
-    {ok, BypassCriterion} = application:get_env(vmq_events_sidecar, bypass_criterion, "default"),
-    {ok, ClientPattern} = application:get_env(vmq_events_sidecar, client_pattern, "default"),
+    BypassCriterion = application:get_env(vmq_events_sidecar, bypass_criterion, "default"),
+    ClientPattern = application:get_env(vmq_events_sidecar, client_pattern, "default"),
     case binary:match(Criterion, list_to_binary(BypassCriterion)) of
         nomatch ->
             false;
