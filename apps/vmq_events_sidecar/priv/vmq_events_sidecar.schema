@@ -83,3 +83,13 @@
     vmq_schema_translate:translate_sampling("on_delivery_complete", Conf)
   end
 }.
+
+%% @doc Configure the criterion pattern to check for iOS driver bypass (e.g., ping_v2)
+{mapping, "vmq_events_sidecar.ios_bypass_criterion", "vmq_events_sidecar.ios_bypass_criterion",
+ [{datatype, string},
+  {default, "default"}]}.
+
+%% @doc Configure the client ID pattern to identify iOS clients for bypass
+{mapping, "vmq_events_sidecar.ios_client_pattern", "vmq_events_sidecar.ios_client_pattern",
+ [{datatype, string},
+  {default, "default"}]}.

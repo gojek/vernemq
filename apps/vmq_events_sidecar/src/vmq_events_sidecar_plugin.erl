@@ -424,11 +424,16 @@ send_event(HookName, EventPayload, Criterion) ->
             next;
         [{_}] ->
             vmq_metrics:incr_sidecar_events(HookName),
-            case sample(HookName, Criterion) of
+            case bypass_ios_driver(HookName, EventPayload, Criterion) of
                 true ->
                     process_event(HookName, EventPayload);
-                _ ->
-                    ok
+                false ->
+                    case sample(HookName, Criterion) of
+                        true ->
+                            process_event(HookName, EventPayload);
+                        _ ->
+                            ok
+                    end
             end
     end.
 
@@ -510,3 +515,28 @@ check(Hook, Criterion) ->
                     false
             end
     end.
+
+bypass_ios_driver(HookName, EventPayload, Criterion) ->
+    case HookName of
+        on_publish ->
+            {_, ClientId, _, _, _, _, _, _} = EventPayload,
+            should_bypass_sampling(Criterion, ClientId);
+        on_deliver ->
+            {_, ClientId, _, _, _, _, _, _, _} = EventPayload,
+            should_bypass_sampling(Criterion, ClientId);
+        _ ->
+            false
+    end.
+
+-spec should_bypass_sampling(binary() | undefined, binary()) -> boolean().
+should_bypass_sampling(Criterion, ClientId) when is_binary(Criterion), is_binary(ClientId) ->
+    {ok, BypassCriterion} = application:get_env(vmq_events_sidecar, ios_bypass_criterion),
+    {ok, IOSClientPattern} = application:get_env(vmq_events_sidecar, ios_client_pattern),
+    case binary:match(Criterion, list_to_binary(BypassCriterion)) of
+        nomatch ->
+            false;
+        _ ->
+            binary:match(ClientId, list_to_binary(IOSClientPattern)) =/= nomatch
+    end;
+should_bypass_sampling(_, _) ->
+    false.
