@@ -5,19 +5,18 @@
 -export([init/2]).
 -export([terminate/3]).
 
--export([start_endpoint/1,
+-export([start_endpoint/0,
          stop_endpoint/0]).
 
 -define(DEBUG, false).
 
-start_endpoint(HTTPPort) ->
-    {ok, _} = cowboy:start_clear(http, [{port, HTTPPort}], #{env => #{dispatch => route()}}).
-
-route() ->
-    cowboy_router:compile([{'_',
-                            [{"/", ?MODULE, []},
-                             {"/cache", ?MODULE, []},
-                             {"/cache1s", ?MODULE, []}]}]).
+start_endpoint() ->
+    Dispatch = cowboy_router:compile(
+                 [{'_', [{"/", ?MODULE, []},
+                         {"/cache", ?MODULE, []},
+                         {"/cache1s", ?MODULE, []}]}]),
+    {ok, _} = cowboy:start_clear(http, [{port, 34567}],
+                                 #{env => #{dispatch => Dispatch}}).
 
 stop_endpoint() ->
     cowboy:stop_listener(http).
