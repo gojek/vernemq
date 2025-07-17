@@ -27,6 +27,7 @@
 %%% API functions
 %%%===================================================================
 
+-spec active_mqtt_connections() -> {non_neg_integer(), non_neg_integer()}.
 active_mqtt_connections() ->
     lists:foldl(
         fun
