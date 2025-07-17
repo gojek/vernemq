@@ -85,8 +85,6 @@ init_per_testcase(Case, Config) ->
                 listener_start,
                 [P, []]
             ),
-            %% allow all
-            ok = rpc:call(Node, vmq_auth, register_hooks, []),
             {Peer, Node, P}
         end,
         [
