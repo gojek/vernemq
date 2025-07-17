@@ -46,9 +46,9 @@ jobs:
           - ubuntu-24.04
           - ubuntu-22.04
         otp:
-          - "27.0"
-          - "26.0"
-          - "25.0"
+          - "27.3.4.1"
+          - "26.2.5.13"
+          - "25.3.2.21"
     services:
       postgres:
         image: postgres
