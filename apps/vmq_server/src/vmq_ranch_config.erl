@@ -59,10 +59,10 @@ start_link() ->
 stop_all_mqtt_listeners(KillSessions) ->
     lists:foreach(
         fun
-            ({mqtt, Addr, Port, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
-            ({mqtts, Addr, Port, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
-            ({mqttws, Addr, Port, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
-            ({mqttwss, Addr, Port, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqtt, Addr, Port, _, _, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqtts, Addr, Port, _, _, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqttws, Addr, Port, _, _, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqttwss, Addr, Port, _, _, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
             (_) -> ignore
         end,
         listeners()
