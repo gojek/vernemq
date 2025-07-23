@@ -42,7 +42,6 @@
     timer = undefined,
     recheck_interval = 500,
     redis_down_since = undefined,
-    redis_last_restart = undefined,
     redis_down_status_threshold = 5,
     redis_restart_threshold = 300
 }).
@@ -207,8 +206,7 @@ handle_info(recheck, State) ->
             LiveNodesAtom = update_cluster_status(LiveNodes, []),
             filter_dead_nodes(LiveNodesAtom, State#state.fall),
             NewState = State#state{
-                redis_down_since = undefined,
-                redis_last_restart = undefined
+                redis_down_since = undefined
             };
         {error, Reason} ->
             lager:error("cluster recheck failed due to error ~p~n", [Reason]),
@@ -217,11 +215,8 @@ handle_info(recheck, State) ->
                     undefined -> Now;
                     TS -> TS
                 end,
-            LastRestart = State#state.redis_last_restart,
             RestartThreshold = State#state.redis_restart_threshold,
-            ShouldRestart =
-                (Now - NewDownSince) >= RestartThreshold andalso
-                    (LastRestart =:= undefined orelse Now - LastRestart >= RestartThreshold),
+            ShouldRestart = (Now - NewDownSince) >= RestartThreshold,
             NewState =
                 if
                     ShouldRestart ->
@@ -231,8 +226,7 @@ handle_info(recheck, State) ->
                         terminate_eredis(),
                         start_eredis(),
                         State#state{
-                            redis_down_since = NewDownSince,
-                            redis_last_restart = Now
+                            redis_down_since = Now
                         };
                     true ->
                         State#state{
@@ -240,7 +234,7 @@ handle_info(recheck, State) ->
                         }
                 end;
         Res ->
-            lager:error("~p", [Res]),
+            lager:error("[INFO] unhandled redis response: ~p", [Res]),
             NewState = State
     end,
     NewTRef = erlang:send_after(
@@ -322,8 +316,8 @@ terminate_eredis() ->
     case TermResult of
         {error, Err} ->
             lager:error("Failed to terminate eredis child: ~p", [Err]);
-        Result ->
-            lager:error("Terminated eredis child: ~p", [Result])
+        _ ->
+            lager:error("[INFO] terminated eredis child successfully")
     end.
 
 %% Helper: Start eredis child
