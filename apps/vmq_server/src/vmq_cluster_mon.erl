@@ -202,25 +202,25 @@ handle_info(recheck, State) ->
             ?GET_LIVE_NODES
         )
     of
-        {ok, LiveNodes} when is_list(LiveNodes) ->
-            LiveNodesAtom = update_cluster_status(LiveNodes, []),
-            filter_dead_nodes(LiveNodesAtom, State#state.fall),
-            NewState = State#state{
-                redis_down_since = undefined
-            };
         {error, Reason} ->
-            lager:error("cluster recheck failed due to error ~p~n", [Reason]),
+            lager:error("cluster recheck failed due to redis error ~p~n", [Reason]),
             NewDownSince =
                 case State#state.redis_down_since of
                     undefined -> Now;
                     TS -> TS
                 end,
             RestartThreshold = State#state.redis_restart_threshold,
-            ShouldRestart = (Now - NewDownSince) >= RestartThreshold,
+            ShouldRestart =
+                case Reason of
+                    {noproc, _} ->
+                        true;
+                    _ ->
+                        (Now - NewDownSince) >= RestartThreshold
+                end,
             NewState =
                 if
                     ShouldRestart ->
-                        lager:error("Restarting Redis client after ~p seconds of errors", [
+                        lager:error("[INFO] Restarting Redis client after ~p seconds of errors", [
                             RestartThreshold
                         ]),
                         terminate_eredis(),
@@ -233,8 +233,16 @@ handle_info(recheck, State) ->
                             redis_down_since = NewDownSince
                         }
                 end;
+        {ok, LiveNodes} when is_list(LiveNodes) ->
+            LiveNodesAtom = update_cluster_status(LiveNodes, []),
+            filter_dead_nodes(LiveNodesAtom, State#state.fall),
+            NewState = State#state{
+                redis_down_since = undefined
+            };
         Res ->
-            lager:error("[INFO] unhandled redis response: ~p", [Res]),
+            lager:error(
+                "[INFO] unhandled redis response in vmq_cluster_mon recheck handler: ~p", [Res]
+            ),
             NewState = State
     end,
     NewTRef = erlang:send_after(
@@ -246,7 +254,7 @@ handle_info(recheck, State) ->
         timer = NewTRef
     }};
 handle_info(Info, State) ->
-    lager:warning("received unexpected message ~p~n", [Info]),
+    lager:error("[INFO] vmq_cluster_mon received unexpected message ~p~n", [Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

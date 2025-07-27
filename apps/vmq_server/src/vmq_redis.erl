@@ -6,7 +6,7 @@
 %% API
 -export([query/4, query/5]).
 
--define(TIMEOUT, 5000).
+-define(TIMEOUT, 500).
 
 -type return_value() :: undefined | binary() | [binary() | nonempty_list() | undefined].
 
@@ -29,17 +29,17 @@ query(Client, QueryCmd, Cmd, Operation, Timeout) ->
         try eredis:q(Pid, QueryCmd, Timeout) of
             {error, <<"ERR stale_request">>} = Res when Cmd == ?FCALL ->
                 vmq_metrics:incr_redis_stale_cmd({Cmd, Operation}),
-                lager:error("Cannot ~p:~p due to staleness", [Cmd, Operation]),
+                lager:debug("Cannot ~p:~p due to staleness", [Cmd, Operation]),
                 Res;
             {error, <<"ERR unauthorized">>} = Res when Cmd == ?FCALL ->
                 vmq_metrics:incr_unauth_redis_cmd({Cmd, Operation}),
-                lager:error("Cannot ~p:~p as client is connected on different node", [
+                lager:debug("Cannot ~p:~p as client is connected on different node", [
                     Cmd, Operation
                 ]),
                 Res;
             {error, no_connection} ->
-                vmq_metrics:incr_redis_cmd_err({Cmd, Operation}),
-                lager:warning("Cannot ~p:~p due to ~p", [Cmd, Operation, no_connection]),
+                vmq_metrics:incr_redis_cmd_err({?REASON_NO_EREDIS_CONNECTION, Cmd, Operation}),
+                lager:debug("Cannot ~p:~p due to ~p", [Cmd, Operation, ?REASON_NO_EREDIS_CONNECTION]),
                 {error, no_connection};
             {error, Reason} ->
                 vmq_metrics:incr_redis_cmd_err({Cmd, Operation}),
@@ -54,6 +54,14 @@ query(Client, QueryCmd, Cmd, Operation, Timeout) ->
             Res ->
                 Res
         catch
+            exit:{noproc, _} = NoProcReason ->
+                vmq_metrics:incr_redis_cmd_err({?REASON_NO_EREDIS_PROCESS, Cmd, Operation}),
+                lager:debug("Cannot ~p:~p due to ~p", [Cmd, Operation, NoProcReason]),
+                {error, NoProcReason};
+            exit:timeout ->
+                vmq_metrics:incr_redis_cmd_err({?REASON_TIMEOUT, Cmd, Operation}),
+                lager:debug("Cannot ~p:~p due to timeout", [Cmd, Operation]),
+                {error, timeout};
             Type:Exception ->
                 vmq_metrics:incr_redis_cmd_err({Cmd, Operation}),
                 lager:error("Cannot ~p:~p due to ~p:~p", [Cmd, Operation, Type, Exception]),
