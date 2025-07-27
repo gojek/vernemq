@@ -95,4 +95,9 @@
 -define(EXIT_SIGNAL_RECEIVED, exit_signal_received).
 -define(UNEXPECTED_FRAME_TYPE, unexpected_frame_type).
 -define(NORMAL, normal).
+
+-define(REASON_NO_EREDIS_PROCESS, no_eredis_process).
+-define(REASON_NO_EREDIS_CONNECTION, no_eredis_connection).
+-define(REASON_UNKNOWN, unknown).
+-define(REASON_TIMEOUT, timeout).
 -endif.

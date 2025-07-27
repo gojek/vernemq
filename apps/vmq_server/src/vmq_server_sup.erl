@@ -20,6 +20,7 @@
 
 %% Supervisor callbacks
 -export([init/1]).
+-export([eredis_child_spec/0]).
 
 -include("vmq_server.hrl").
 
@@ -27,7 +28,8 @@
 -define(MaxT, application:get_env(vmq_server, max_t, 10)).
 
 %% Helper macro for declaring children of supervisor
--define(CHILD(I, Type, Args), {I, {I, start_link, Args}, permanent, 5000, Type, [I]}).
+-define(CHILD(I, Type, Args), ?CHILD(I, permanent, Type, Args)).
+-define(CHILD(I, Restart, Type, Args), {I, {I, start_link, Args}, Restart, 5000, Type, [I]}).
 
 %% ===================================================================
 %% API functions
@@ -49,24 +51,9 @@ start_link() ->
 init([]) ->
     persistent_term:put(subscribe_trie_ready, 0),
 
-    SentinelEndpoints = vmq_schema_util:parse_list(
-        application:get_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]")
-    ),
-    RedisDB = application:get_env(vmq_server, redis_sentinel_database, 0),
-    Username = application:get_env(vmq_server, redis_sentinel_username, undefined),
-    Password = application:get_env(vmq_server, redis_sentinel_password, undefined),
-
     {ok,
         {{one_for_one, 5, 10}, [
-            ?CHILD(eredis, worker, [
-                [
-                    {sentinel, [{endpoints, SentinelEndpoints}]},
-                    {database, RedisDB},
-                    {username, Username},
-                    {password, Password},
-                    {name, {local, vmq_redis_client}}
-                ]
-            ]),
+            eredis_child_spec(),
             ?CHILD(vmq_config, worker, []),
             ?CHILD(vmq_metrics_sup, supervisor, []),
             ?CHILD(vmq_crl_srv, worker, []),
@@ -78,3 +65,20 @@ init([]) ->
             ?CHILD(vmq_sysmon, worker, []),
             ?CHILD(vmq_ranch_sup, supervisor, [])
         ]}}.
+
+eredis_child_spec() ->
+    SentinelEndpoints = vmq_schema_util:parse_list(
+        application:get_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]")
+    ),
+    RedisDB = application:get_env(vmq_server, redis_sentinel_database, 0),
+    Username = application:get_env(vmq_server, redis_sentinel_username, undefined),
+    Password = application:get_env(vmq_server, redis_sentinel_password, undefined),
+    ?CHILD(eredis, temporary, worker, [
+        [
+            {sentinel, [{endpoints, SentinelEndpoints}]},
+            {database, RedisDB},
+            {username, Username},
+            {password, Password},
+            {name, {local, vmq_redis_client}}
+        ]
+    ]).

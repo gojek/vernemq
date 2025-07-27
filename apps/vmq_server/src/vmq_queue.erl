@@ -1381,7 +1381,7 @@ decompress_queue(_, [], Acc) ->
 decompress_queue(SId, [MsgRef | Rest], Acc) when is_binary(MsgRef) ->
     case vmq_message_store:read(SId, MsgRef) of
         {error, Reason} ->
-            lager:warning(
+            lager:error(
                 "can't decompress queue item with msg_ref ~p for subscriber ~p due to ~p",
                 [MsgRef, SId, Reason]
             ),
