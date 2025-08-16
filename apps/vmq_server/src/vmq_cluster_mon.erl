@@ -289,8 +289,18 @@ update_cluster_status([], Acc) ->
     Acc;
 update_cluster_status([BNode | Rest], Acc) ->
     Node = binary_to_atom(BNode),
+    IsReady =
+        case rpc:call(Node, erlang, whereis, [vmq_server_sup]) of
+            Pid when is_pid(Pid) -> true;
+            _ -> false
+        end,
+    ok = vmq_cluster_node_sup:ensure_cluster_node(Node),
+    %% We should only say we're ready if we've established a
+    %% connection to the remote node.
+    Status = vmq_cluster_node_sup:node_status(Node),
+    IsReady1 = IsReady andalso lists:member(Status, [up, init]),
     vmq_redis_reaper_sup:del_reaper(Node),
-    ets:insert(?VMQ_CLUSTER_STATUS, {Node, true, 0}),
+    ets:insert(?VMQ_CLUSTER_STATUS, {Node, IsReady1, 0}),
     update_cluster_status(Rest, [Node | Acc]).
 
 filter_dead_nodes(Nodes, Fall) ->
@@ -301,10 +311,13 @@ filter_dead_nodes(Nodes, Fall) ->
                     ok;
                 false when FailedAttempts > Fall ->
                     %% Node is not part of the cluster anymore
-                    lager:warning("trigger reaper for node ~p", [Node]),
+                    _ = vmq_cluster_node_sup:del_cluster_node(Node),
+                    lager:error("[INFO] triggering reaper for node ~p", [Node]),
                     vmq_redis_reaper_sup:ensure_reaper(Node),
                     ets:delete(?VMQ_CLUSTER_STATUS, Node);
                 false ->
+                    lager:error("[INFO] fail state for node: ~p with current fall count: ~p", 
+                        [Node, FailedAttempts + 1]),
                     ets:update_element(?VMQ_CLUSTER_STATUS, Node, [
                         {2, false}, {3, FailedAttempts + 1}
                     ])

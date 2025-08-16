@@ -156,7 +156,7 @@ init([]) ->
         end,
 
     {ok,
-        {{one_for_one, 5, 10}, [
+        {{one_for_one, 50000, 1}, [
             {eredis,
                 {eredis, start_link, [
                     [

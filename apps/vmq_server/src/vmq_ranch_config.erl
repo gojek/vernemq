@@ -235,14 +235,18 @@ transport_for_type(mqtts) -> ranch_ssl;
 transport_for_type(mqttws) -> ranch_tcp;
 transport_for_type(mqttwss) -> ranch_ssl;
 transport_for_type(http) -> ranch_tcp;
-transport_for_type(https) -> ranch_ssl.
+transport_for_type(https) -> ranch_ssl;
+transport_for_type(vmq) -> ranch_tcp;
+transport_for_type(vmqs) -> ranch_ssl.
 
 protocol_for_type(mqtt) -> vmq_ranch;
 protocol_for_type(mqtts) -> vmq_ranch;
 protocol_for_type(mqttws) -> cowboy_clear;
 protocol_for_type(mqttwss) -> cowboy_clear;
 protocol_for_type(http) -> cowboy_clear;
-protocol_for_type(https) -> cowboy_clear.
+protocol_for_type(https) -> cowboy_clear;
+protocol_for_type(vmq) -> vmq_cluster_com;
+protocol_for_type(vmqs) -> vmq_cluster_com.
 
 transport_opts_for_type(Type, Opts) ->
     transport_opts(transport_for_type(Type), Opts).
