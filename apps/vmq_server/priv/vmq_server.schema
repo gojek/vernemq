@@ -361,6 +361,21 @@
                                                                       {datatype, flag}
                                                                      ]}.
 
+%% @doc specifies how many size in bytes are buffered in case the remote node
+%% is not available.
+{mapping, "outgoing_clustering_buffer_size", "vmq_server.outgoing_clustering_buffer_size", [
+                                                                                            {default, 10000},
+                                                                                            {datatype, integer},
+                                                                                            hidden
+                                                                                           ]}.
+
+%% @doc specifies the timeout for enqueuing something in a queue on a remote node.
+{mapping, "remote_enqueue_timeout", "vmq_server.remote_enqueue_timeout", [
+                                                                          {default, 5000},
+                                                                          {datatype, [integer, {atom, infinity}]},
+                                                                          hidden
+                                                                         ]}.
+
 %% @doc specifies the connect timeout.
 {mapping, "mqtt_connect_timeout", "vmq_server.mqtt_connect_timeout", [
                                                             {default, 5000},
@@ -431,6 +446,34 @@
   {validators, ["buffer_size_validator"]}
  ]}.
 
+ {mapping, "listener.vmq.$name.buffer_sizes", "vmq_server.listeners",
+ [{datatype, string},
+  hidden,
+  {validators, ["buffer_size_validator"]}
+ ]}.
+
+ %% @doc Set the watermark levels for the `vmq_cluster_mon` listener
+ %% That is, the listener receiving the MQTT messages from other nodes.
+{mapping, "listener.vmq.$name.high_watermark", "vmq_server.listeners", [
+                                                                  {default, 8192},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                ]}.
+{mapping, "listener.vmq.$name.low_watermark", "vmq_server.listeners", [
+                                                                  {default, 4096},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                ]}.
+{mapping, "listener.vmq.$name.high_msgq_watermark", "vmq_server.listeners", [
+                                                                  {default, 8192},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                ]}.
+{mapping, "listener.vmq.$name.low_msgq_watermark", "vmq_server.listeners", [
+                                                                  {default, 4096},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                ]}.
 
 {validator, "buffer_size_validator", "value must be three comma-separated, positive integers",
  fun(Val) when is_list(Val) ->
@@ -507,6 +550,16 @@
                                                                            ]}.
 
 {mapping, "listener.wss.$name.max_connections", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                                  hidden
+                                                                                 ]}.
+{mapping, "listener.vmq.max_connections", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, [integer, {atom, infinity}]},
+                                                                            hidden
+                                                                           ]}.
+{mapping, "listener.vmq.$name.max_connections", "vmq_server.listeners", [
                                                                                   {default, -1},
                                                                                   {datatype, [integer, {atom, infinity}]},
                                                                                   hidden
@@ -599,6 +652,17 @@
 
 {mapping, "listener.wss.$name.nr_of_acceptors", "vmq_server.listeners", [
                                                                                   {default, -1},
+                                                                                  {datatype, integer},
+                                                                                  {include_default, "default"},
+                                                                                  hidden
+                                                                                 ]}.
+{mapping, "listener.vmq.nr_of_acceptors", "vmq_server.listeners", [
+                                                                                  {default, 10},
+                                                                                  {datatype, integer},
+                                                                                  hidden
+                                                                                 ]}.
+{mapping, "listener.vmq.$name.nr_of_acceptors", "vmq_server.listeners", [
+                                                                                  {default, 10},
                                                                                   {datatype, integer},
                                                                                   {include_default, "default"},
                                                                                   hidden
@@ -810,6 +874,18 @@
   hidden
  ]}.
 
+%% @doc listener.vmq.clustering is the IP address and TCP port that
+%% the broker will bind to accept connections from other cluster
+%% nodes e.g:
+%% - listener.vmq.clustering = 0.0.0.0:18883
+%% This also works for SSL listeners:
+%% - listener.vmqs.clustering = 0.0.0.0:18884
+{mapping, "listener.vmq.$name", "vmq_server.listeners", [
+                                                           {default, { "{{cluster_default_ip}}", {{cluster_default_port}} }},
+                                                           {datatype, ip},
+                                                           {include_default, "clustering"}
+                                                          ]}.
+
 %% @doc listener.http.default is the IP address and TCP port that
 %% the broker will bind to accept HTTP connections
 %% - listener.http.default = 0.0.0.0:8888
@@ -895,6 +971,16 @@
                                                              ]}.
 
 {mapping, "listener.wss.$name.mountpoint", "vmq_server.listeners", [
+                                                                    {datatype, string},
+                                                                    hidden
+                                                                   ]}.
+
+{mapping, "listener.vmq.mountpoint", "vmq_server.listeners", [
+                                                              {datatype, string},
+                                                              hidden
+                                                             ]}.
+
+{mapping, "listener.vmq.$name.mountpoint", "vmq_server.listeners", [
                                                                     {datatype, string},
                                                                     hidden
                                                                    ]}.
@@ -1799,3 +1885,11 @@
     {default, 300},
     {datatype, integer}
 ]}.
+
+%% @doc This option specifies the fall threshold value for a node in the cluster
+{mapping, "cluster_node_liveness_fall", "vmq_server.cluster_node_liveness_fall", 
+    [{default, 3}, {datatype, integer}]}.
+
+%% @doc This option specifies the cluster liveness check interval value
+{mapping, "cluster_node_liveness_check_interval", "vmq_server.cluster_node_liveness_check_interval", 
+    [{default, 500}, {datatype, integer}]}.

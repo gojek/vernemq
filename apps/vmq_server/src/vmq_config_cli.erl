@@ -52,6 +52,7 @@ register_config_() ->
             "graphite_interval",
             "graphite_include_labels",
             "shared_subscription_policy",
+            "remote_enqueue_timeout",
             "topic_alias_max_client",
             "topic_alias_max_broker",
             "max_last_will_delay",

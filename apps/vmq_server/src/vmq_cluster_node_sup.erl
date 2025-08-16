@@ -1,18 +1,21 @@
--module(vmq_redis_reaper_sup).
+-module(vmq_cluster_node_sup).
 
 -behaviour(supervisor).
 
 %% API
 -export([
     start_link/0,
-    ensure_reaper/1,
-    del_reaper/1,
-    get_reaper/1
+    ensure_cluster_node/1,
+    get_cluster_node/1,
+    del_cluster_node/1,
+    node_status/1
 ]).
 
 %% Supervisor callbacks
 -export([init/1]).
 
+%% Helper macro for declaring children of supervisor
+-define(CHILD(I, Type, Args), {I, {I, start_link, Args}, permanent, 5000, Type, [I]}).
 %%%===================================================================
 %%% API functions
 %%%===================================================================
@@ -27,8 +30,11 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-ensure_reaper(Node) ->
-    case get_reaper(Node) of
+ensure_cluster_node(Node) when Node == node() ->
+    %% cluster node not needed
+    ok;
+ensure_cluster_node(Node) ->
+    case get_cluster_node(Node) of
         {error, not_found} ->
             {ok, _} = supervisor:start_child(?MODULE, child_spec(Node)),
             ok;
@@ -36,18 +42,17 @@ ensure_reaper(Node) ->
             ok
     end.
 
-del_reaper(Node) ->
-    ChildId = {vmq_redis_reaper, Node},
+del_cluster_node(Node) ->
+    ChildId = {vmq_cluster_node, Node},
     case supervisor:terminate_child(?MODULE, ChildId) of
         ok ->
-            lager:error("[INFO] deleting reaper reaping node ~p", [Node]),
             supervisor:delete_child(?MODULE, ChildId);
         {error, not_found} ->
             {error, not_found}
     end.
 
-get_reaper(Node) ->
-    ChildId = {vmq_redis_reaper, Node},
+get_cluster_node(Node) ->
+    ChildId = {vmq_cluster_node, Node},
     case lists:keyfind(ChildId, 1, supervisor:which_children(?MODULE)) of
         false ->
             {error, not_found};
@@ -57,9 +62,20 @@ get_reaper(Node) ->
         {_, restarting, _, _} ->
             %% child is restarting
             timer:sleep(100),
-            get_reaper(Node);
+            get_cluster_node(Node);
         {_, Pid, _, _} when is_pid(Pid) ->
             {ok, Pid}
+    end.
+
+-spec node_status(node()) -> init | up | down.
+node_status(Node) when Node == node() ->
+    up;
+node_status(Node) ->
+    case get_cluster_node(Node) of
+        {ok, Pid} when is_pid(Pid) ->
+            vmq_cluster_node:status(Pid);
+        _ ->
+            down
     end.
 
 %%%===================================================================
@@ -80,12 +96,15 @@ get_reaper(Node) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, []}}.
+    {ok,
+        {{one_for_one, 5, 10}, [
+            ?CHILD(vmq_cluster_mon, worker, [])
+        ]}}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 child_spec(Node) ->
-    {{vmq_redis_reaper, Node}, {vmq_redis_reaper, start_link, [Node]}, transient, 5000, worker, [
-        vmq_redis_reaper
+    {{vmq_cluster_node, Node}, {vmq_cluster_node, start_link, [Node]}, permanent, 5000, worker, [
+        vmq_cluster_node
     ]}.

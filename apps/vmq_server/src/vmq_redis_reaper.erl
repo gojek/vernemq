@@ -152,8 +152,8 @@ handle_info(
                     ),
                     reap_messages;
                 Res ->
-                    lager:warning("~p", [Res]),
-                    Acc
+                    lager:error("[INFO][REAP MESSAGES ATTEMPT] unhandled response: ~p", [Res]),
+                    reap_messages
             end
         end,
         reap_subscribers,
@@ -204,10 +204,12 @@ handle_info(
             erlang:send_after(Interval, self(), reap_subscribers),
             {noreply, State};
         {ok, undefined} ->
+            lager:error("[INFO] Reaper terminating normally for node: ~p", [DeadNode]),
             {stop, normal, State};
         Res ->
-            lager:warning("~p", [Res]),
-            {stop, normal, State}
+            lager:error("[INFO][REAP SUBSCRIBERS ATTEMPT] unhandled response: ~p", [Res]),
+            erlang:send_after(Interval, self(), reap_subscribers),
+            {noreply, State}
     end;
 handle_info(_Info, State) ->
     {noreply, State}.
