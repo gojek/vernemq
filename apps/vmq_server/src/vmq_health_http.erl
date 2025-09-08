@@ -20,8 +20,23 @@
 -export([init/2]).
 
 routes() ->
-    [{"/health", ?MODULE, []}].
+    [
+        {"/health", ?MODULE, []},
+        {"/redis-health", ?MODULE, redis_health}
+    ].
 
+init(Req, redis_health) ->
+    Status = vmq_cluster_mon:redis_status(),
+    {Code, Payload} =
+        case Status of
+            up ->
+                {200, [{<<"status">>, <<"OK">>}]};
+            down ->
+                {503, [{<<"status">>, <<"DOWN">>}, {<<"reason">>, <<"REDIS UNAVAILABLE">>}]}
+        end,
+    Headers = #{<<"content-type">> => <<"application/json">>},
+    cowboy_req:reply(Code, Headers, jsx:encode(Payload), Req),
+    {ok, Req, redis_health};
 init(Req, Opts) ->
     {Code, Payload} =
         case check_health_concerns() of
