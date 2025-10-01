@@ -46,7 +46,7 @@ services:
     logging:
       driver: none
   redis-sentinel:
-    image: bitnami/redis-sentinel
+    image: bitnamilegacy/redis-sentinel
     container_name: redis-sentinel
     depends_on:
       - redis
