@@ -55,12 +55,13 @@ init([]) ->
     RedisDB = application:get_env(vmq_server, redis_sentinel_database, 0),
     Username = application:get_env(vmq_server, redis_sentinel_username, undefined),
     Password = application:get_env(vmq_server, redis_sentinel_password, undefined),
+    SentinelMaster = application:get_env(vmq_server, redis_sentinel_master, mymaster),
 
     {ok,
         {{one_for_one, 5, 10}, [
             ?CHILD(eredis, worker, [
                 [
-                    {sentinel, [{endpoints, SentinelEndpoints}]},
+                    {sentinel, [{endpoints, SentinelEndpoints}, {master_group, SentinelMaster}]},
                     {database, RedisDB},
                     {username, Username},
                     {password, Password},

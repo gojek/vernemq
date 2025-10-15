@@ -13,6 +13,9 @@
 %% @doc This option specifies the subscription redis password.
 {mapping, "redis_sentinel_password", "vmq_server.redis_sentinel_password", [{datatype, string}]}.
 
+%% @doc This option specifies the subscription redis master.
+{mapping, "redis_sentinel_master", "vmq_server.redis_sentinel_master", [{datatype, atom}]}.
+
 %% @doc This option specifies the directory consisting of all the redis lua scripts used in vmq_server.
 {mapping, "redis_lua_dir", "vmq_server.redis_lua_dir", [{default, "./etc/lua"}, {datatype, string}]}.
 
