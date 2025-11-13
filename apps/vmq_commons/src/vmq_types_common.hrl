@@ -38,7 +38,9 @@
         | msg_expiry_ts(),
     non_retry = false :: flag(),
     non_persistence = false :: flag(),
-    acl_name :: binary() | 'undefined'
+    acl_name :: binary() | 'undefined',
+    pub_msg_id :: msg_id(),
+    pub_pid :: pid()
 }).
 -type msg() :: #vmq_msg{}.
 -record(matched_acl, {

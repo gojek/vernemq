@@ -259,7 +259,9 @@ connected(
                     qos = QoS,
                     mountpoint = MountPoint,
                     msg_ref = vmq_mqtt_fsm_util:msg_ref(),
-                    sg_policy = SGPolicy
+                    sg_policy = SGPolicy,
+                    pub_msg_id = MessageId,
+                    pub_pid = self()
                 },
                 dispatch_publish(QoS, MessageId, Msg, State)
         end,
@@ -338,7 +340,9 @@ connected(
             retain = IsRetain,
             qos = QoS,
             acl_name = Name,
-            persisted = Persisted
+            persisted = Persisted,
+            pub_msg_id = PubMsgId,
+            pub_pid = PubPid
         } ->
             _ = vmq_plugin:all(on_delivery_complete, [
                 Username,
@@ -350,6 +354,12 @@ connected(
                 #matched_acl{name = Name},
                 Persisted
             ]),
+            case PubPid of
+                P when is_pid(P) ->
+                    vmq_ranch:send_puback(P, PubMsgId);
+                _ ->
+                    ok
+            end,
             handle_waiting_msgs(State#state{waiting_acks = maps:remove(MessageId, WAcks)});
         not_found ->
             _ = vmq_metrics:incr_mqtt_error_invalid_puback(),
@@ -1075,7 +1085,7 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
     list()
     | {list(), session_ctrl()}
     | {error, not_allowed}.
-dispatch_publish_qos1(MessageId, Msg, State) ->
+dispatch_publish_qos1(_MessageId, Msg, State) ->
     #state{
         username = User,
         subscriber_id = SubscriberId,
@@ -1085,7 +1095,7 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
     case publish(RegView, User, SubscriberId, Msg) of
         {ok, _, SessCtrl} ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
-            {[#mqtt_puback{message_id = MessageId}], SessCtrl};
+            {[], SessCtrl};
         {error, not_allowed} when ?IS_PROTO_4(Proto) ->
             %% we have to close connection for 3.1.1
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
@@ -1094,7 +1104,7 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
             %% we pretend as everything is ok for 3.1 and Bridge
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             _ = vmq_metrics:incr_mqtt_puback_sent(),
-            [#mqtt_puback{message_id = MessageId}];
+            [];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
             _ = vmq_metrics:incr_mqtt_error_publish(),
