@@ -356,7 +356,8 @@ connected(
             ]),
             case PubPid of
                 P when is_pid(P) ->
-                    vmq_ranch:send_puback(P, PubMsgId);
+                    vmq_ranch:send_puback(P, PubMsgId),
+                    _ = vmq_metrics:incr_mqtt_puback_sent();
                 _ ->
                     ok
             end,
@@ -1086,7 +1087,7 @@ dispatch_publish_qos1(_MessageId, Msg, State) ->
     } = State,
     case publish(RegView, User, SubscriberId, Msg) of
         {ok, _, SessCtrl} ->
-            _ = vmq_metrics:incr_mqtt_puback_sent(),
+            % _ = vmq_metrics:incr_mqtt_puback_sent(),
             {[], SessCtrl};
         {error, not_allowed} when ?IS_PROTO_4(Proto) ->
             %% we have to close connection for 3.1.1
@@ -1095,7 +1096,7 @@ dispatch_publish_qos1(_MessageId, Msg, State) ->
         {error, not_allowed} ->
             %% we pretend as everything is ok for 3.1 and Bridge
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
-            _ = vmq_metrics:incr_mqtt_puback_sent(),
+            % _ = vmq_metrics:incr_mqtt_puback_sent(),
             [];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
