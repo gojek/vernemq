@@ -18,6 +18,7 @@
 
 %% API.
 -export([start_link/4, start_link/3]).
+-export([send_puback/2]).
 
 -export([
     init/4,
@@ -268,6 +269,15 @@ handle_message({ProtoClosed, _}, #st{proto_tag = {_, ProtoClosed, _, _}, fsm_mod
 handle_message({ProtoErr, _, Error}, #st{proto_tag = {_, _, ProtoErr, _}} = State) ->
     _ = vmq_metrics:incr_socket_error(),
     {exit, Error, State};
+handle_message({send_puback, MsgId}, #st{pending = Pending} = State) ->
+    case is_integer(MsgId) andalso MsgId >= 1 andalso MsgId =< 16#FFFF of
+        true ->
+            _ = vmq_metrics:incr_mqtt_puback_sent(),
+            Bin = vmq_parser:serialise(#mqtt_puback{message_id = MsgId}),
+            maybe_flush(State#st{pending = [Pending | [Bin]]});
+        false ->
+            {exit, {invalid_msg_id, MsgId}, State}
+    end;
 handle_message(
     {?TO_SESSION, Msg}, #st{pending = Pending, fsm_state = FsmState0, fsm_mod = FsmMod} = State
 ) ->
@@ -387,3 +397,7 @@ system_terminate(Reason, _, _, State) ->
 
 system_code_change(Misc, _, _, _) ->
     {ok, Misc}.
+
+send_puback(Pid, MsgId) ->
+    Pid ! {send_puback, MsgId},
+    ok.
