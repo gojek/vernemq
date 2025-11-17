@@ -602,7 +602,7 @@ queue_down_terminate(Reason, #state{queue_pid = QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
 terminate(
-    Reason, 
+    Reason,
     #state{
         clean_session = CleanSession,
         queue_pid = QueuePid,
