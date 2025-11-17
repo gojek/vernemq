@@ -1493,8 +1493,8 @@ hook_on_message_drop(_, Promise, max_packet_size_exceeded) ->
 hook_on_message_drop({"", <<"message-expiry-sub">>}, _, expired) ->
     ok.
 
-hook_on_client_offline(SubscriberId, Reason) ->
-    ?CLIENT_OFFLINE_EVENT_SRV ! {on_client_offline, SubscriberId, Reason}.
+hook_on_client_offline(SubscriberId, Reason, Username) ->
+    ?CLIENT_OFFLINE_EVENT_SRV ! {on_client_offline, SubscriberId, Reason, Username}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
@@ -1607,12 +1607,12 @@ wait_for_offline_event(ClientId, Timeout) ->
 
 start_client_offline_events(Cfg) ->
     ok = vmq_plugin_mgr:enable_module_plugin(
-        on_client_offline, ?MODULE, hook_on_client_offline, 2
+        on_client_offline, ?MODULE, hook_on_client_offline, 3
     ),
     TestPid = self(),
     F = fun(Fun) ->
         receive
-            {on_client_offline, _, _} = E ->
+            {on_client_offline, _, _, _} = E ->
                 TestPid ! E,
                 Fun(Fun);
             {stop, Ref} ->
@@ -1626,7 +1626,7 @@ start_client_offline_events(Cfg) ->
 
 stop_client_offline_events(Cfg) ->
     ok = vmq_plugin_mgr:disable_module_plugin(
-        on_client_offline, ?MODULE, hook_on_client_offline, 2
+        on_client_offline, ?MODULE, hook_on_client_offline, 3
     ),
     Pid = proplists:get_value(?CLIENT_OFFLINE_EVENT_SRV, Cfg),
     Ref = make_ref(),

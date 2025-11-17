@@ -28,8 +28,8 @@
     on_deliver/8,
     on_offline_message/5,
     on_client_wakeup/1,
-    on_client_offline/2,
-    on_client_gone/2,
+    on_client_offline/3,
+    on_client_gone/3,
     on_session_expired/1,
     on_delivery_complete/8,
     on_message_drop/3
@@ -353,15 +353,15 @@ on_client_wakeup(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(on_client_wakeup, {MP, ClientId}).
 
--spec on_client_offline(subscriber_id(), reason()) -> 'next'.
-on_client_offline(SubscriberId, Reason) ->
+-spec on_client_offline(subscriber_id(), reason(), username()) -> 'next'.
+on_client_offline(SubscriberId, Reason, UserName) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event(on_client_offline, {MP, ClientId, Reason}).
+    send_event(on_client_offline, {MP, ClientId, Reason, UserName}).
 
--spec on_client_gone(subscriber_id(), reason()) -> 'next'.
-on_client_gone(SubscriberId, Reason) ->
+-spec on_client_gone(subscriber_id(), reason(), username()) -> 'next'.
+on_client_gone(SubscriberId, Reason, UserName) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event(on_client_gone, {MP, ClientId, Reason}).
+    send_event(on_client_gone, {MP, ClientId, Reason, UserName}).
 
 -spec on_session_expired(subscriber_id()) -> 'next'.
 on_session_expired(SubscriberId) ->

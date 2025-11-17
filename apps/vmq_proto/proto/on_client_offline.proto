@@ -10,4 +10,5 @@ message OnClientOffline {
     string client_id = 2;
     string mountpoint = 3;
     eventssidecar.v1.Reason reason = 4;
+    string username = 5;
 }

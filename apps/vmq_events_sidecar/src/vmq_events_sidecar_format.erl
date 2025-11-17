@@ -188,24 +188,26 @@ encode({on_client_wakeup, Timestamp, {MP, ClientId}}) ->
             timestamp = convert_timestamp(Timestamp)
         })
     );
-encode({on_client_offline, Timestamp, {MP, ClientId, Reason}}) ->
+encode({on_client_offline, Timestamp, {MP, ClientId, Reason, UserName}}) ->
     encode_envelope(
         "OnClientOffline",
         on_client_offline_pb:encode_msg(#'eventssidecar.v1.OnClientOffline'{
             client_id = ClientId,
             mountpoint = MP,
             timestamp = convert_timestamp(Timestamp),
-            reason = Reason
+            reason = Reason,
+            username = UserName
         })
     );
-encode({on_client_gone, Timestamp, {MP, ClientId, Reason}}) ->
+encode({on_client_gone, Timestamp, {MP, ClientId, Reason, UserName}}) ->
     encode_envelope(
         "OnClientGone",
         on_client_gone_pb:encode_msg(#'eventssidecar.v1.OnClientGone'{
             client_id = ClientId,
             mountpoint = MP,
             timestamp = convert_timestamp(Timestamp),
-            reason = Reason
+            reason = Reason,
+            username = UserName
         })
     );
 encode({on_session_expired, Timestamp, {MP, ClientId}}) ->

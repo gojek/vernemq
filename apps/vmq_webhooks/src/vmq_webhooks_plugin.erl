@@ -52,8 +52,8 @@
     on_deliver/8,
     on_offline_message/5,
     on_client_wakeup/1,
-    on_client_offline/2,
-    on_client_gone/2,
+    on_client_offline/3,
+    on_client_gone/3,
     on_session_expired/1,
     on_delivery_complete/8,
 
@@ -561,20 +561,24 @@ on_client_wakeup(SubscriberId) ->
         {client_id, ClientId}
     ]).
 
--spec on_client_offline(subscriber_id(), _) -> 'next'.
-on_client_offline(SubscriberId, _) ->
+-spec on_client_offline(subscriber_id(), _, username()) -> 'next'.
+on_client_offline(SubscriberId, Reason, UserName) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_client_offline, [
         {mountpoint, MP},
-        {client_id, ClientId}
+        {client_id, ClientId},
+        {reason, Reason},
+        {username, UserName}
     ]).
 
--spec on_client_gone(subscriber_id(), _) -> 'next'.
-on_client_gone(SubscriberId, _) ->
+-spec on_client_gone(subscriber_id(), _, username()) -> 'next'.
+on_client_gone(SubscriberId, Reason, UserName) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_client_gone, [
         {mountpoint, MP},
-        {client_id, ClientId}
+        {client_id, ClientId},
+        {reason, Reason},
+        {username, UserName}
     ]).
 
 -spec on_session_expired(subscriber_id()) -> 'next'.

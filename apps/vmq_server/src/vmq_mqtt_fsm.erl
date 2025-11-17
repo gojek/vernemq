@@ -601,7 +601,7 @@ queue_down_terminate(shutdown, State) ->
 queue_down_terminate(Reason, #state{queue_pid = QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
-terminate(Reason, #state{clean_session = CleanSession, queue_pid = QueuePid} = State) ->
+terminate(Reason, #state{clean_session = CleanSession, queue_pid = QueuePid, username = UserName} = State) ->
     _ =
         case CleanSession of
             true -> ok;
@@ -617,6 +617,7 @@ terminate(Reason, #state{clean_session = CleanSession, queue_pid = QueuePid} = S
     maybe_publish_last_will(State, Reason),
     ProtoReason = vmq_mqtt_fsm_util:terminate_proto_reason(NewReason),
     _ = vmq_metrics:incr({?MQTT_DISONNECT, ProtoReason}),
+    vmq_queue:set_username(QueuePid, UserName),
     vmq_queue:set_last_disconnect_reason(QueuePid, ProtoReason),
     {stop, terminate_reason(Reason), []}.
 

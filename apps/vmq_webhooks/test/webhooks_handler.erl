@@ -453,13 +453,15 @@ on_client_wakeup(#{mountpoint := ?MOUNTPOINT_BIN,
     {200, #{}}.
 
 on_client_offline(#{mountpoint := ?MOUNTPOINT_BIN,
-                   client_id := BinPid}) ->
+                   client_id := ?ALLOWED_CLIENT_ID,
+                   username := BinPid}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_client_offline_ok,
     {200, #{}}.
 
 on_client_gone(#{mountpoint := ?MOUNTPOINT_BIN,
-                 client_id := BinPid}) ->
+                 client_id := ?ALLOWED_CLIENT_ID,
+                 username := BinPid}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_client_gone_ok,
     {200, #{}}.
