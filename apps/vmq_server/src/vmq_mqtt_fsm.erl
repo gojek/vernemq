@@ -601,7 +601,14 @@ queue_down_terminate(shutdown, State) ->
 queue_down_terminate(Reason, #state{queue_pid = QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
-terminate(Reason, #state{clean_session = CleanSession, queue_pid = QueuePid, username = UserName} = State) ->
+terminate(
+    Reason, 
+    #state{
+        clean_session = CleanSession,
+        queue_pid = QueuePid,
+        username = UserName
+    } = State
+) ->
     _ =
         case CleanSession of
             true -> ok;

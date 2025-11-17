@@ -891,7 +891,12 @@ del_session(SessionPid, #state{id = SId, sessions = Sessions} = State) ->
 handle_session_down(
     SessionPid,
     StateName,
-    #state{id = SId, waiting_call = WaitingCall, last_disconnect_reason = Reason, username = UserName} = State
+    #state{
+        id = SId,
+        waiting_call = WaitingCall,
+        last_disconnect_reason = Reason,
+        username = UserName
+    } = State
 ) ->
     {NewState, DeletedSession} = del_session(SessionPid, State),
     case {maps:size(NewState#state.sessions), StateName, WaitingCall} of

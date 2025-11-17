@@ -39,7 +39,7 @@
             | 'REASON_TCP_CLOSED'
             | integer()
             | undefined,
-        username = <<>>        :: unicode:chardata() | undefined % = 5, optional
+        username = <<>> :: unicode:chardata() | undefined % = 5, optional
     }
 ).
 -endif.
