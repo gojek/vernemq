@@ -99,6 +99,12 @@
          end
  end}.
 
+%% @doc Delay QoS1 PUBACK responses to publishers until subscriber PUBACKs arrive.
+{mapping, "delay_qos1_puback", "vmq_server.delay_qos1_puback", [
+                                                               {default, off},
+                                                               {datatype, flag}
+                                                              ]}.
+
 %% @doc Client registrations can be either happen in a coordinated or
 %% uncoordinated fashion. Uncoordinated registrations are faster and
 %% will cause other clients with the same client-id to be eventually

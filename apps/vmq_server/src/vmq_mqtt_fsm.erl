@@ -69,6 +69,7 @@
     retry_interval = 20000 :: pos_integer(),
     upgrade_qos = false :: boolean(),
     reg_view = vmq_reg_trie :: atom(),
+    delay_qos1_puback = false :: boolean(),
 
     %% flags and settings which have a non-default value if
     %% present and default value if not present.
@@ -117,6 +118,7 @@ init(
     UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
     TraceFun = vmq_config:get_env(trace_fun, undefined),
+    DelayQos1Puback = vmq_config:get_env(delay_qos1_puback, false),
     DOpts0 = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
     DOpts1 = set_defopt(coordinate_registrations, ?COORDINATE_REGISTRATIONS, DOpts0),
 
@@ -142,6 +144,7 @@ init(
         keep_alive_tref = undefined,
         retry_interval = 1000 * RetryInterval,
         reg_view = RegView,
+        delay_qos1_puback = DelayQos1Puback,
         def_opts = DOpts1,
         trace_fun = TraceFun
     },
@@ -329,7 +332,12 @@ connected(
     {NewState2, Out};
 connected(
     #mqtt_puback{message_id = MessageId},
-    #state{waiting_acks = WAcks, subscriber_id = SubscriberId, username = Username} = State
+    #state{
+        waiting_acks = WAcks,
+        subscriber_id = SubscriberId,
+        username = Username,
+        delay_qos1_puback = DelayQos1Puback
+    } = State
 ) ->
     %% qos1 flow
     _ = vmq_metrics:incr_mqtt_puback_received(),
@@ -354,10 +362,9 @@ connected(
                 #matched_acl{name = Name},
                 Persisted
             ]),
-            case PubPid of
-                P when is_pid(P) ->
-                    vmq_ranch:send_puback(P, PubMsgId),
-                    _ = vmq_metrics:incr_mqtt_puback_sent();
+            case {DelayQos1Puback, PubPid} of
+                {true, P} when is_pid(P) ->
+                    vmq_ranch:send_puback(P, PubMsgId);
                 _ ->
                     ok
             end,
@@ -1086,17 +1093,17 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
     list()
     | {list(), session_ctrl()}
     | {error, not_allowed}.
-dispatch_publish_qos1(_MessageId, Msg, State) ->
+dispatch_publish_qos1(MessageId, Msg, State) ->
     #state{
         username = User,
         subscriber_id = SubscriberId,
         proto_ver = Proto,
-        reg_view = RegView
+        reg_view = RegView,
+        delay_qos1_puback = DelayQos1Puback
     } = State,
     case publish(RegView, User, SubscriberId, Msg) of
         {ok, _, SessCtrl} ->
-            % _ = vmq_metrics:incr_mqtt_puback_sent(),
-            {[], SessCtrl};
+            {maybe_immediate_puback(DelayQos1Puback, MessageId), SessCtrl};
         {error, not_allowed} when ?IS_PROTO_4(Proto) ->
             %% we have to close connection for 3.1.1
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
@@ -1104,13 +1111,21 @@ dispatch_publish_qos1(_MessageId, Msg, State) ->
         {error, not_allowed} ->
             %% we pretend as everything is ok for 3.1 and Bridge
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
-            % _ = vmq_metrics:incr_mqtt_puback_sent(),
-            [];
+            puback_frames(MessageId);
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
             _ = vmq_metrics:incr_mqtt_error_publish(),
             []
     end.
+
+maybe_immediate_puback(true, _MessageId) ->
+    [];
+maybe_immediate_puback(false, MessageId) ->
+    puback_frames(MessageId).
+
+puback_frames(MessageId) ->
+    _ = vmq_metrics:incr_mqtt_puback_sent(),
+    [#mqtt_puback{message_id = MessageId}].
 
 -spec dispatch_publish_qos2(msg_id(), msg(), state()) ->
     list()
