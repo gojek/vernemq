@@ -72,6 +72,7 @@ register_cli() ->
     vmq_info_cli:register_cli(),
 
     vmq_tracer_cli:register_cli(),
+    vmq_delay_puback_cli:register_cli(),
 
     vmq_trie_show_complex_topics_cmd(),
 
@@ -496,6 +497,7 @@ usage() ->
         "    api-key                 Manage API keys for the HTTP management interface\n",
         "    trace                   Trace various aspects of VerneMQ\n",
         "    all_queues_setup_check  Manage all_queues_setup_check rollout as part of health check\n",
+        "    delay_puback            Manage Delayed PUBACK configuration\n",
         get_reg_redis_trie_usage_lead_line(),
         remove_ok(vmq_plugin_mgr:get_usage_lead_lines()),
         "  Use --help after a sub-command for more details.\n"

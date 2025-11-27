@@ -29,6 +29,7 @@ start(_StartType, _StartArgs) ->
         {error, _} = E ->
             E;
         R ->
+            ets:new(vmq_delay_puback_cache, [named_table, public, set, {read_concurrency, true}]),
             {ok, _pid} = vmq_message_store:start(),
             %% we'll wait for some millis, this
             %% enables the vmq_plugin mechanism to be prepared...
@@ -38,6 +39,8 @@ start(_StartType, _StartArgs) ->
             vmq_server_cli:init_registry(),
             start_user_plugins(),
             vmq_config:configure_node(),
+            Config = vmq_config:get_env(delay_puback_config, []),
+            [ets:insert(vmq_delay_puback_cache, {Name, Enabled}) || {Name, Enabled} <- Config],
             R
     end.
 

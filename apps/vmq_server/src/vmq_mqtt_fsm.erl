@@ -69,7 +69,6 @@
     retry_interval = 20000 :: pos_integer(),
     upgrade_qos = false :: boolean(),
     reg_view = vmq_reg_trie :: atom(),
-    delay_qos1_puback = false :: boolean(),
 
     %% flags and settings which have a non-default value if
     %% present and default value if not present.
@@ -118,7 +117,6 @@ init(
     UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
     TraceFun = vmq_config:get_env(trace_fun, undefined),
-    DelayQos1Puback = vmq_config:get_env(delay_qos1_puback, false),
     DOpts0 = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
     DOpts1 = set_defopt(coordinate_registrations, ?COORDINATE_REGISTRATIONS, DOpts0),
 
@@ -144,7 +142,6 @@ init(
         keep_alive_tref = undefined,
         retry_interval = 1000 * RetryInterval,
         reg_view = RegView,
-        delay_qos1_puback = DelayQos1Puback,
         def_opts = DOpts1,
         trace_fun = TraceFun
     },
@@ -335,8 +332,7 @@ connected(
     #state{
         waiting_acks = WAcks,
         subscriber_id = SubscriberId,
-        username = Username,
-        delay_qos1_puback = DelayQos1Puback
+        username = Username
     } = State
 ) ->
     %% qos1 flow
@@ -362,7 +358,8 @@ connected(
                 #matched_acl{name = Name},
                 Persisted
             ]),
-            case {DelayQos1Puback, PubPid} of
+            DelayPuback = should_delay_puback(Name, State),
+            case {DelayPuback, PubPid} of
                 {true, P} when is_pid(P) ->
                     vmq_ranch:send_puback(P, PubMsgId);
                 _ ->
@@ -1098,12 +1095,12 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
         username = User,
         subscriber_id = SubscriberId,
         proto_ver = Proto,
-        reg_view = RegView,
-        delay_qos1_puback = DelayQos1Puback
+        reg_view = RegView
     } = State,
     case publish(RegView, User, SubscriberId, Msg) of
-        {ok, _, SessCtrl} ->
-            {maybe_immediate_puback(DelayQos1Puback, MessageId), SessCtrl};
+        {ok, #vmq_msg{acl_name = AclName}, SessCtrl} ->
+            DelayPuback = should_delay_puback(AclName, State),
+            {maybe_immediate_puback(DelayPuback, MessageId), SessCtrl};
         {error, not_allowed} when ?IS_PROTO_4(Proto) ->
             %% we have to close connection for 3.1.1
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
@@ -1787,3 +1784,12 @@ check_mqtt_auth_errors(QoSTable) ->
 extract_qos(not_allowed) -> not_allowed;
 extract_qos(QoS) when is_integer(QoS) -> QoS;
 extract_qos({QoS, _SubInfo}) -> QoS.
+
+-spec should_delay_puback(binary() | undefined, state()) -> boolean().
+should_delay_puback(undefined, _State) ->
+    false;
+should_delay_puback(AclName, _State) ->
+    case ets:lookup(vmq_delay_puback_cache, AclName) of
+        [{AclName, true}] -> true;
+        _ -> false
+    end.
