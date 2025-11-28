@@ -40,7 +40,7 @@ start(_StartType, _StartArgs) ->
             start_user_plugins(),
             vmq_config:configure_node(),
             Config = vmq_config:get_env(delay_puback_config, []),
-            [ets:insert(vmq_delay_puback_cache, {Name, Enabled}) || {Name, Enabled} <- Config],
+            [ets:insert(vmq_delay_puback_cache, {Name}) || Name <- Config],
             R
     end.
 

@@ -16,7 +16,7 @@ show_cmd() ->
     Cmd = ["vmq-admin", "delay_puback", "show"],
     Callback = fun(_, _, _) ->
         Config = vmq_config:get_env(delay_puback_config, []),
-        Table = [[{acl_name, Name}, {enabled, Enabled}] || {Name, Enabled} <- Config],
+        Table = [[{acl_name, Name}] || Name <- Config],
         [clique_status:table(Table)]
     end,
     clique:register_command(Cmd, [], [], Callback).
@@ -25,9 +25,9 @@ enable_cmd() ->
     Cmd = ["vmq-admin", "delay_puback", "enable"],
     KeySpecs = [acl_name_keyspec()],
     Callback = fun(_, [{acl_name, Name}], _) ->
-        ets:insert(vmq_delay_puback_cache, {Name, true}),
+        ets:insert(vmq_delay_puback_cache, {Name}),
         Config = vmq_config:get_env(delay_puback_config, []),
-        NewConfig = lists:keystore(Name, 1, Config, {Name, true}),
+        NewConfig = lists:usort([Name | Config]),
         vmq_config:set_global_env(vmq_server, delay_puback_config, NewConfig, true),
         [clique_status:text("Done")]
     end,
@@ -39,7 +39,7 @@ disable_cmd() ->
     Callback = fun(_, [{acl_name, Name}], _) ->
         ets:delete(vmq_delay_puback_cache, Name),
         Config = vmq_config:get_env(delay_puback_config, []),
-        NewConfig = lists:keydelete(Name, 1, Config),
+        NewConfig = lists:delete(Name, Config),
         vmq_config:set_global_env(vmq_server, delay_puback_config, NewConfig, true),
         [clique_status:text("Done")]
     end,

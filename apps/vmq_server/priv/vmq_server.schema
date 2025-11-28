@@ -116,8 +116,8 @@
         Conf
     ),
     [
-        {list_to_binary(AclName), Enabled}
-     || {[_, AclName], Enabled} <- Mappings
+        list_to_binary(AclName)
+     || {[_, AclName], true} <- Mappings
     ]
   end
 }.

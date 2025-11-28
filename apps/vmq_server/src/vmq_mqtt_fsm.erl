@@ -1789,7 +1789,4 @@ extract_qos({QoS, _SubInfo}) -> QoS.
 should_delay_puback(undefined, _State) ->
     false;
 should_delay_puback(AclName, _State) ->
-    case ets:lookup(vmq_delay_puback_cache, AclName) of
-        [{AclName, true}] -> true;
-        _ -> false
-    end.
+    ets:member(vmq_delay_puback_cache, AclName).
