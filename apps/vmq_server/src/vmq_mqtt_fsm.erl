@@ -31,6 +31,8 @@
 -define(IS_PROTO_3(X), X =:= 3; X =:= 131).
 -define(IS_BRIDGE(X), X =:= 131; X =:= 132).
 
+-define(DELAY_PUBACK_TBL, vmq_delay_puback_table).
+
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 
 -record(state, {
@@ -1789,4 +1791,4 @@ extract_qos({QoS, _SubInfo}) -> QoS.
 should_delay_puback(undefined, _State) ->
     false;
 should_delay_puback(AclName, _State) ->
-    ets:member(vmq_delay_puback_cache, AclName).
+    ets:member(?DELAY_PUBACK_TBL, AclName).
