@@ -309,7 +309,7 @@ handle_message(OtherMsg, #st{fsm_state = FsmState0, fsm_mod = FsmMod, pending = 
 
 %% This magic number is the tcp-over-ethernet MSS (1460)
 %% The idea is that we want to flush just before exceeding the MSS.
--define(FLUSH_THRESHOLD, 1456).
+-define(FLUSH_THRESHOLD, 1).
 maybe_flush(#st{pending = Pending} = State) ->
     case iolist_size(Pending) >= ?FLUSH_THRESHOLD of
         true ->
