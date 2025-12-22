@@ -55,13 +55,13 @@ delay_puback_usage() ->
         "vmq-admin delay_puback <sub-command>\n\n",
         "  Manage Delayed PUBACK configuration.\n\n",
         "  Sub-commands:\n",
-        "    show        Show current configuration\n",
+        "    show        Lists all the ACLs for which delay_puback is enabled\n",
         "    enable      Enable delayed PUBACK for an ACL\n",
         "    disable     Disable delayed PUBACK for an ACL\n"
     ].
 
 show_usage() ->
-    ["vmq-admin delay_puback show\n\n", "  Show current configuration.\n"].
+    ["vmq-admin delay_puback show\n\n", "  Lists all the ACLs for which delay_puback is enabled.\n"].
 
 enable_usage() ->
     ["vmq-admin delay_puback enable acl_name=<Name>\n\n", "  Enable delayed PUBACK for an ACL.\n"].
