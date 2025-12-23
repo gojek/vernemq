@@ -2,7 +2,7 @@
 -export([register_cli/0]).
 -behaviour(clique_handler).
 
--define(DELAY_PUBACK_TBL, vmq_delay_puback_table).
+-define(DELAYED_PUBACK_TBL, vmq_delayed_puback_table).
 
 register_cli() ->
     clique:register_usage(["vmq-admin", "delay_puback"], delay_puback_usage()),
@@ -27,7 +27,7 @@ enable_cmd() ->
     Cmd = ["vmq-admin", "delay_puback", "enable"],
     KeySpecs = [acl_name_keyspec()],
     Callback = fun(_, [{acl_name, Name}], _) ->
-        ets:insert(?DELAY_PUBACK_TBL, {Name}),
+        ets:insert(?DELAYED_PUBACK_TBL, {Name}),
         Config = vmq_config:get_env(delay_puback_config, []),
         NewConfig = lists:usort([Name | Config]),
         vmq_config:set_global_env(vmq_server, delay_puback_config, NewConfig, true),
@@ -39,7 +39,7 @@ disable_cmd() ->
     Cmd = ["vmq-admin", "delay_puback", "disable"],
     KeySpecs = [acl_name_keyspec()],
     Callback = fun(_, [{acl_name, Name}], _) ->
-        ets:delete(?DELAY_PUBACK_TBL, Name),
+        ets:delete(?DELAYED_PUBACK_TBL, Name),
         Config = vmq_config:get_env(delay_puback_config, []),
         NewConfig = lists:delete(Name, Config),
         vmq_config:set_global_env(vmq_server, delay_puback_config, NewConfig, true),
@@ -61,7 +61,10 @@ delay_puback_usage() ->
     ].
 
 show_usage() ->
-    ["vmq-admin delay_puback show\n\n", "  Lists all the ACLs for which delay_puback is enabled.\n"].
+    [
+        "vmq-admin delay_puback show\n\n",
+        "  Lists all the ACLs for which delay_puback is enabled.\n"
+    ].
 
 enable_usage() ->
     ["vmq-admin delay_puback enable acl_name=<Name>\n\n", "  Enable delayed PUBACK for an ACL.\n"].

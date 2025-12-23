@@ -19,7 +19,7 @@
 %% Application callbacks
 -export([start/2, stop/1]).
 
--define(DELAY_PUBACK_TBL, vmq_delay_puback_table).
+-define(DELAYED_PUBACK_TBL, vmq_delayed_puback_table).
 
 %% ===================================================================
 %% Application callbacks
@@ -31,7 +31,7 @@ start(_StartType, _StartArgs) ->
         {error, _} = E ->
             E;
         R ->
-            ets:new(?DELAY_PUBACK_TBL, [named_table, public, set, {read_concurrency, true}]),
+            ets:new(?DELAYED_PUBACK_TBL, [named_table, public, set, {read_concurrency, true}]),
             {ok, _pid} = vmq_message_store:start(),
             %% we'll wait for some millis, this
             %% enables the vmq_plugin mechanism to be prepared...
@@ -42,7 +42,7 @@ start(_StartType, _StartArgs) ->
             start_user_plugins(),
             vmq_config:configure_node(),
             Config = vmq_config:get_env(delay_puback_config, []),
-            [ets:insert(?DELAY_PUBACK_TBL, {Name}) || Name <- Config],
+            [ets:insert(?DELAYED_PUBACK_TBL, {Name}) || Name <- Config],
             R
     end.
 

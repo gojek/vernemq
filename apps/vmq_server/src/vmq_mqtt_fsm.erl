@@ -31,7 +31,7 @@
 -define(IS_PROTO_3(X), X =:= 3; X =:= 131).
 -define(IS_BRIDGE(X), X =:= 131; X =:= 132).
 
--define(DELAY_PUBACK_TBL, vmq_delay_puback_table).
+-define(DELAYED_PUBACK_TBL, vmq_delayed_puback_table).
 
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 
@@ -360,13 +360,8 @@ connected(
                 #matched_acl{name = Name},
                 Persisted
             ]),
-            DelayPuback = should_delay_puback(Name, State),
-            case {DelayPuback, PubPid} of
-                {true, P} when is_pid(P) ->
-                    vmq_ranch:send_puback(P, PubMsgId);
-                _ ->
-                    ok
-            end,
+            DelayPuback = should_send_puback(Name),
+            maybe_send_puback(DelayPuback, PubPid, PubMsgId),
             handle_waiting_msgs(State#state{waiting_acks = maps:remove(MessageId, WAcks)});
         not_found ->
             _ = vmq_metrics:incr_mqtt_error_invalid_puback(),
@@ -1101,8 +1096,8 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
     } = State,
     case publish(RegView, User, SubscriberId, Msg) of
         {ok, #vmq_msg{acl_name = AclName}, SessCtrl} ->
-            DelayPuback = should_delay_puback(AclName, State),
-            {maybe_immediate_puback(DelayPuback, MessageId), SessCtrl};
+            DelayPuback = should_send_puback(AclName),
+            {maybe_send_immediate_puback(DelayPuback, MessageId), SessCtrl};
         {error, not_allowed} when ?IS_PROTO_4(Proto) ->
             %% we have to close connection for 3.1.1
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
@@ -1110,16 +1105,17 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
         {error, not_allowed} ->
             %% we pretend as everything is ok for 3.1 and Bridge
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
-            puback_frames(MessageId);
+            _ = vmq_metrics:incr_mqtt_puback_sent(),
+            [#mqtt_puback{message_id = MessageId}];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
             _ = vmq_metrics:incr_mqtt_error_publish(),
             []
     end.
 
-maybe_immediate_puback(true, _MessageId) ->
+maybe_send_immediate_puback(true, _MessageId) ->
     [];
-maybe_immediate_puback(false, MessageId) ->
+maybe_send_immediate_puback(false, MessageId) ->
     puback_frames(MessageId).
 
 puback_frames(MessageId) ->
@@ -1787,8 +1783,17 @@ extract_qos(not_allowed) -> not_allowed;
 extract_qos(QoS) when is_integer(QoS) -> QoS;
 extract_qos({QoS, _SubInfo}) -> QoS.
 
--spec should_delay_puback(binary() | undefined, state()) -> boolean().
-should_delay_puback(undefined, _State) ->
+-spec maybe_send_puback(boolean(), pid() | undefined, msg_id()) -> ok.
+maybe_send_puback(DelayPuback, PubPid, PubMsgId) ->
+    case {DelayPuback, PubPid} of
+        {true, P} when is_pid(P) ->
+            vmq_ranch:send_puback(P, PubMsgId);
+        _ ->
+            ok
+    end.
+
+-spec should_send_puback(binary() | undefined) -> boolean().
+should_send_puback(undefined) ->
     false;
-should_delay_puback(AclName, _State) ->
-    ets:member(?DELAY_PUBACK_TBL, AclName).
+should_send_puback(AclName) ->
+    ets:member(?DELAYED_PUBACK_TBL, AclName).
