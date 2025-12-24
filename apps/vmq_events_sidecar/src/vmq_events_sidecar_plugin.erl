@@ -278,7 +278,7 @@ on_publish(
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(
         on_publish,
-        {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl},
+        {MP, ClientId, normalise(UserName), QoS, unword(Topic), maybe_iolist_to_binary(Payload), IsRetain, MatchedAcl},
         ACL
     ).
 
@@ -432,6 +432,11 @@ send_event(HookName, EventPayload, Criterion) ->
                     ok
             end
     end.
+
+-spec maybe_iolist_to_binary(iolist() | binary()) -> binary().
+maybe_iolist_to_binary(B) when is_binary(B) -> B;
+maybe_iolist_to_binary(L) when is_list(L) -> iolist_to_binary(L);
+maybe_iolist_to_binary(_) -> <<>>.
 
 -spec normalise(_) -> any().
 normalise(undefined) ->
