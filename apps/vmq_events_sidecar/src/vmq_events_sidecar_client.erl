@@ -32,7 +32,13 @@ handle_request({cast, Data}, #state{} = State) ->
     {ok, undefined, [Data], State};
 handle_request(Request, #state{} = State) ->
     Val = vmq_events_sidecar_format:encode(Request),
-    lager:info("Encoded size: ~p, Request: ~p", [byte_size(Val), Request]),
+    try
+        Decoded = vmq_events_sidecar_format:decode_debug(iolist_to_binary(Val)),
+        lager:info("Encoded size: ~p, Decoded: ~p", [byte_size(Val), Decoded])
+    catch
+        _:_ ->
+            lager:info("Encoded size: ~p, Request: ~p", [byte_size(Val), Request])
+    end,
     Size = byte_size(Val),
     SizeByte = <<Size:32>>,
     Data = <<SizeByte/binary, Val/binary>>,

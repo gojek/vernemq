@@ -274,7 +274,7 @@ on_publish(
     IsRetain,
     #matched_acl{name = ACL} = MatchedAcl
 ) ->
-    lager:info("on_publish Payload: ~p", [Payload]),
+    lager:info("on_publish Payload: ~p, Length: ~p", [Payload, iolist_size(Payload)]),
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(
         on_publish,

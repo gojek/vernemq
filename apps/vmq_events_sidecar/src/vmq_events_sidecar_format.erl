@@ -17,7 +17,17 @@
 -include_lib("vmq_commons/include/vmq_types.hrl").
 
 %% API
--export([encode/1]).
+-export([encode/1, decode_debug/1]).
+
+-spec decode_debug(binary()) -> any().
+decode_debug(Binary) ->
+    #'Any'{type_url = TypeUrl, value = Value} = any_pb:decode_msg(Binary, 'Any'),
+    case TypeUrl of
+        "type.googleapis.com/eventssidecar.v1.OnPublish" ->
+            on_publish_pb:decode_msg(Value, 'eventssidecar.v1.OnPublish');
+        _ ->
+            {other, TypeUrl}
+    end.
 
 -spec encode(event()) -> iodata().
 encode(
