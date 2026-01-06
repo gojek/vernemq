@@ -276,7 +276,8 @@ handle_message({send_puback, MsgId}, #st{pending = Pending} = State) ->
             Bin = vmq_parser:serialise(#mqtt_puback{message_id = MsgId}),
             maybe_flush(State#st{pending = [Pending | [Bin]]});
         false ->
-            {exit, {invalid_msg_id, MsgId}, State}
+            lager:error("Invalid MsgId ~p for PUBACK", [MsgId]),
+            State
     end;
 handle_message(
     {?TO_SESSION, Msg}, #st{pending = Pending, fsm_state = FsmState0, fsm_mod = FsmMod} = State

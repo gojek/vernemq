@@ -360,8 +360,7 @@ connected(
                 #matched_acl{name = Name},
                 Persisted
             ]),
-            DelayPuback = should_send_puback(Name),
-            maybe_send_puback(DelayPuback, PubPid, PubMsgId),
+            maybe_send_puback(Name, PubPid, PubMsgId),
             handle_waiting_msgs(State#state{waiting_acks = maps:remove(MessageId, WAcks)});
         not_found ->
             _ = vmq_metrics:incr_mqtt_error_invalid_puback(),
@@ -1116,9 +1115,6 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
 maybe_send_immediate_puback(true, _MessageId) ->
     [];
 maybe_send_immediate_puback(false, MessageId) ->
-    puback_frames(MessageId).
-
-puback_frames(MessageId) ->
     _ = vmq_metrics:incr_mqtt_puback_sent(),
     [#mqtt_puback{message_id = MessageId}].
 
@@ -1783,11 +1779,11 @@ extract_qos(not_allowed) -> not_allowed;
 extract_qos(QoS) when is_integer(QoS) -> QoS;
 extract_qos({QoS, _SubInfo}) -> QoS.
 
--spec maybe_send_puback(boolean(), pid() | undefined, msg_id()) -> ok.
-maybe_send_puback(DelayPuback, PubPid, PubMsgId) ->
-    case {DelayPuback, PubPid} of
-        {true, P} when is_pid(P) ->
-            vmq_ranch:send_puback(P, PubMsgId);
+-spec maybe_send_puback(binary() | undefined, pid() | undefined, msg_id()) -> ok.
+maybe_send_puback(Name, PubPid, PubMsgId) ->
+    case should_send_puback(Name) of
+        true when is_pid(PubPid) ->
+            vmq_ranch:send_puback(PubPid, PubMsgId);
         _ ->
             ok
     end.
