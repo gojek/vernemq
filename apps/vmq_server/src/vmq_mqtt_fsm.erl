@@ -1095,8 +1095,7 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
     } = State,
     case publish(RegView, User, SubscriberId, Msg) of
         {ok, #vmq_msg{acl_name = AclName}, SessCtrl} ->
-            DelayPuback = should_send_puback(AclName),
-            {maybe_send_immediate_puback(DelayPuback, MessageId), SessCtrl};
+            {maybe_send_immediate_puback(AclName, MessageId), SessCtrl};
         {error, not_allowed} when ?IS_PROTO_4(Proto) ->
             %% we have to close connection for 3.1.1
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
@@ -1112,11 +1111,16 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
             []
     end.
 
-maybe_send_immediate_puback(true, _MessageId) ->
-    [];
-maybe_send_immediate_puback(false, MessageId) ->
-    _ = vmq_metrics:incr_mqtt_puback_sent(),
-    [#mqtt_puback{message_id = MessageId}].
+-spec maybe_send_immediate_puback(AclName :: binary() | undefined, MessageId :: msg_id()) ->
+    [mqtt_puback()].
+maybe_send_immediate_puback(AclName, MessageId) ->
+    case should_send_puback(AclName) of
+        true ->
+            [];
+        false ->
+            _ = vmq_metrics:incr_mqtt_puback_sent(),
+            [#mqtt_puback{message_id = MessageId}]
+    end.
 
 -spec dispatch_publish_qos2(msg_id(), msg(), state()) ->
     list()
