@@ -16,6 +16,7 @@
         {pool_size, 100},
         {backlog_size, 4096},
         {vmq_plugin_hooks, [
+            {vmq_events_sidecar_plugin, auth_on_register, 5, []},
             {vmq_events_sidecar_plugin, on_register, 4, []},
             {vmq_events_sidecar_plugin, on_publish, 7, []},
             {vmq_events_sidecar_plugin, on_subscribe, 3, []},
