@@ -7,6 +7,7 @@
 -include_lib("vmq_commons/src/vmq_types_common.hrl").
 
 -behaviour(gen_server).
+-behaviour(auth_on_register_hook).
 -behaviour(on_register_hook).
 -behaviour(on_publish_hook).
 -behaviour(on_subscribe_hook).
@@ -249,6 +250,13 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Hook functions
 %%%===================================================================
+-spec auth_on_register(peer(), subscriber_id(), username(), password(), flag()) -> 'next'.
+auth_on_register(Peer, SubscriberId, UserName, _, CleanSession) ->
+    {PPeer, Port} = peer(Peer),
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    send_event(auth_on_register, {MP, ClientId, PPeer, Port, normalise(UserName), CleanSession}),
+    next.
+
 %% called as an all_till_ok hook
 -spec on_register(peer(), subscriber_id(), username(), properties(), session_id()) -> 'next'.
 on_register(Peer, SubscriberId, UserName, Props, SessionId) ->
