@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package eventssidecar.v1;
+
+message AuthOnRegister {
+    google.protobuf.Timestamp timestamp = 1;
+    string mountpoint = 2;
+    string client_id = 3;
+    string peer_addr = 4;
+    int32 peer_port = 5;
+    string username = 6;
+    bool clean_session = 7;
+}

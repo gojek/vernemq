@@ -1,6 +1,7 @@
 -module(events_sidecar_handler).
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
 -include("vmq_events_sidecar_test.hrl").
+-include_lib("vmq_proto/include/auth_on_register_pb.hrl").
 -include_lib("vmq_proto/include/on_register_pb.hrl").
 -include_lib("vmq_proto/include/on_publish_pb.hrl").
 -include_lib("vmq_proto/include/on_subscribe_pb.hrl").
@@ -69,6 +70,8 @@ decode({_, "type.googleapis.com/eventssidecar.v1.OnDeliveryComplete", Value}) ->
     on_delivery_complete_pb:decode_msg(Value, 'eventssidecar.v1.OnDeliveryComplete');
 decode({_, "type.googleapis.com/eventssidecar.v1.OnDeliver", Value}) ->
     on_deliver_pb:decode_msg(Value, 'eventssidecar.v1.OnDeliver');
+decode({_, "type.googleapis.com/eventssidecar.v1.AuthOnRegister", Value}) ->
+    auth_on_register_pb:decode_msg(Value, 'eventssidecar.v1.AuthOnRegister');
 decode({_, "type.googleapis.com/eventssidecar.v1.OnRegister", Value}) ->
     on_register_pb:decode_msg(Value, 'eventssidecar.v1.OnRegister');
 decode({_, "type.googleapis.com/eventssidecar.v1.OnSubscribe", Value}) ->
@@ -91,6 +94,15 @@ decode({_, "type.googleapis.com/eventssidecar.v1.OnMessageDrop", Value}) ->
     on_message_drop_pb:decode_msg(Value, 'eventssidecar.v1.OnMessageDrop').
 
 %% callbacks for each hook
+auth_on_register(#'eventssidecar.v1.AuthOnRegister'{peer_addr = ?PEER_BIN,
+              peer_port = ?PEERPORT,
+              username = BinPid,
+              mountpoint = ?MOUNTPOINT_BIN,
+              client_id = ?ALLOWED_CLIENT_ID,
+              clean_session = true}) ->
+    Pid = list_to_pid(binary_to_list(BinPid)),
+    Pid ! auth_on_register_ok.
+
 on_register(#'eventssidecar.v1.OnRegister'{peer_addr = ?PEER_BIN,
               peer_port = ?PEERPORT,
               username = BinPid,
@@ -202,6 +214,8 @@ on_message_drop(#'eventssidecar.v1.OnMessageDrop'{
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_message_drop_ok.
 
+process_hook(Event) when is_record(Event, 'eventssidecar.v1.AuthOnRegister') ->
+    auth_on_register(Event);
 process_hook(Event) when is_record(Event, 'eventssidecar.v1.OnRegister') ->
     on_register(Event);
 process_hook(Event) when is_record(Event, 'eventssidecar.v1.OnSubscribe') ->

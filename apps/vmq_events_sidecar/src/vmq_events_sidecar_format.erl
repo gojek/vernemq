@@ -1,6 +1,7 @@
 -module(vmq_events_sidecar_format).
 -include("../include/vmq_events_sidecar.hrl").
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
+-include_lib("vmq_proto/include/auth_on_register_pb.hrl").
 -include_lib("vmq_proto/include/on_register_pb.hrl").
 -include_lib("vmq_proto/include/on_publish_pb.hrl").
 -include_lib("vmq_proto/include/on_subscribe_pb.hrl").
@@ -217,6 +218,19 @@ encode({on_session_expired, Timestamp, {MP, ClientId}}) ->
             client_id = ClientId,
             mountpoint = MP,
             timestamp = convert_timestamp(Timestamp)
+        })
+    );
+encode({auth_on_register, Timestamp, {MP, ClientId, PPeer, Port, UserName, CleanSession}}) ->
+    encode_envelope(
+        "AuthOnRegister",
+        auth_on_register_pb:encode_msg(#'eventssidecar.v1.AuthOnRegister'{
+            peer_addr = PPeer,
+            peer_port = Port,
+            username = UserName,
+            mountpoint = MP,
+            client_id = ClientId,
+            timestamp = convert_timestamp(Timestamp),
+            clean_session = CleanSession
         })
     );
 encode(_) ->
