@@ -255,7 +255,7 @@ code_change(_OldVsn, State, _Extra) ->
 auth_on_register(Peer, SubscriberId, UserName, _, CleanSession) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
-    lager:debug(
+    lager:info(
         "auth_on_register hook called for client_id=~p, username=~p, peer=~p:~p, clean_session=~p",
         [ClientId, UserName, PPeer, Port, CleanSession]
     ),
