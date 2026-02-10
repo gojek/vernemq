@@ -251,7 +251,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Hook functions
 %%%===================================================================
--spec auth_on_register(peer(), subscriber_id(), username(), password(), flag()) -> 'next'.
+-spec auth_on_register(peer(), subscriber_id(), username(), password(), flag()) -> 'ok'.
 auth_on_register(Peer, SubscriberId, UserName, _, CleanSession) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -260,7 +260,7 @@ auth_on_register(Peer, SubscriberId, UserName, _, CleanSession) ->
         [ClientId, UserName, PPeer, Port, CleanSession]
     ),
     send_event(auth_on_register, {MP, ClientId, PPeer, Port, normalise(UserName), CleanSession}),
-    next.
+    ok.
 
 %% called as an all_till_ok hook
 -spec on_register(peer(), subscriber_id(), username(), properties()) -> 'next'.

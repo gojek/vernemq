@@ -44,7 +44,8 @@ end_per_testcase(_, Config) ->
     Config.
 
 all() ->
-    [on_session_expired_test,
+    [auth_on_register_test,
+     on_session_expired_test,
      on_delivery_complete_test,
      on_register_test,
      on_register_empty_properties_test,
@@ -66,6 +67,14 @@ stop_tcp_server(S) ->
   events_sidecar_handler:stop_tcp_server(S).
 
 %% Test cases
+auth_on_register_test(_) ->
+    enable_hook(auth_on_register),
+    Self = pid_to_bin(self()),
+    ok = vmq_plugin:all_till_ok(auth_on_register,
+                                [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, <<"test-password">>, true]),
+    ok = exp_response(auth_on_register_ok),
+    disable_hook(auth_on_register).
+
 on_register_test(_) ->
     enable_hook(on_register),
     Self = pid_to_bin(self()),

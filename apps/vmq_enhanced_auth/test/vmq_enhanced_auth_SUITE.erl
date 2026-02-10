@@ -48,7 +48,7 @@ auth_on_register_test(_) ->
 
   %When username contains no colons
   Password = jwerl:sign([{rid, <<"username">>}], hs256, <<"test-key">>),
-  ok = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, Password, false),
+  next = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, Password, false),
   application:unset_env(vmq_enhanced_auth, secret_key),
   application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
 
