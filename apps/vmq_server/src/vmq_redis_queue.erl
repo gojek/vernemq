@@ -10,7 +10,7 @@
 -endif.
 
 %% API functions
--export([start_link/2, enqueue/3]).
+-export([start_link/2, enqueue/3, resume_main_queue_polling/1]).
 
 %% gen_server callbacks
 -export([
@@ -30,6 +30,9 @@
 
 start_link(RegName, RedisNode) ->
     gen_server:start_link({local, RegName}, ?MODULE, [RedisNode], []).
+
+resume_main_queue_polling(QueueWorker) ->
+    gen_server:cast(QueueWorker, resume_main_queue_polling).
 
 enqueue(Node, SubscriberBin, MsgBin) when is_binary(SubscriberBin) and is_binary(MsgBin) ->
     RedisClient = gen_redis_producer_client(SubscriberBin),
@@ -97,6 +100,9 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast(resume_main_queue_polling, #state{interval = Interval} = State) ->
+    NTRef = erlang:send_after(Interval, self(), poll_redis_main_queue),
+    {noreply, State#state{timer = NTRef}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -113,7 +119,7 @@ handle_cast(_Msg, State) ->
 handle_info(poll_redis_main_queue, #state{shard = RedisNode, interval = Interval} = State) ->
     case poll_main_queue_enabled() of
         false ->
-            erlang:send_after(Interval, self(), poll_redis_main_queue);
+            ok;
         true ->
             MainQueue = "mainQueue::" ++ atom_to_list(node()),
             case
@@ -232,4 +238,11 @@ handle_info_poll_enabled_test() ->
         )
     ),
     application:unset_env(vmq_server, redis_main_queue_poll_enabled).
+
+handle_cast_resume_main_queue_polling_test() ->
+    {noreply, #state{timer = TRef}} =
+        handle_cast(resume_main_queue_polling, #state{
+            shard = redis_queue_consumer_client_0, interval = 1, timer = undefined
+        }),
+    ?assert(is_reference(TRef)).
 -endif.
