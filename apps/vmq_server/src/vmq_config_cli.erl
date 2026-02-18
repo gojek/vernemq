@@ -62,7 +62,8 @@ register_config_() ->
             "mqtt_connect_timeout",
             "queue_sup_sup_max_t",
             "queue_sup_sup_max_r",
-            "cache_shared_subscriptions_locally"
+            "cache_shared_subscriptions_locally",
+            "redis_main_queue_poll_enabled"
         ],
     _ = [
         clique:register_config([Key], fun register_config_callback/2)

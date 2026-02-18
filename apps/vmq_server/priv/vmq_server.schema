@@ -62,6 +62,11 @@
     "redis_queue_sleep_interval",
     "vmq_server.redis_queue_sleep_interval", [{default, 0}, {datatype, integer}]}.
 
+{mapping, "redis_main_queue_poll_enabled", "vmq_server.redis_main_queue_poll_enabled", [
+    {default, on},
+    {datatype, flag}
+]}.
+
 %% @doc This option caches the shared subscription locally, default is 'off'. !!NOTE!!
 %% Local shared subscriptions currently do not honor shared subscription groups properly.
 %% It is recommended to use shared subscription topics only for shared subscription use-cases.
