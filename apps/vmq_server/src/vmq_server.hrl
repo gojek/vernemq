@@ -1,6 +1,7 @@
 -ifndef(VMQ_SERVER_HRL).
 -define(VMQ_SERVER_HRL, true).
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
 
 -type plugin_id() :: {plugin, atom(), pid()}.
 
@@ -25,6 +26,9 @@
 -define(DISCONNECT_KEEP_ALIVE, disconnect_keep_alive).
 -define(DISCONNECT_MIGRATION, disconnect_migration).
 -define(CLIENT_DISCONNECT, mqtt_client_disconnect).
+-define(NO_MATCHING_HOOK_FOUND, no_matching_hook_found).
+-define(INVALID_CREDENTIALS, invalid_credentials).
+-define(CANT_REGISTER, cant_register).
 
 -type disconnect_reasons() ::
     ?NOT_AUTHORIZED
@@ -37,6 +41,13 @@
     | ?PROTOCOL_ERROR
     | ?RECEIVE_MAX_EXCEEDED
     | ?CLIENT_DISCONNECT.
+
+-type registration_failure_reasons() ::
+    ?NO_MATCHING_HOOK_FOUND
+    | ?INVALID_CREDENTIALS
+    | ?NOT_AUTHORIZED
+    | ?CANT_REGISTER
+    | atom().
 
 -type duration_ms() :: non_neg_integer().
 -type session_ctrl() :: #{throttle => duration_ms()}.

@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package eventssidecar.v1;
+
+enum RegistrationFailureReason {
+    REASON_UNSPECIFIED = 0;
+    REASON_NO_MATCHING_HOOK_FOUND = 1;
+    REASON_INVALID_CREDENTIALS = 2;
+    REASON_NOT_AUTHORIZED = 3;
+}

@@ -598,7 +598,7 @@ check_rid(Claims, UserName) ->
         {ok, Value} ->
             if
                 Value =:= UserName ->
-                    next;
+                    ok;
                 %else block
                 true ->
                     vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?USERNAME_RID_MISMATCH}),

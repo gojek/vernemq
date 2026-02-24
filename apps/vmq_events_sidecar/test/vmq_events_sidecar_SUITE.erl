@@ -44,11 +44,11 @@ end_per_testcase(_, Config) ->
     Config.
 
 all() ->
-    [auth_on_register_test,
-     on_session_expired_test,
+    [on_session_expired_test,
      on_delivery_complete_test,
      on_register_test,
      on_register_empty_properties_test,
+     on_register_failed_test,
      on_publish_test,
      on_subscribe_test,
      on_unsubscribe_test,
@@ -67,14 +67,6 @@ stop_tcp_server(S) ->
   events_sidecar_handler:stop_tcp_server(S).
 
 %% Test cases
-auth_on_register_test(_) ->
-    enable_hook(auth_on_register),
-    Self = pid_to_bin(self()),
-    ok = vmq_plugin:all_till_ok(auth_on_register,
-                                [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, <<"test-password">>, true]),
-    ok = exp_response(auth_on_register_ok),
-    disable_hook(auth_on_register).
-
 on_register_test(_) ->
     enable_hook(on_register),
     Self = pid_to_bin(self()),
@@ -173,6 +165,14 @@ on_message_drop_test(_) ->
     [ok,ok] = vmq_plugin:all(on_message_drop, [{?MOUNTPOINT, Self}, fun() -> {?TOPIC, 1, ?PAYLOAD, #{}, #matched_acl{name = ?LABEL, pattern = ?PATTERN}} end, binary_to_atom(?MESSAGE_DROP_REASON)]),
     ok = exp_response(on_message_drop_ok),
     disable_hook(on_message_drop).
+
+on_register_failed_test(_) ->
+    enable_hook(on_register_failed),
+    Self = pid_to_bin(self()),
+    [ok] = vmq_plugin:all(on_register_failed,
+                          [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, true, invalid_credentials]),
+    ok = exp_response(on_register_failed_ok),
+    disable_hook(on_register_failed).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% helper functions
