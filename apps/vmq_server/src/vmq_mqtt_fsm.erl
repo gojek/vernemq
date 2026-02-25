@@ -903,7 +903,7 @@ auth_on_register(Password, State) ->
         subscriber_id = SubscriberId,
         username = User
     } = State,
-    HookArgs = [Peer, SubscriberId, User, Password, Clean, success],
+    HookArgs = [Peer, SubscriberId, User, Password, Clean],
     case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
         ok ->
             {ok, queue_opts(State, []), State};
