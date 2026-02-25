@@ -734,7 +734,7 @@ check_user(#mqtt_connect{username = User, password = Password, properties = Prop
                             queue_pid := QPid
                         }} ->
                             monitor(process, QPid),
-                            _ = vmq_plugin:all(auth_on_register, [
+                            _ = vmq_plugin:all(on_register, [
                                 Peer,
                                 SubscriberId,
                                 State1#state.username,
