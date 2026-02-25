@@ -257,8 +257,7 @@ on_register_failed(Peer, SubscriberId, UserName, CleanSession, Reason) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(
         on_register_failed, {MP, ClientId, PPeer, Port, normalise(UserName), CleanSession, Reason}
-    ),
-    next.
+    ).
 
 %% called as an all_till_ok hook
 -spec on_register(peer(), subscriber_id(), username(), properties()) -> 'next'.
