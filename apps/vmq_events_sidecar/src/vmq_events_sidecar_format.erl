@@ -253,12 +253,18 @@ convert_timestamp(Now) ->
     #'google.protobuf.Timestamp'{seconds = Now div 1000000000, nanos = Now rem 1000000000}.
 
 %% @doc Map internal registration failure reasons to protobuf enum values
--spec map_registration_failure_reason(atom()) -> atom().
+-spec map_registration_failure_reason(atom() | binary()) -> atom().
 map_registration_failure_reason(no_matching_hook_found) ->
     'REASON_NO_MATCHING_HOOK_FOUND';
 map_registration_failure_reason(invalid_credentials) ->
     'REASON_INVALID_CREDENTIALS';
 map_registration_failure_reason(not_authorized) ->
     'REASON_NOT_AUTHORIZED';
+map_registration_failure_reason(invalid_signature) ->
+    'REASON_INVALID_SIGNATURE';
+map_registration_failure_reason(username_rid_mismatch) ->
+    'REASON_USERNAME_RID_MISMATCH';
+map_registration_failure_reason(<<"ERR stale_request">>) ->
+    'REASON_STALE_REQUEST';
 map_registration_failure_reason(_) ->
     'REASON_UNSPECIFIED'.

@@ -58,7 +58,10 @@
     'REASON_UNSPECIFIED'
     | 'REASON_NO_MATCHING_HOOK_FOUND'
     | 'REASON_INVALID_CREDENTIALS'
-    | 'REASON_NOT_AUTHORIZED'.
+    | 'REASON_NOT_AUTHORIZED'
+    | 'REASON_STALE_REQUEST'
+    | 'REASON_INVALID_SIGNATURE'
+    | 'REASON_USERNAME_RID_MISMATCH'.
 -export_type(['eventssidecar.v1.RegistrationFailureReason'/0]).
 
 %% message types
@@ -235,7 +238,10 @@ get_msg_defs() ->
             {'REASON_UNSPECIFIED', 0},
             {'REASON_NO_MATCHING_HOOK_FOUND', 1},
             {'REASON_INVALID_CREDENTIALS', 2},
-            {'REASON_NOT_AUTHORIZED', 3}
+            {'REASON_NOT_AUTHORIZED', 3},
+            {'REASON_STALE_REQUEST', 4},
+            {'REASON_INVALID_SIGNATURE', 5},
+            {'REASON_USERNAME_RID_MISMATCH', 6}
         ]}
     ].
 
@@ -263,7 +269,10 @@ find_enum_def('eventssidecar.v1.RegistrationFailureReason') ->
         {'REASON_UNSPECIFIED', 0},
         {'REASON_NO_MATCHING_HOOK_FOUND', 1},
         {'REASON_INVALID_CREDENTIALS', 2},
-        {'REASON_NOT_AUTHORIZED', 3}
+        {'REASON_NOT_AUTHORIZED', 3},
+        {'REASON_STALE_REQUEST', 4},
+        {'REASON_INVALID_SIGNATURE', 5},
+        {'REASON_USERNAME_RID_MISMATCH', 6}
     ];
 find_enum_def(_) ->
     error.
@@ -281,7 +290,13 @@ enum_value_by_symbol('eventssidecar.v1.RegistrationFailureReason', Sym) ->
 'enum_symbol_by_value_eventssidecar.v1.RegistrationFailureReason'(2) ->
     'REASON_INVALID_CREDENTIALS';
 'enum_symbol_by_value_eventssidecar.v1.RegistrationFailureReason'(3) ->
-    'REASON_NOT_AUTHORIZED'.
+    'REASON_NOT_AUTHORIZED';
+'enum_symbol_by_value_eventssidecar.v1.RegistrationFailureReason'(4) ->
+    'REASON_STALE_REQUEST';
+'enum_symbol_by_value_eventssidecar.v1.RegistrationFailureReason'(5) ->
+    'REASON_INVALID_SIGNATURE';
+'enum_symbol_by_value_eventssidecar.v1.RegistrationFailureReason'(6) ->
+    'REASON_USERNAME_RID_MISMATCH'.
 
 'enum_value_by_symbol_eventssidecar.v1.RegistrationFailureReason'('REASON_UNSPECIFIED') ->
     0;
@@ -290,7 +305,13 @@ enum_value_by_symbol('eventssidecar.v1.RegistrationFailureReason', Sym) ->
 'enum_value_by_symbol_eventssidecar.v1.RegistrationFailureReason'('REASON_INVALID_CREDENTIALS') ->
     2;
 'enum_value_by_symbol_eventssidecar.v1.RegistrationFailureReason'('REASON_NOT_AUTHORIZED') ->
-    3.
+    3;
+'enum_value_by_symbol_eventssidecar.v1.RegistrationFailureReason'('REASON_STALE_REQUEST') ->
+    4;
+'enum_value_by_symbol_eventssidecar.v1.RegistrationFailureReason'('REASON_INVALID_SIGNATURE') ->
+    5;
+'enum_value_by_symbol_eventssidecar.v1.RegistrationFailureReason'('REASON_USERNAME_RID_MISMATCH') ->
+    6.
 
 get_service_names() -> [].
 

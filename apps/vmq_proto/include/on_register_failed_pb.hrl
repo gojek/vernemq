@@ -31,6 +31,9 @@
             | 'REASON_NO_MATCHING_HOOK_FOUND'
             | 'REASON_INVALID_CREDENTIALS'
             | 'REASON_NOT_AUTHORIZED'
+            | 'REASON_STALE_REQUEST'
+            | 'REASON_INVALID_SIGNATURE'
+            | 'REASON_USERNAME_RID_MISMATCH'
             | integer()
             | undefined
     }

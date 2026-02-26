@@ -58,7 +58,10 @@
     'REASON_UNSPECIFIED'
     | 'REASON_NO_MATCHING_HOOK_FOUND'
     | 'REASON_INVALID_CREDENTIALS'
-    | 'REASON_NOT_AUTHORIZED'.
+    | 'REASON_NOT_AUTHORIZED'
+    | 'REASON_STALE_REQUEST'
+    | 'REASON_INVALID_SIGNATURE'
+    | 'REASON_USERNAME_RID_MISMATCH'.
 -export_type(['eventssidecar.v1.RegistrationFailureReason'/0]).
 
 %% message types
@@ -278,6 +281,14 @@ encode_msg(Msg, MsgName, Opts) ->
     <<Bin/binary, 2>>;
 'e_enum_eventssidecar.v1.RegistrationFailureReason'('REASON_NOT_AUTHORIZED', Bin, _TrUserData) ->
     <<Bin/binary, 3>>;
+'e_enum_eventssidecar.v1.RegistrationFailureReason'('REASON_STALE_REQUEST', Bin, _TrUserData) ->
+    <<Bin/binary, 4>>;
+'e_enum_eventssidecar.v1.RegistrationFailureReason'('REASON_INVALID_SIGNATURE', Bin, _TrUserData) ->
+    <<Bin/binary, 5>>;
+'e_enum_eventssidecar.v1.RegistrationFailureReason'(
+    'REASON_USERNAME_RID_MISMATCH', Bin, _TrUserData
+) ->
+    <<Bin/binary, 6>>;
 'e_enum_eventssidecar.v1.RegistrationFailureReason'(V, Bin, _TrUserData) ->
     e_varint(V, Bin).
 
@@ -1007,6 +1018,9 @@ decode_msg_2_doit('google.protobuf.Timestamp', Bin, TrUserData) ->
 'd_enum_eventssidecar.v1.RegistrationFailureReason'(1) -> 'REASON_NO_MATCHING_HOOK_FOUND';
 'd_enum_eventssidecar.v1.RegistrationFailureReason'(2) -> 'REASON_INVALID_CREDENTIALS';
 'd_enum_eventssidecar.v1.RegistrationFailureReason'(3) -> 'REASON_NOT_AUTHORIZED';
+'d_enum_eventssidecar.v1.RegistrationFailureReason'(4) -> 'REASON_STALE_REQUEST';
+'d_enum_eventssidecar.v1.RegistrationFailureReason'(5) -> 'REASON_INVALID_SIGNATURE';
+'d_enum_eventssidecar.v1.RegistrationFailureReason'(6) -> 'REASON_USERNAME_RID_MISMATCH';
 'd_enum_eventssidecar.v1.RegistrationFailureReason'(V) -> V.
 
 read_group(Bin, FieldNum) ->
@@ -1295,6 +1309,14 @@ verify_msg(Msg, MsgName, Opts) ->
     ok;
 'v_enum_eventssidecar.v1.RegistrationFailureReason'('REASON_NOT_AUTHORIZED', _Path, _TrUserData) ->
     ok;
+'v_enum_eventssidecar.v1.RegistrationFailureReason'('REASON_STALE_REQUEST', _Path, _TrUserData) ->
+    ok;
+'v_enum_eventssidecar.v1.RegistrationFailureReason'('REASON_INVALID_SIGNATURE', _Path, _TrUserData) ->
+    ok;
+'v_enum_eventssidecar.v1.RegistrationFailureReason'(
+    'REASON_USERNAME_RID_MISMATCH', _Path, _TrUserData
+) ->
+    ok;
 'v_enum_eventssidecar.v1.RegistrationFailureReason'(V, _Path, _TrUserData) when
     -2147483648 =< V, V =< 2147483647, is_integer(V)
 ->
@@ -1383,7 +1405,10 @@ get_msg_defs() ->
             {'REASON_UNSPECIFIED', 0},
             {'REASON_NO_MATCHING_HOOK_FOUND', 1},
             {'REASON_INVALID_CREDENTIALS', 2},
-            {'REASON_NOT_AUTHORIZED', 3}
+            {'REASON_NOT_AUTHORIZED', 3},
+            {'REASON_STALE_REQUEST', 4},
+            {'REASON_INVALID_SIGNATURE', 5},
+            {'REASON_USERNAME_RID_MISMATCH', 6}
         ]},
         {{msg, 'eventssidecar.v1.OnRegisterFailed'}, [
             #field{
@@ -1519,7 +1544,10 @@ find_enum_def('eventssidecar.v1.RegistrationFailureReason') ->
         {'REASON_UNSPECIFIED', 0},
         {'REASON_NO_MATCHING_HOOK_FOUND', 1},
         {'REASON_INVALID_CREDENTIALS', 2},
-        {'REASON_NOT_AUTHORIZED', 3}
+        {'REASON_NOT_AUTHORIZED', 3},
+        {'REASON_STALE_REQUEST', 4},
+        {'REASON_INVALID_SIGNATURE', 5},
+        {'REASON_USERNAME_RID_MISMATCH', 6}
     ];
 find_enum_def(_) ->
     error.
@@ -1537,7 +1565,13 @@ enum_value_by_symbol('eventssidecar.v1.RegistrationFailureReason', Sym) ->
 'enum_symbol_by_value_eventssidecar.v1.RegistrationFailureReason'(2) ->
     'REASON_INVALID_CREDENTIALS';
 'enum_symbol_by_value_eventssidecar.v1.RegistrationFailureReason'(3) ->
-    'REASON_NOT_AUTHORIZED'.
+    'REASON_NOT_AUTHORIZED';
+'enum_symbol_by_value_eventssidecar.v1.RegistrationFailureReason'(4) ->
+    'REASON_STALE_REQUEST';
+'enum_symbol_by_value_eventssidecar.v1.RegistrationFailureReason'(5) ->
+    'REASON_INVALID_SIGNATURE';
+'enum_symbol_by_value_eventssidecar.v1.RegistrationFailureReason'(6) ->
+    'REASON_USERNAME_RID_MISMATCH'.
 
 'enum_value_by_symbol_eventssidecar.v1.RegistrationFailureReason'('REASON_UNSPECIFIED') ->
     0;
@@ -1546,7 +1580,13 @@ enum_value_by_symbol('eventssidecar.v1.RegistrationFailureReason', Sym) ->
 'enum_value_by_symbol_eventssidecar.v1.RegistrationFailureReason'('REASON_INVALID_CREDENTIALS') ->
     2;
 'enum_value_by_symbol_eventssidecar.v1.RegistrationFailureReason'('REASON_NOT_AUTHORIZED') ->
-    3.
+    3;
+'enum_value_by_symbol_eventssidecar.v1.RegistrationFailureReason'('REASON_STALE_REQUEST') ->
+    4;
+'enum_value_by_symbol_eventssidecar.v1.RegistrationFailureReason'('REASON_INVALID_SIGNATURE') ->
+    5;
+'enum_value_by_symbol_eventssidecar.v1.RegistrationFailureReason'('REASON_USERNAME_RID_MISMATCH') ->
+    6.
 
 get_service_names() -> [].
 
