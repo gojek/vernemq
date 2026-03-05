@@ -1807,6 +1807,12 @@
                                                               {datatype, integer}
                                                              ]}.
 
+%% @doc Enable or disable the message store, default is 'on'.
+{mapping, "message_store_enabled", "vmq_server.message_store_enabled", [
+    {default, on},
+    {datatype, flag}
+]}.
+
 %% @doc This option specifies the connect options for redis as message store
 {mapping, "message_store.redis.connect_options", "vmq_server.message_store.redis.connect_options",
     [{datatype, string}]}.
