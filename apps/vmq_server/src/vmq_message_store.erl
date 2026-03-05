@@ -54,91 +54,111 @@ load_redis_functions() ->
     ).
 
 write(SubscriberId, Msg) ->
-    case
-        vmq_redis:query(
-            vmq_message_store_redis_client,
-            [
-                ?FCALL,
-                ?WRITE_OFFLINE_MESSAGE,
-                1,
-                term_to_binary(SubscriberId),
-                term_to_binary(Msg)
-            ],
-            ?FCALL,
-            ?WRITE_OFFLINE_MESSAGE
-        )
-    of
-        {ok, OfflineMsgCount} ->
-            ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
-        {error, _} ->
-            {error, not_supported}
+    case message_store_enabled() of
+        false ->
+            ok;
+        true ->
+            case
+                vmq_redis:query(
+                    vmq_message_store_redis_client,
+                    [
+                        ?FCALL,
+                        ?WRITE_OFFLINE_MESSAGE,
+                        1,
+                        term_to_binary(SubscriberId),
+                        term_to_binary(Msg)
+                    ],
+                    ?FCALL,
+                    ?WRITE_OFFLINE_MESSAGE
+                )
+            of
+                {ok, OfflineMsgCount} ->
+                    ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
+                {error, _} ->
+                    {error, not_supported}
+            end
     end.
 
 read(_SubscriberId, _MsgRef) ->
     {error, not_supported}.
 
 delete(SubscriberId) ->
-    case
-        vmq_redis:query(
-            vmq_message_store_redis_client,
-            [
-                ?FCALL,
-                ?DELETE_SUBS_OFFLINE_MESSAGES,
-                1,
-                term_to_binary(SubscriberId)
-            ],
-            ?FCALL,
-            ?DELETE_SUBS_OFFLINE_MESSAGES
-        )
-    of
-        {ok, OfflineMsgCount} ->
-            ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
-        {error, _} ->
-            {error, not_supported}
+    case message_store_enabled() of
+        false ->
+            ok;
+        true ->
+            case
+                vmq_redis:query(
+                    vmq_message_store_redis_client,
+                    [
+                        ?FCALL,
+                        ?DELETE_SUBS_OFFLINE_MESSAGES,
+                        1,
+                        term_to_binary(SubscriberId)
+                    ],
+                    ?FCALL,
+                    ?DELETE_SUBS_OFFLINE_MESSAGES
+                )
+            of
+                {ok, OfflineMsgCount} ->
+                    ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
+                {error, _} ->
+                    {error, not_supported}
+            end
     end.
 
 delete(SubscriberId, _MsgRef) ->
-    case
-        vmq_redis:query(
-            vmq_message_store_redis_client,
-            [
-                ?FCALL,
-                ?POP_OFFLINE_MESSAGE,
-                1,
-                term_to_binary(SubscriberId)
-            ],
-            ?FCALL,
-            ?POP_OFFLINE_MESSAGE
-        )
-    of
-        {ok, OfflineMsgCount} ->
-            ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
-        {error, _} ->
-            {error, not_supported}
+    case message_store_enabled() of
+        false ->
+            ok;
+        true ->
+            case
+                vmq_redis:query(
+                    vmq_message_store_redis_client,
+                    [
+                        ?FCALL,
+                        ?POP_OFFLINE_MESSAGE,
+                        1,
+                        term_to_binary(SubscriberId)
+                    ],
+                    ?FCALL,
+                    ?POP_OFFLINE_MESSAGE
+                )
+            of
+                {ok, OfflineMsgCount} ->
+                    ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
+                {error, _} ->
+                    {error, not_supported}
+            end
     end.
 
 find(SubscriberId) ->
-    case
-        vmq_redis:query(
-            vmq_message_store_redis_client,
-            ["LRANGE", term_to_binary(SubscriberId), "0", "-1"],
-            ?FIND,
-            ?MSG_STORE_FIND
-        )
-    of
-        {ok, MsgsInB} ->
-            DMsgs = lists:foldr(
-                fun(MsgB, Acc) ->
-                    Msg = binary_to_term(MsgB),
-                    D = #deliver{msg = Msg, qos = Msg#vmq_msg.qos},
-                    [D | Acc]
-                end,
-                [],
-                MsgsInB
-            ),
-            {ok, DMsgs};
-        Res ->
-            Res
+    case message_store_enabled() of
+        false ->
+            {ok, []};
+        true ->
+            case
+                vmq_redis:query(
+                    vmq_message_store_redis_client,
+                    ["LRANGE", term_to_binary(SubscriberId), "0", "-1"],
+                    ?FIND,
+                    ?MSG_STORE_FIND
+                )
+            of
+                {ok, MsgsInB} ->
+                    DMsgs = lists:foldr(
+                        fun(MsgB, Acc) ->
+                            Msg = binary_to_term(MsgB),
+                            D = #deliver{msg = Msg, qos = Msg#vmq_msg.qos},
+                            [D | Acc]
+                        end,
+                        [],
+                        MsgsInB
+                    ),
+                    {ok, DMsgs};
+                Res ->
+                    Res
+            end
     end.
 
 nr_of_offline_messages() ->
@@ -146,6 +166,9 @@ nr_of_offline_messages() ->
         [] -> 0;
         [{count, Count}] -> Count
     end.
+
+message_store_enabled() ->
+    application:get_env(vmq_server, message_store_enabled, true).
 
 %% ===================================================================
 %% Supervisor callbacks
