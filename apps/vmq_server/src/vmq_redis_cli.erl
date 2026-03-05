@@ -100,7 +100,7 @@ redis_usage() ->
         "  Manage Redis-backed runtime controls.\n\n",
         "  Sub-commands:\n",
         "    poll-main-queue   Manage polling for redis main queue workers\n",
-        "    message-store     Manage message store write/delete operations\n",
+        "    message-store     Manage message store operations\n",
         "  Use --help after a sub-command for more details.\n"
     ].
 
