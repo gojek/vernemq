@@ -102,47 +102,54 @@ subscribe_op({MP, ClientId} = SubscriberId, Topics) ->
             lists:ukeysort(1, Topics)
         ),
     OldSubs =
-        case
-            vmq_redis:query(
-                vmq_redis_client,
-                [
-                    ?FCALL,
-                    ?SUBSCRIBE,
-                    0,
-                    MP,
-                    ClientId,
-                    node(),
-                    os:system_time(nanosecond),
-                    NumOfTopics
-                    | UnwordedTopicsWithBinaryQoS
-                ],
-                ?FCALL,
-                ?SUBSCRIBE
-            )
-        of
-            {ok, [_, CS, NTWQ]} ->
-                CleanSessionBool =
-                    case CS of
-                        <<"1">> -> true;
-                        undefined -> false
-                    end,
-                NewTopicsWithQoS = [
-                    {vmq_topic:word(Topic), binary_to_term(QoS)}
-                 || [Topic, QoS] <- NTWQ
-                ],
-                [{node(), CleanSessionBool, NewTopicsWithQoS}];
-            {ok, []} ->
+        case remap_subscriber_enabled() of
+            false ->
                 [];
-            {ok, _} ->
-                {error, unwanted_redis_response};
-            Err ->
-                Err
+            true ->
+                case
+                    vmq_redis:query(
+                        vmq_redis_client,
+                        [
+                            ?FCALL,
+                            ?SUBSCRIBE,
+                            0,
+                            MP,
+                            ClientId,
+                            node(),
+                            os:system_time(nanosecond),
+                            NumOfTopics
+                            | UnwordedTopicsWithBinaryQoS
+                        ],
+                        ?FCALL,
+                        ?SUBSCRIBE
+                    )
+                of
+                    {ok, [_, CS, NTWQ]} ->
+                        CleanSessionBool =
+                            case CS of
+                                <<"1">> -> true;
+                                undefined -> false
+                            end,
+                        NewTopicsWithQoS = [
+                            {vmq_topic:word(Topic), binary_to_term(QoS)}
+                         || [Topic, QoS] <- NTWQ
+                        ],
+                        [{node(), CleanSessionBool, NewTopicsWithQoS}];
+                    {ok, []} ->
+                        [];
+                    {ok, _} ->
+                        {error, unwanted_redis_response};
+                    Err ->
+                        Err
+                end
         end,
     case OldSubs of
         {error, _} = ErrRes ->
             ErrRes;
         _ ->
-            CacheLocally = vmq_config:get_env(cache_shared_subscriptions_locally, false),
+            CacheLocally =
+                vmq_config:get_env(cache_shared_subscriptions_locally, false) orelse
+                    (not remap_subscriber_enabled()),
             if
                 CacheLocally ->
                     lists:foreach(
@@ -812,20 +819,25 @@ del_subscriber(vmq_reg_redis_trie, {MP, ClientId} = _SubscriberId) ->
     Value = {ClientId, '$2'},
     ets:select_delete(?SHARED_SUBS_ETS_TABLE, [{{{Key, Value}}, [], [true]}]),
     vmq_metrics:incr_cache_delete(?LOCAL_SHARED_SUBS),
-    vmq_redis:query(
-        vmq_redis_client,
-        [
-            ?FCALL,
-            ?DELETE_SUBSCRIBER,
-            0,
-            MP,
-            ClientId,
-            node(),
-            os:system_time(nanosecond)
-        ],
-        ?FCALL,
-        ?DELETE_SUBSCRIBER
-    ),
+    case remap_subscriber_enabled() of
+        true ->
+            vmq_redis:query(
+                vmq_redis_client,
+                [
+                    ?FCALL,
+                    ?DELETE_SUBSCRIBER,
+                    0,
+                    MP,
+                    ClientId,
+                    node(),
+                    os:system_time(nanosecond)
+                ],
+                ?FCALL,
+                ?DELETE_SUBSCRIBER
+            );
+        false ->
+            ok
+    end,
     ok;
 del_subscriber(_, SubscriberId) ->
     vmq_subscriber_db:delete(SubscriberId).
@@ -845,27 +857,32 @@ del_subscriptions(Topics, {MP, ClientId} = _SubscriberId) ->
         Topics
     ),
     SortedUnwordedTopics = [vmq_topic:unword(T) || T <- lists:usort(Topics)],
-    case
-        vmq_redis:query(
-            vmq_redis_client,
-            [
-                ?FCALL,
-                ?UNSUBSCRIBE,
-                0,
-                MP,
-                ClientId,
-                node(),
-                os:system_time(nanosecond),
-                length(SortedUnwordedTopics)
-                | SortedUnwordedTopics
-            ],
-            ?FCALL,
-            ?UNSUBSCRIBE
-        )
-    of
-        {ok, <<"1">>} -> ok;
-        {ok, _} -> {error, unwanted_redis_response};
-        Err -> Err
+    case remap_subscriber_enabled() of
+        false ->
+            ok;
+        true ->
+            case
+                vmq_redis:query(
+                    vmq_redis_client,
+                    [
+                        ?FCALL,
+                        ?UNSUBSCRIBE,
+                        0,
+                        MP,
+                        ClientId,
+                        node(),
+                        os:system_time(nanosecond),
+                        length(SortedUnwordedTopics)
+                        | SortedUnwordedTopics
+                    ],
+                    ?FCALL,
+                    ?UNSUBSCRIBE
+                )
+            of
+                {ok, <<"1">>} -> ok;
+                {ok, _} -> {error, unwanted_redis_response};
+                Err -> Err
+            end
     end.
 
 %% the return value is used to inform the caller
@@ -873,7 +890,15 @@ del_subscriptions(Topics, {MP, ClientId} = _SubscriberId) ->
 %% subscriber id.
 -spec maybe_remap_subscriber(subscriber_id(), boolean()) ->
     {boolean(), undefined | vmq_subscriber:subs(), [node()]} | {error, binary | atom()}.
-maybe_remap_subscriber({MP, ClientId}, _StartClean = true) ->
+maybe_remap_subscriber(_SubscriberId, StartClean) ->
+    case remap_subscriber_enabled() of
+        true ->
+            do_remap_subscriber(_SubscriberId, StartClean);
+        false ->
+            {false, vmq_subscriber:new(StartClean), []}
+    end.
+
+do_remap_subscriber({MP, ClientId}, _StartClean = true) ->
     Subs = vmq_subscriber:new(true),
     case
         vmq_redis:query(
@@ -898,7 +923,7 @@ maybe_remap_subscriber({MP, ClientId}, _StartClean = true) ->
         {ok, _} -> {error, unwanted_redis_response};
         Err -> Err
     end;
-maybe_remap_subscriber({MP, ClientId}, _StartClean = false) ->
+do_remap_subscriber({MP, ClientId}, _StartClean = false) ->
     case
         vmq_redis:query(
             vmq_redis_client,
@@ -995,6 +1020,13 @@ retain_pre(FutureRetain) when
 ->
     element(3, FutureRetain).
 
+redis_enabled() ->
+    application:get_env(vmq_server, redis_enabled, true).
+
+remap_subscriber_enabled() ->
+    redis_enabled() andalso
+        application:get_env(vmq_server, remap_subscriber_enabled, true).
+
 -spec if_ready(_, _) -> any().
 if_ready(Fun, Args) ->
     case persistent_term:get(subscribe_trie_ready, 0) of
@@ -1019,38 +1051,43 @@ update_qos1_metrics(Topics) ->
 
 -spec migrate_offline_queue(subscriber_id(), node()) -> node() | {error, _}.
 migrate_offline_queue({MP, ClientId} = SubscriberId, OldNode) ->
-    {ok, _QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId),
-    case
-        vmq_redis:query(
-            vmq_redis_client,
-            [
-                ?FCALL,
-                ?MIGRATE_OFFLINE_QUEUE,
-                0,
-                MP,
-                ClientId,
-                OldNode,
-                node(),
-                os:system_time(nanosecond)
-            ],
-            ?FCALL,
-            ?MIGRATE_OFFLINE_QUEUE
-        )
-    of
-        {ok, undefined} ->
-            vmq_queue:terminate(QPid, normal),
-            {error, client_does_not_exist};
-        {ok, NodeBin} when is_binary(NodeBin) ->
-            case binary_to_atom(NodeBin) of
-                LocalNode when LocalNode == node() ->
-                    vmq_queue:init_offline_queue(QPid),
-                    LocalNode;
-                RemoteNode ->
+    case remap_subscriber_enabled() of
+        false ->
+            {error, remap_subscriber_disabled};
+        true ->
+            {ok, _QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId),
+            case
+                vmq_redis:query(
+                    vmq_redis_client,
+                    [
+                        ?FCALL,
+                        ?MIGRATE_OFFLINE_QUEUE,
+                        0,
+                        MP,
+                        ClientId,
+                        OldNode,
+                        node(),
+                        os:system_time(nanosecond)
+                    ],
+                    ?FCALL,
+                    ?MIGRATE_OFFLINE_QUEUE
+                )
+            of
+                {ok, undefined} ->
                     vmq_queue:terminate(QPid, normal),
-                    RemoteNode
-            end;
-        Res ->
-            lager:warning("~p", [Res]),
-            vmq_queue:terminate(QPid, normal),
-            {error, unwanted_response}
+                    {error, client_does_not_exist};
+                {ok, NodeBin} when is_binary(NodeBin) ->
+                    case binary_to_atom(NodeBin) of
+                        LocalNode when LocalNode == node() ->
+                            vmq_queue:init_offline_queue(QPid),
+                            LocalNode;
+                        RemoteNode ->
+                            vmq_queue:terminate(QPid, normal),
+                            RemoteNode
+                    end;
+                Res ->
+                    lager:warning("~p", [Res]),
+                    vmq_queue:terminate(QPid, normal),
+                    {error, unwanted_response}
+            end
     end.

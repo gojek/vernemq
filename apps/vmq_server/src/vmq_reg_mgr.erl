@@ -74,7 +74,10 @@ all_queues_setup_status() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    load_redis_functions(),
+    case application:get_env(vmq_server, redis_enabled, true) of
+        true -> load_redis_functions();
+        false -> ok
+    end,
 
     Self = self(),
     spawn_link(

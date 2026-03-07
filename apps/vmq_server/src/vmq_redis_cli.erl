@@ -4,6 +4,7 @@
 
 register_cli() ->
     clique:register_usage(["vmq-admin", "redis"], redis_usage()),
+    clique:register_usage(["vmq-admin", "redis", "show"], redis_show_usage()),
     clique:register_usage(["vmq-admin", "redis", "poll-main-queue"], redis_main_queue_poll_usage()),
     clique:register_usage(
         ["vmq-admin", "redis", "poll-main-queue", "enable"],
@@ -30,13 +31,30 @@ register_cli() ->
         ["vmq-admin", "redis", "message-store", "show"],
         message_store_show_usage()
     ),
+    clique:register_usage(["vmq-admin", "redis", "remap-subscriber"], remap_subscriber_usage()),
+    clique:register_usage(
+        ["vmq-admin", "redis", "remap-subscriber", "enable"],
+        remap_subscriber_enable_usage()
+    ),
+    clique:register_usage(
+        ["vmq-admin", "redis", "remap-subscriber", "disable"],
+        remap_subscriber_disable_usage()
+    ),
+    clique:register_usage(
+        ["vmq-admin", "redis", "remap-subscriber", "show"],
+        remap_subscriber_show_usage()
+    ),
 
+    redis_show_cmd(),
     redis_main_queue_poll_enable_cmd(),
     redis_main_queue_poll_disable_cmd(),
     redis_main_queue_poll_show_cmd(),
     message_store_enable_cmd(),
     message_store_disable_cmd(),
-    message_store_show_cmd().
+    message_store_show_cmd(),
+    remap_subscriber_enable_cmd(),
+    remap_subscriber_disable_cmd(),
+    remap_subscriber_show_cmd().
 
 redis_main_queue_poll_enable_cmd() ->
     Cmd = ["vmq-admin", "redis", "poll-main-queue", "enable"],
@@ -99,8 +117,10 @@ redis_usage() ->
         "vmq-admin redis <sub-command>\n\n",
         "  Manage Redis-backed runtime controls.\n\n",
         "  Sub-commands:\n",
-        "    poll-main-queue   Manage polling for redis main queue workers\n",
-        "    message-store     Manage message store operations\n",
+        "    show                Show all Redis configuration flags\n",
+        "    poll-main-queue     Manage polling for redis main queue workers\n",
+        "    message-store       Manage message store operations\n",
+        "    remap-subscriber    Manage remap/delete subscriber Redis calls\n",
         "  Use --help after a sub-command for more details.\n"
     ].
 
@@ -189,4 +209,86 @@ message_store_show_usage() ->
     [
         "vmq-admin redis message-store show\n\n",
         "  Shows whether the offline message store is currently enabled.\n\n"
+    ].
+
+remap_subscriber_enable_cmd() ->
+    Cmd = ["vmq-admin", "redis", "remap-subscriber", "enable"],
+    Callback = fun(_, _, _) ->
+        ok = application:set_env(vmq_server, remap_subscriber_enabled, true),
+        vmq_config:configure_node(),
+        [clique_status:text("remap-subscriber enabled.")]
+    end,
+    clique:register_command(Cmd, [], [], Callback).
+
+remap_subscriber_disable_cmd() ->
+    Cmd = ["vmq-admin", "redis", "remap-subscriber", "disable"],
+    Callback = fun(_, _, _) ->
+        ok = application:set_env(vmq_server, remap_subscriber_enabled, false),
+        vmq_config:configure_node(),
+        [clique_status:text("remap-subscriber disabled.")]
+    end,
+    clique:register_command(Cmd, [], [], Callback).
+
+remap_subscriber_show_cmd() ->
+    Cmd = ["vmq-admin", "redis", "remap-subscriber", "show"],
+    Callback = fun(_, _, _) ->
+        Enabled = application:get_env(vmq_server, remap_subscriber_enabled, true),
+        [clique_status:table([[{'remap_subscriber_enabled', Enabled}]])]
+    end,
+    clique:register_command(Cmd, [], [], Callback).
+
+remap_subscriber_usage() ->
+    [
+        "vmq-admin redis remap-subscriber <sub-command>\n\n",
+        "  Enable or disable REMAP_SUBSCRIBER and DELETE_SUBSCRIBER Redis calls.\n\n",
+        "  Sub-commands:\n",
+        "    enable   Enable remap/delete subscriber Redis calls\n",
+        "    disable  Disable remap/delete subscriber Redis calls\n",
+        "    show     Show current remap subscriber state\n",
+        "  Use --help after a sub-command for more details.\n"
+    ].
+
+remap_subscriber_enable_usage() ->
+    [
+        "vmq-admin redis remap-subscriber enable\n\n",
+        "  Enables the REMAP_SUBSCRIBER and DELETE_SUBSCRIBER Redis calls.\n\n"
+    ].
+
+remap_subscriber_disable_usage() ->
+    [
+        "vmq-admin redis remap-subscriber disable\n\n",
+        "  Disables the REMAP_SUBSCRIBER and DELETE_SUBSCRIBER Redis calls.\n",
+        "  When disabled, session takeover across nodes is skipped.\n\n"
+    ].
+
+remap_subscriber_show_usage() ->
+    [
+        "vmq-admin redis remap-subscriber show\n\n",
+        "  Shows whether the remap subscriber Redis calls are currently enabled.\n\n"
+    ].
+
+redis_show_cmd() ->
+    Cmd = ["vmq-admin", "redis", "show"],
+    Callback = fun(_, _, _) ->
+        RedisEnabled = application:get_env(vmq_server, redis_enabled, true),
+        RemapEnabled = application:get_env(vmq_server, remap_subscriber_enabled, true),
+        MsgStoreEnabled = application:get_env(vmq_server, message_store_enabled, true),
+        PollEnabled = application:get_env(vmq_server, redis_main_queue_poll_enabled, true),
+        [
+            clique_status:table([
+                [
+                    {'redis_enabled', RedisEnabled},
+                    {'remap_subscriber_enabled', RemapEnabled},
+                    {'message_store_enabled', MsgStoreEnabled},
+                    {'redis_main_queue_poll_enabled', PollEnabled}
+                ]
+            ])
+        ]
+    end,
+    clique:register_command(Cmd, [], [], Callback).
+
+redis_show_usage() ->
+    [
+        "vmq-admin redis show\n\n",
+        "  Shows the current state of all Redis configuration flags.\n\n"
     ].

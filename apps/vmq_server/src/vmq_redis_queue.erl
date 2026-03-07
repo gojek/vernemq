@@ -35,31 +35,36 @@ resume_main_queue_polling(QueueWorker) ->
     gen_server:cast(QueueWorker, resume_main_queue_polling).
 
 enqueue(Node, SubscriberBin, MsgBin) when is_binary(SubscriberBin) and is_binary(MsgBin) ->
-    RedisClient = gen_redis_producer_client(SubscriberBin),
-    MainQueueKey = "mainQueue" ++ "::" ++ atom_to_list(Node),
-    case
-        vmq_redis:query(
-            RedisClient,
-            [
-                ?FCALL,
-                ?ENQUEUE_MSG,
-                1,
-                MainQueueKey,
-                SubscriberBin,
-                MsgBin
-            ],
-            ?FCALL,
-            ?ENQUEUE_MSG
-        )
-    of
-        {ok, MainQueueSize} ->
-            vmq_metrics:pretimed_measurement(
-                {redis_main_queue, size, [{broker_node, Node}, {redis_client, RedisClient}]},
-                binary_to_integer(MainQueueSize)
-            ),
+    case application:get_env(vmq_server, redis_enabled, true) of
+        false ->
             ok;
-        {error, _} = Res ->
-            Res
+        true ->
+            RedisClient = gen_redis_producer_client(SubscriberBin),
+            MainQueueKey = "mainQueue" ++ "::" ++ atom_to_list(Node),
+            case
+                vmq_redis:query(
+                    RedisClient,
+                    [
+                        ?FCALL,
+                        ?ENQUEUE_MSG,
+                        1,
+                        MainQueueKey,
+                        SubscriberBin,
+                        MsgBin
+                    ],
+                    ?FCALL,
+                    ?ENQUEUE_MSG
+                )
+            of
+                {ok, MainQueueSize} ->
+                    vmq_metrics:pretimed_measurement(
+                        {redis_main_queue, size, [{broker_node, Node}, {redis_client, RedisClient}]},
+                        binary_to_integer(MainQueueSize)
+                    ),
+                    ok;
+                {error, _} = Res ->
+                    Res
+            end
     end.
 
 %%%===================================================================
@@ -213,7 +218,8 @@ gen_redis_producer_client(T) ->
     list_to_atom("redis_queue_" ++ ?PRODUCER ++ "_client_" ++ integer_to_list(Id)).
 
 poll_main_queue_enabled() ->
-    application:get_env(vmq_server, redis_main_queue_poll_enabled, true).
+    application:get_env(vmq_server, redis_enabled, true) andalso
+        application:get_env(vmq_server, redis_main_queue_poll_enabled, true).
 
 -ifdef(EUNIT).
 poll_main_queue_enabled_default_test() ->

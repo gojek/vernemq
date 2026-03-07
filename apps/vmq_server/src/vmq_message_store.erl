@@ -26,32 +26,39 @@ start() ->
     Ret.
 
 load_redis_functions() ->
-    LuaDir = application:get_env(vmq_server, redis_lua_dir, "./etc/lua"),
+    case application:get_env(vmq_server, redis_enabled, true) of
+        false ->
+            ok;
+        true ->
+            LuaDir = application:get_env(vmq_server, redis_lua_dir, "./etc/lua"),
 
-    {ok, PopOfflineMessageScript} = file:read_file(LuaDir ++ "/pop_offline_message.lua"),
-    {ok, WriteOfflineMessageScript} = file:read_file(LuaDir ++ "/write_offline_message.lua"),
-    {ok, DeleteSubsOfflineMessagesScript} = file:read_file(
-        LuaDir ++ "/delete_subs_offline_messages.lua"
-    ),
+            {ok, PopOfflineMessageScript} = file:read_file(LuaDir ++ "/pop_offline_message.lua"),
+            {ok, WriteOfflineMessageScript} = file:read_file(
+                LuaDir ++ "/write_offline_message.lua"
+            ),
+            {ok, DeleteSubsOfflineMessagesScript} = file:read_file(
+                LuaDir ++ "/delete_subs_offline_messages.lua"
+            ),
 
-    {ok, <<"pop_offline_message">>} = vmq_redis:query(
-        vmq_message_store_redis_client,
-        [?FUNCTION, "LOAD", "REPLACE", PopOfflineMessageScript],
-        ?FUNCTION_LOAD,
-        ?POP_OFFLINE_MESSAGE
-    ),
-    {ok, <<"write_offline_message">>} = vmq_redis:query(
-        vmq_message_store_redis_client,
-        [?FUNCTION, "LOAD", "REPLACE", WriteOfflineMessageScript],
-        ?FUNCTION_LOAD,
-        ?WRITE_OFFLINE_MESSAGE
-    ),
-    {ok, <<"delete_subs_offline_messages">>} = vmq_redis:query(
-        vmq_message_store_redis_client,
-        [?FUNCTION, "LOAD", "REPLACE", DeleteSubsOfflineMessagesScript],
-        ?FUNCTION_LOAD,
-        ?DELETE_SUBS_OFFLINE_MESSAGES
-    ).
+            {ok, <<"pop_offline_message">>} = vmq_redis:query(
+                vmq_message_store_redis_client,
+                [?FUNCTION, "LOAD", "REPLACE", PopOfflineMessageScript],
+                ?FUNCTION_LOAD,
+                ?POP_OFFLINE_MESSAGE
+            ),
+            {ok, <<"write_offline_message">>} = vmq_redis:query(
+                vmq_message_store_redis_client,
+                [?FUNCTION, "LOAD", "REPLACE", WriteOfflineMessageScript],
+                ?FUNCTION_LOAD,
+                ?WRITE_OFFLINE_MESSAGE
+            ),
+            {ok, <<"delete_subs_offline_messages">>} = vmq_redis:query(
+                vmq_message_store_redis_client,
+                [?FUNCTION, "LOAD", "REPLACE", DeleteSubsOfflineMessagesScript],
+                ?FUNCTION_LOAD,
+                ?DELETE_SUBS_OFFLINE_MESSAGES
+            )
+    end.
 
 write(SubscriberId, Msg) ->
     case message_store_enabled() of
@@ -168,7 +175,8 @@ nr_of_offline_messages() ->
     end.
 
 message_store_enabled() ->
-    application:get_env(vmq_server, message_store_enabled, true).
+    application:get_env(vmq_server, redis_enabled, true) andalso
+        application:get_env(vmq_server, message_store_enabled, true).
 
 %% ===================================================================
 %% Supervisor callbacks
@@ -182,6 +190,17 @@ message_store_enabled() ->
 init([]) ->
     ets:new(?OFFLINE_MESSAGES, [named_table, public, {write_concurrency, true}]),
 
+    case
+        application:get_env(vmq_server, redis_enabled, true) andalso
+            application:get_env(vmq_server, message_store_enabled, true)
+    of
+        false ->
+            {ok, {{one_for_one, 5, 10}, []}};
+        true ->
+            init_with_redis()
+    end.
+
+init_with_redis() ->
     StoreCfgs = application:get_env(vmq_server, message_store, [
         {redis, [
             {connect_options, "[{sentinel, [{endpoints, [{\"localhost\", 26379}]}]},{database,2}]"}

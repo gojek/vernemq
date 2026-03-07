@@ -48,6 +48,7 @@ start_link() ->
         ]}}.
 init([]) ->
     persistent_term:put(subscribe_trie_ready, 0),
+    ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
 
     SentinelEndpoints = vmq_schema_util:parse_list(
         application:get_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]")
@@ -57,25 +58,52 @@ init([]) ->
     Password = application:get_env(vmq_server, redis_sentinel_password, undefined),
     SentinelMaster = application:get_env(vmq_server, redis_sentinel_master, mymaster),
 
-    {ok,
-        {{one_for_one, 5, 10}, [
-            ?CHILD(eredis, worker, [
+    RedisEnabled = application:get_env(vmq_server, redis_enabled, true),
+
+    RedisChildren =
+        case RedisEnabled of
+            true ->
                 [
-                    {sentinel, [{endpoints, SentinelEndpoints}, {master_group, SentinelMaster}]},
-                    {database, RedisDB},
-                    {username, Username},
-                    {password, Password},
-                    {name, {local, vmq_redis_client}}
-                ]
-            ]),
-            ?CHILD(vmq_config, worker, []),
-            ?CHILD(vmq_metrics_sup, supervisor, []),
-            ?CHILD(vmq_crl_srv, worker, []),
-            ?CHILD(vmq_queue_sup_sup, supervisor, [infinity, ?MaxR, ?MaxT]),
-            ?CHILD(vmq_reg_sup, supervisor, []),
-            ?CHILD(vmq_redis_queue_sup, supervisor, []),
-            ?CHILD(vmq_redis_reaper_sup, supervisor, []),
-            ?CHILD(vmq_cluster_mon, worker, []),
-            ?CHILD(vmq_sysmon, worker, []),
-            ?CHILD(vmq_ranch_sup, supervisor, [])
-        ]}}.
+                    ?CHILD(eredis, worker, [
+                        [
+                            {sentinel, [
+                                {endpoints, SentinelEndpoints}, {master_group, SentinelMaster}
+                            ]},
+                            {database, RedisDB},
+                            {username, Username},
+                            {password, Password},
+                            {name, {local, vmq_redis_client}}
+                        ]
+                    ])
+                ];
+            false ->
+                []
+        end,
+
+    RedisLateChildren =
+        case RedisEnabled of
+            true ->
+                [
+                    ?CHILD(vmq_redis_queue_sup, supervisor, []),
+                    ?CHILD(vmq_redis_reaper_sup, supervisor, []),
+                    ?CHILD(vmq_cluster_mon, worker, [])
+                ];
+            false ->
+                []
+        end,
+
+    {ok, {
+        {one_for_one, 5, 10},
+        RedisChildren ++
+            [
+                ?CHILD(vmq_config, worker, []),
+                ?CHILD(vmq_metrics_sup, supervisor, []),
+                ?CHILD(vmq_crl_srv, worker, []),
+                ?CHILD(vmq_queue_sup_sup, supervisor, [infinity, ?MaxR, ?MaxT]),
+                ?CHILD(vmq_reg_sup, supervisor, [])
+            ] ++ RedisLateChildren ++
+            [
+                ?CHILD(vmq_sysmon, worker, []),
+                ?CHILD(vmq_ranch_sup, supervisor, [])
+            ]
+    }}.

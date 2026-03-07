@@ -59,11 +59,16 @@ start_link() ->
 
 -spec nodes() -> [any()].
 nodes() ->
-    [
-        Node
-     || [{Node, true, _}] <-
-            ets:match(?VMQ_CLUSTER_STATUS, '$1')
-    ].
+    case
+        [
+            Node
+         || [{Node, true, _}] <-
+                ets:match(?VMQ_CLUSTER_STATUS, '$1')
+        ]
+    of
+        [] -> [node()];
+        Nodes -> Nodes
+    end.
 
 -spec status() -> [any()].
 status() ->
@@ -98,8 +103,6 @@ is_node_alive(Node) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    ets:new(?VMQ_CLUSTER_STATUS, [{read_concurrency, true}, public, named_table]),
-
     Fall = application:get_env(vmq_server, cluster_node_liveness_fall, 3),
     RecheckInterval = application:get_env(vmq_server, cluster_node_liveness_check_interval, 500),
 
@@ -159,24 +162,29 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(recheck, State) ->
-    case
-        vmq_redis:query(
-            vmq_redis_client,
-            [
-                ?FCALL,
-                ?GET_LIVE_NODES,
-                0,
-                node()
-            ],
-            ?FCALL,
-            ?GET_LIVE_NODES
-        )
-    of
-        {ok, LiveNodes} when is_list(LiveNodes) ->
-            LiveNodesAtom = update_cluster_status(LiveNodes, []),
-            filter_dead_nodes(LiveNodesAtom, State#state.fall);
-        Res ->
-            lager:error("~p", [Res])
+    case application:get_env(vmq_server, redis_enabled, true) of
+        false ->
+            ok;
+        true ->
+            case
+                vmq_redis:query(
+                    vmq_redis_client,
+                    [
+                        ?FCALL,
+                        ?GET_LIVE_NODES,
+                        0,
+                        node()
+                    ],
+                    ?FCALL,
+                    ?GET_LIVE_NODES
+                )
+            of
+                {ok, LiveNodes} when is_list(LiveNodes) ->
+                    LiveNodesAtom = update_cluster_status(LiveNodes, []),
+                    filter_dead_nodes(LiveNodesAtom, State#state.fall);
+                Res ->
+                    lager:error("~p", [Res])
+            end
     end,
     NewTRef = erlang:send_after(
         State#state.recheck_interval,
@@ -249,4 +257,9 @@ filter_dead_nodes(Nodes, Fall) ->
     ok.
 
 ensure_no_local_client() ->
-    vmq_redis:query(vmq_redis_client, ["SCARD", node()], ?SCARD, ?ENSURE_NO_LOCAL_CLIENT).
+    case application:get_env(vmq_server, redis_enabled, true) of
+        false ->
+            {ok, 0};
+        true ->
+            vmq_redis:query(vmq_redis_client, ["SCARD", node()], ?SCARD, ?ENSURE_NO_LOCAL_CLIENT)
+    end.

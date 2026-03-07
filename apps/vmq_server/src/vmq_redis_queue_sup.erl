@@ -40,6 +40,14 @@ resume_main_queue_polling() ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init(_) ->
+    case application:get_env(vmq_server, redis_enabled, true) of
+        false ->
+            {ok, {{one_for_one, 5, 5}, []}};
+        true ->
+            init_with_redis()
+    end.
+
+init_with_redis() ->
     ConnectOptionsList = vmq_schema_util:parse_list(
         application:get_env(
             vmq_server,
