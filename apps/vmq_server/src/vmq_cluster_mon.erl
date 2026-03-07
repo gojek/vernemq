@@ -72,11 +72,16 @@ nodes() ->
 
 -spec status() -> [any()].
 status() ->
-    [
-        {Node, Ready}
-     || [{Node, Ready, _}] <-
-            ets:match(?VMQ_CLUSTER_STATUS, '$1')
-    ].
+    case application:get_env(vmq_server, redis_enabled, true) of
+        false ->
+            [{node(), true}];
+        true ->
+            [
+                {Node, Ready}
+             || [{Node, Ready, _}] <-
+                    ets:match(?VMQ_CLUSTER_STATUS, '$1')
+            ]
+    end.
 
 -spec is_node_alive(atom()) -> boolean().
 is_node_alive(Node) ->
