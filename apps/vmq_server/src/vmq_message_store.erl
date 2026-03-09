@@ -31,8 +31,8 @@ write(SubscriberId, Msg) ->
             ok;
         {ok, OfflineMsgCount} ->
             ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
-        {error, _} = Err ->
-            Err
+        {error, _} ->
+            {error, not_supported}
     end.
 
 read(_SubscriberId, _MsgRef) ->
@@ -44,8 +44,8 @@ delete(SubscriberId) ->
             ok;
         {ok, OfflineMsgCount} ->
             ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
-        {error, _} = Err ->
-            Err
+        {error, _} ->
+            {error, not_supported}
     end.
 
 delete(SubscriberId, MsgRef) ->
@@ -54,8 +54,8 @@ delete(SubscriberId, MsgRef) ->
             ok;
         {ok, OfflineMsgCount} ->
             ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
-        {error, _} = Err ->
-            Err
+        {error, _} ->
+            {error, not_supported}
     end.
 
 find(SubscriberId) ->

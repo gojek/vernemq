@@ -5,10 +5,6 @@
 
 -include("vmq_server.hrl").
 
--ifdef(EUNIT).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
 %% API functions
 -export([start_link/2, enqueue/3]).
 
@@ -43,8 +39,8 @@ enqueue(Node, SubscriberBin, MsgBin) when is_binary(SubscriberBin) and is_binary
                 binary_to_integer(MainQueueSize)
             ),
             ok;
-        {error, _} = Err ->
-            Err
+        {error, _} = Res ->
+            Res
     end.
 
 %%%===================================================================
@@ -171,6 +167,3 @@ gen_redis_producer_client(T) ->
     NumRedisShards = application:get_env(vmq_server, num_redis_main_queue_shards, 1),
     Id = erlang:phash2(T, NumRedisShards),
     list_to_atom("redis_queue_" ++ ?PRODUCER ++ "_client_" ++ integer_to_list(Id)).
-
--ifdef(EUNIT).
--endif.
