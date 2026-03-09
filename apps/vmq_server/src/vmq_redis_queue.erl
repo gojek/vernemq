@@ -35,36 +35,19 @@ resume_main_queue_polling(QueueWorker) ->
     gen_server:cast(QueueWorker, resume_main_queue_polling).
 
 enqueue(Node, SubscriberBin, MsgBin) when is_binary(SubscriberBin) and is_binary(MsgBin) ->
-    case application:get_env(vmq_server, redis_enabled, true) of
-        false ->
+    RedisClient = gen_redis_producer_client(SubscriberBin),
+    MainQueueKey = "mainQueue" ++ "::" ++ atom_to_list(Node),
+    case vmq_redis_backend:enqueue_msg(RedisClient, MainQueueKey, SubscriberBin, MsgBin) of
+        ok ->
             ok;
-        true ->
-            RedisClient = gen_redis_producer_client(SubscriberBin),
-            MainQueueKey = "mainQueue" ++ "::" ++ atom_to_list(Node),
-            case
-                vmq_redis:query(
-                    RedisClient,
-                    [
-                        ?FCALL,
-                        ?ENQUEUE_MSG,
-                        1,
-                        MainQueueKey,
-                        SubscriberBin,
-                        MsgBin
-                    ],
-                    ?FCALL,
-                    ?ENQUEUE_MSG
-                )
-            of
-                {ok, MainQueueSize} ->
-                    vmq_metrics:pretimed_measurement(
-                        {redis_main_queue, size, [{broker_node, Node}, {redis_client, RedisClient}]},
-                        binary_to_integer(MainQueueSize)
-                    ),
-                    ok;
-                {error, _} = Res ->
-                    Res
-            end
+        {ok, MainQueueSize} ->
+            vmq_metrics:pretimed_measurement(
+                {redis_main_queue, size, [{broker_node, Node}, {redis_client, RedisClient}]},
+                MainQueueSize
+            ),
+            ok;
+        {error, _} = Err ->
+            Err
     end.
 
 %%%===================================================================
@@ -122,65 +105,43 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(
-    poll_redis_main_queue, #state{shard = RedisNode, interval = Interval, timer = NTRef} = State
+    poll_redis_main_queue, #state{shard = RedisNode, interval = Interval} = State
 ) ->
-    case poll_main_queue_enabled() of
-        false ->
-            case is_reference(NTRef) of
-                true -> erlang:cancel_timer(NTRef);
-                _ -> ok
-            end,
-            {noreply, State#state{timer = undefined}};
-        true ->
-            MainQueue = "mainQueue::" ++ atom_to_list(node()),
-            NewTimer =
-                case
-                    vmq_redis:query(
-                        RedisNode,
-                        [
-                            ?FCALL,
-                            ?POLL_MAIN_QUEUE,
-                            1,
-                            MainQueue,
-                            20
-                        ],
-                        ?FCALL,
-                        ?POLL_MAIN_QUEUE
-                    )
-                of
-                    {ok, undefined} ->
-                        erlang:send_after(Interval, self(), poll_redis_main_queue);
-                    {ok, Msgs} ->
-                        lists:foreach(
-                            fun([SubBin, MsgBin, TimeInQueue]) ->
-                                vmq_metrics:pretimed_measurement(
-                                    {?MODULE, time_spent_in_main_queue},
-                                    binary_to_integer(TimeInQueue)
-                                ),
-                                case binary_to_term(SubBin) of
-                                    {_, _CId} = SId ->
-                                        {SubInfo, Msg} = binary_to_term(MsgBin),
-                                        vmq_reg:enqueue_msg({SId, SubInfo}, Msg);
-                                    RandSubs when is_list(RandSubs) ->
-                                        vmq_shared_subscriptions:publish_to_group(
-                                            binary_to_term(MsgBin),
-                                            RandSubs,
-                                            {0, 0}
-                                        );
-                                    UnknownMsg ->
-                                        lager:error("Unknown Msg in Redis Main Queue : ~p", [
-                                            UnknownMsg
-                                        ])
-                                end
-                            end,
-                            Msgs
+    MainQueue = "mainQueue::" ++ atom_to_list(node()),
+    NewTimer =
+        case vmq_redis_backend:poll_main_queue(RedisNode, MainQueue, 20) of
+            {ok, undefined} ->
+                erlang:send_after(Interval, self(), poll_redis_main_queue);
+            {ok, Msgs} ->
+                lists:foreach(
+                    fun([SubBin, MsgBin, TimeInQueue]) ->
+                        vmq_metrics:pretimed_measurement(
+                            {?MODULE, time_spent_in_main_queue},
+                            binary_to_integer(TimeInQueue)
                         ),
-                        erlang:send_after(0, self(), poll_redis_main_queue);
-                    _ ->
-                        erlang:send_after(Interval, self(), poll_redis_main_queue)
-                end,
-            {noreply, State#state{timer = NewTimer}}
-    end;
+                        case binary_to_term(SubBin) of
+                            {_, _CId} = SId ->
+                                {SubInfo, Msg} = binary_to_term(MsgBin),
+                                vmq_reg:enqueue_msg({SId, SubInfo}, Msg);
+                            RandSubs when is_list(RandSubs) ->
+                                vmq_shared_subscriptions:publish_to_group(
+                                    binary_to_term(MsgBin),
+                                    RandSubs,
+                                    {0, 0}
+                                );
+                            UnknownMsg ->
+                                lager:error("Unknown Msg in Redis Main Queue : ~p", [
+                                    UnknownMsg
+                                ])
+                        end
+                    end,
+                    Msgs
+                ),
+                erlang:send_after(0, self(), poll_redis_main_queue);
+            _ ->
+                erlang:send_after(Interval, self(), poll_redis_main_queue)
+        end,
+    {noreply, State#state{timer = NewTimer}};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -217,43 +178,7 @@ gen_redis_producer_client(T) ->
     Id = erlang:phash2(T, NumRedisShards),
     list_to_atom("redis_queue_" ++ ?PRODUCER ++ "_client_" ++ integer_to_list(Id)).
 
-poll_main_queue_enabled() ->
-    application:get_env(vmq_server, redis_enabled, true) andalso
-        application:get_env(vmq_server, redis_main_queue_poll_enabled, true).
-
 -ifdef(EUNIT).
-poll_main_queue_enabled_default_test() ->
-    application:unset_env(vmq_server, redis_main_queue_poll_enabled),
-    ?assertEqual(true, poll_main_queue_enabled()).
-
-poll_main_queue_enabled_off_test() ->
-    ok = application:set_env(vmq_server, redis_main_queue_poll_enabled, false),
-    ?assertEqual(false, poll_main_queue_enabled()),
-    application:unset_env(vmq_server, redis_main_queue_poll_enabled).
-
-handle_info_poll_disabled_no_timer_test() ->
-    ok = application:set_env(vmq_server, redis_main_queue_poll_enabled, false),
-    ?assertMatch(
-        {noreply, #state{}},
-        handle_info(
-            poll_redis_main_queue,
-            #state{shard = redis_queue_consumer_client_0, interval = 60000, timer = undefined}
-        )
-    ),
-    application:unset_env(vmq_server, redis_main_queue_poll_enabled).
-
-handle_info_poll_disabled_with_timer_test() ->
-    ok = application:set_env(vmq_server, redis_main_queue_poll_enabled, false),
-    TRef = erlang:send_after(60000, self(), poll_redis_main_queue),
-    ?assertMatch(
-        {noreply, #state{timer = undefined}},
-        handle_info(
-            poll_redis_main_queue,
-            #state{shard = redis_queue_consumer_client_0, interval = 60000, timer = TRef}
-        )
-    ),
-    application:unset_env(vmq_server, redis_main_queue_poll_enabled).
-
 handle_cast_resume_main_queue_polling_test() ->
     {noreply, #state{timer = TRef}} =
         handle_cast(resume_main_queue_polling, #state{

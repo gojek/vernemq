@@ -111,7 +111,7 @@ init([]) ->
     Fall = application:get_env(vmq_server, cluster_node_liveness_fall, 3),
     RecheckInterval = application:get_env(vmq_server, cluster_node_liveness_check_interval, 500),
 
-    case ensure_no_local_client() of
+    case vmq_redis_backend:ensure_no_local_client() of
         {ok, <<"0">>} ->
             Tref = erlang:send_after(0, self(), recheck),
             {ok, #state{
@@ -167,29 +167,14 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(recheck, State) ->
-    case application:get_env(vmq_server, redis_enabled, true) of
-        false ->
+    case vmq_redis_backend:get_live_nodes() of
+        {ok, LiveNodes} when is_list(LiveNodes), LiveNodes =/= [] ->
+            LiveNodesAtom = update_cluster_status(LiveNodes, []),
+            filter_dead_nodes(LiveNodesAtom, State#state.fall);
+        {ok, _} ->
             ok;
-        true ->
-            case
-                vmq_redis:query(
-                    vmq_redis_client,
-                    [
-                        ?FCALL,
-                        ?GET_LIVE_NODES,
-                        0,
-                        node()
-                    ],
-                    ?FCALL,
-                    ?GET_LIVE_NODES
-                )
-            of
-                {ok, LiveNodes} when is_list(LiveNodes) ->
-                    LiveNodesAtom = update_cluster_status(LiveNodes, []),
-                    filter_dead_nodes(LiveNodesAtom, State#state.fall);
-                Res ->
-                    lager:error("~p", [Res])
-            end
+        {error, Reason} ->
+            lager:error("get_live_nodes: ~p", [Reason])
     end,
     NewTRef = erlang:send_after(
         State#state.recheck_interval,
@@ -260,11 +245,3 @@ filter_dead_nodes(Nodes, Fall) ->
         ?VMQ_CLUSTER_STATUS
     ),
     ok.
-
-ensure_no_local_client() ->
-    case application:get_env(vmq_server, redis_enabled, true) of
-        false ->
-            {ok, 0};
-        true ->
-            vmq_redis:query(vmq_redis_client, ["SCARD", node()], ?SCARD, ?ENSURE_NO_LOCAL_CLIENT)
-    end.

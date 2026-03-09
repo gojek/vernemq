@@ -50,6 +50,8 @@ init([]) ->
     persistent_term:put(subscribe_trie_ready, 0),
     ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
 
+    vmq_redis_backend:init(),
+
     SentinelEndpoints = vmq_schema_util:parse_list(
         application:get_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]")
     ),

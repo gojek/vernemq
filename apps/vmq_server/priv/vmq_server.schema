@@ -62,11 +62,6 @@
     "redis_queue_sleep_interval",
     "vmq_server.redis_queue_sleep_interval", [{default, 0}, {datatype, integer}]}.
 
-{mapping, "redis_main_queue_poll_enabled", "vmq_server.redis_main_queue_poll_enabled", [
-    {default, on},
-    {datatype, flag}
-]}.
-
 %% @doc This option caches the shared subscription locally, default is 'off'. !!NOTE!!
 %% Local shared subscriptions currently do not honor shared subscription groups properly.
 %% It is recommended to use shared subscription topics only for shared subscription use-cases.
@@ -1807,23 +1802,9 @@
                                                               {datatype, integer}
                                                              ]}.
 
-%% @doc Master switch for Redis. When 'off', all Redis features are disabled
-%% regardless of individual sub-flag settings. When 'on', the sub-flags
-%% (remap_subscriber_enabled, message_store_enabled, redis_main_queue_poll_enabled)
-%% can be configured individually.
+%% @doc Master switch for Redis. When 'off', all Redis features are disabled.
+%% When 'on', Redis is used for subscriptions, message store, and queue polling.
 {mapping, "redis_enabled", "vmq_server.redis_enabled", [
-    {default, on},
-    {datatype, flag}
-]}.
-
-%% @doc Enable or disable the remap subscriber Redis calls (REMAP_SUBSCRIBER and DELETE_SUBSCRIBER), default is 'on'.
-{mapping, "remap_subscriber_enabled", "vmq_server.remap_subscriber_enabled", [
-    {default, on},
-    {datatype, flag}
-]}.
-
-%% @doc Enable or disable the message store, default is 'on'.
-{mapping, "message_store_enabled", "vmq_server.message_store_enabled", [
     {default, on},
     {datatype, flag}
 ]}.
