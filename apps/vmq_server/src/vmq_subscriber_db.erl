@@ -52,7 +52,11 @@ read(vmq_reg_redis_trie, {MP, ClientId}, Default) ->
         {ok, []} ->
             Default;
         {ok, [NodeBinary, CS, TopicsWithQoSBinary]} ->
-            CleanSession = case CS of <<"1">> -> true; _ -> false end,
+            CleanSession =
+                case CS of
+                    <<"1">> -> true;
+                    _ -> false
+                end,
             TopicsWithQoS = [
                 {vmq_topic:word(Topic), binary_to_term(QoS)}
              || [Topic, QoS] <- TopicsWithQoSBinary

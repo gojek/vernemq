@@ -824,19 +824,20 @@ del_subscriptions(Topics, {MP, ClientId} = _SubscriberId) ->
         {ok, _} -> {error, unwanted_redis_response};
         Err -> Err
     end.
+
+%% the return value is used to inform the caller
+%% if a session was already present for the given
+%% subscriber id.
+-spec maybe_remap_subscriber(subscriber_id(), boolean()) ->
+    {boolean(), undefined | vmq_subscriber:subs(), [node()]} | {error, binary | atom()}.
 maybe_remap_subscriber({MP, ClientId}, _StartClean = true) ->
     Subs = vmq_subscriber:new(true),
     case vmq_redis_backend:remap_subscriber(MP, ClientId, true) of
-        {ok, [undefined, [_, <<"1">>, []]]} ->
-            {false, Subs, []};
-        {ok, [<<"1">>, [_, <<"1">>, []]]} ->
-            {true, Subs, []};
-        {ok, [<<"1">>, [_, <<"1">>, []], OldNode]} ->
-            {true, Subs, [binary_to_atom(OldNode)]};
-        {ok, _} ->
-            {error, unwanted_redis_response};
-        Err ->
-            Err
+        {ok, [undefined, [_, <<"1">>, []]]} -> {false, Subs, []};
+        {ok, [<<"1">>, [_, <<"1">>, []]]} -> {true, Subs, []};
+        {ok, [<<"1">>, [_, <<"1">>, []], OldNode]} -> {true, Subs, [binary_to_atom(OldNode)]};
+        {ok, _} -> {error, unwanted_redis_response};
+        Err -> Err
     end;
 maybe_remap_subscriber({MP, ClientId}, _StartClean = false) ->
     case vmq_redis_backend:remap_subscriber(MP, ClientId, false) of

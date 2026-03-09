@@ -6,7 +6,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, resume_main_queue_polling/0]).
+-export([start_link/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -19,20 +19,6 @@
 
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
-
--spec resume_main_queue_polling() -> non_neg_integer().
-resume_main_queue_polling() ->
-    lists:foldl(
-        fun
-            ({WorkerId, Pid, worker, [vmq_redis_queue]}, Acc) when is_pid(Pid) ->
-                vmq_redis_queue:resume_main_queue_polling(WorkerId),
-                Acc + 1;
-            (_, Acc) ->
-                Acc
-        end,
-        0,
-        supervisor:which_children(?SERVER)
-    ).
 
 %%====================================================================
 %% Supervisor callbacks

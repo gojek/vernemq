@@ -27,9 +27,12 @@ start() ->
 
 write(SubscriberId, Msg) ->
     case vmq_redis_backend:msg_store_write(SubscriberId, Msg) of
-        ok -> ok;
-        {ok, OfflineMsgCount} -> ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
-        {error, _} = Err -> Err
+        ok ->
+            ok;
+        {ok, OfflineMsgCount} ->
+            ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
+        {error, _} = Err ->
+            Err
     end.
 
 read(_SubscriberId, _MsgRef) ->
@@ -37,16 +40,22 @@ read(_SubscriberId, _MsgRef) ->
 
 delete(SubscriberId) ->
     case vmq_redis_backend:msg_store_delete(SubscriberId) of
-        ok -> ok;
-        {ok, OfflineMsgCount} -> ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
-        {error, _} = Err -> Err
+        ok ->
+            ok;
+        {ok, OfflineMsgCount} ->
+            ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
+        {error, _} = Err ->
+            Err
     end.
 
 delete(SubscriberId, MsgRef) ->
     case vmq_redis_backend:msg_store_pop(SubscriberId, MsgRef) of
-        ok -> ok;
-        {ok, OfflineMsgCount} -> ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
-        {error, _} = Err -> Err
+        ok ->
+            ok;
+        {ok, OfflineMsgCount} ->
+            ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
+        {error, _} = Err ->
+            Err
     end.
 
 find(SubscriberId) ->

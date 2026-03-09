@@ -10,7 +10,7 @@
 -endif.
 
 %% API functions
--export([start_link/2, enqueue/3, resume_main_queue_polling/1]).
+-export([start_link/2, enqueue/3]).
 
 %% gen_server callbacks
 -export([
@@ -30,9 +30,6 @@
 
 start_link(RegName, RedisNode) ->
     gen_server:start_link({local, RegName}, ?MODULE, [RedisNode], []).
-
-resume_main_queue_polling(QueueWorker) ->
-    gen_server:cast(QueueWorker, resume_main_queue_polling).
 
 enqueue(Node, SubscriberBin, MsgBin) when is_binary(SubscriberBin) and is_binary(MsgBin) ->
     RedisClient = gen_redis_producer_client(SubscriberBin),
@@ -88,9 +85,6 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast(resume_main_queue_polling, #state{interval = Interval} = State) ->
-    NTRef = erlang:send_after(Interval, self(), poll_redis_main_queue),
-    {noreply, State#state{timer = NTRef}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -179,10 +173,4 @@ gen_redis_producer_client(T) ->
     list_to_atom("redis_queue_" ++ ?PRODUCER ++ "_client_" ++ integer_to_list(Id)).
 
 -ifdef(EUNIT).
-handle_cast_resume_main_queue_polling_test() ->
-    {noreply, #state{timer = TRef}} =
-        handle_cast(resume_main_queue_polling, #state{
-            shard = redis_queue_consumer_client_0, interval = 1, timer = undefined
-        }),
-    ?assert(is_reference(TRef)).
 -endif.

@@ -4,8 +4,6 @@
 
 -include("vmq_server.hrl").
 
-
-
 -export([
     subscribe/4,
     delete_subscriber/2,

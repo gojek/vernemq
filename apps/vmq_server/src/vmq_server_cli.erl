@@ -72,7 +72,6 @@ register_cli() ->
     vmq_info_cli:register_cli(),
 
     vmq_tracer_cli:register_cli(),
-    vmq_redis_cli:register_cli(),
     vmq_delay_puback_cli:register_cli(),
 
     vmq_trie_show_complex_topics_cmd(),
@@ -495,7 +494,6 @@ usage() ->
         "    plugin                  Manage plugin system\n",
         "    listener                Manage listener interfaces\n",
         "    metrics                 Retrieve System Metrics\n",
-        "    redis                   Manage Redis-backed runtime controls\n",
         "    api-key                 Manage API keys for the HTTP management interface\n",
         "    trace                   Trace various aspects of VerneMQ\n",
         "    all_queues_setup_check  Manage all_queues_setup_check rollout as part of health check\n",
