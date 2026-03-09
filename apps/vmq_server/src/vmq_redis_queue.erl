@@ -43,7 +43,7 @@ enqueue(Node, SubscriberBin, MsgBin) when is_binary(SubscriberBin) and is_binary
         {ok, MainQueueSize} ->
             vmq_metrics:pretimed_measurement(
                 {redis_main_queue, size, [{broker_node, Node}, {redis_client, RedisClient}]},
-                MainQueueSize
+                binary_to_integer(MainQueueSize)
             ),
             ok;
         {error, _} = Err ->

@@ -49,10 +49,17 @@ read(SubscriberId, Default) ->
 
 read(vmq_reg_redis_trie, {MP, ClientId}, Default) ->
     case vmq_redis_backend:fetch_subscriber(MP, ClientId) of
-        not_found ->
+        {ok, []} ->
             Default;
-        {ok, Subs} ->
-            Subs
+        {ok, [NodeBinary, CS, TopicsWithQoSBinary]} ->
+            CleanSession = case CS of <<"1">> -> true; _ -> false end,
+            TopicsWithQoS = [
+                {vmq_topic:word(Topic), binary_to_term(QoS)}
+             || [Topic, QoS] <- TopicsWithQoSBinary
+            ],
+            check_format([{binary_to_atom(NodeBinary), CleanSession, TopicsWithQoS}]);
+        _ ->
+            Default
     end;
 read(_, SubscriberId, Default) ->
     case vmq_metadata:get(?SUBSCRIBER_DB, SubscriberId) of

@@ -27,12 +27,15 @@
 
 subscribe(_MP, _ClientId, _NumOfTopics, _UnwordedTopicsWithBinaryQoS) -> {ok, []}.
 delete_subscriber(_MP, _ClientId) -> ok.
-unsubscribe(_MP, _ClientId, _SortedUnwordedTopics) -> ok.
-remap_subscriber(_MP, _ClientId, StartClean) -> {false, vmq_subscriber:new(StartClean), []}.
+unsubscribe(_MP, _ClientId, _SortedUnwordedTopics) -> {ok, <<"1">>}.
+remap_subscriber(_MP, _ClientId, true) ->
+    {ok, [undefined, [atom_to_binary(node()), <<"1">>, []]]};
+remap_subscriber(_MP, _ClientId, false) ->
+    {ok, [undefined, [atom_to_binary(node()), undefined, []]]}.
 migrate_offline_queue(_MP, _ClientId, _OldNode) -> ok.
 
-fetch_subscriber(_MP, _ClientId) -> not_found.
-fetch_matched_topic_subscribers(_MP, _Topics) -> [].
+fetch_subscriber(_MP, _ClientId) -> {ok, []}.
+fetch_matched_topic_subscribers(_MP, _Topics) -> {ok, []}.
 
 get_live_nodes() -> {ok, []}.
 ensure_no_local_client() -> {ok, <<"0">>}.

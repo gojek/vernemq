@@ -103,10 +103,23 @@ subscribe_op({MP, ClientId} = SubscriberId, Topics) ->
         ),
     OldSubs =
         case vmq_redis_backend:subscribe(MP, ClientId, NumOfTopics, UnwordedTopicsWithBinaryQoS) of
-            {error, _} = SubErr ->
-                SubErr;
-            {ok, Subs} ->
-                Subs
+            {ok, [_, CS, NTWQ]} ->
+                CleanSessionBool =
+                    case CS of
+                        <<"1">> -> true;
+                        undefined -> false
+                    end,
+                NewTopicsWithQoS = [
+                    {vmq_topic:word(Topic), binary_to_term(QoS)}
+                 || [Topic, QoS] <- NTWQ
+                ],
+                [{node(), CleanSessionBool, NewTopicsWithQoS}];
+            {ok, []} ->
+                [];
+            {ok, _} ->
+                {error, unwanted_redis_response};
+            Err ->
+                Err
         end,
     case OldSubs of
         {error, _} = ErrRes ->
@@ -806,9 +819,47 @@ del_subscriptions(Topics, {MP, ClientId} = _SubscriberId) ->
         Topics
     ),
     SortedUnwordedTopics = [vmq_topic:unword(T) || T <- lists:usort(Topics)],
-    vmq_redis_backend:unsubscribe(MP, ClientId, SortedUnwordedTopics).
-maybe_remap_subscriber({MP, ClientId}, StartClean) ->
-    vmq_redis_backend:remap_subscriber(MP, ClientId, StartClean).
+    case vmq_redis_backend:unsubscribe(MP, ClientId, SortedUnwordedTopics) of
+        {ok, <<"1">>} -> ok;
+        {ok, _} -> {error, unwanted_redis_response};
+        Err -> Err
+    end.
+maybe_remap_subscriber({MP, ClientId}, _StartClean = true) ->
+    Subs = vmq_subscriber:new(true),
+    case vmq_redis_backend:remap_subscriber(MP, ClientId, true) of
+        {ok, [undefined, [_, <<"1">>, []]]} ->
+            {false, Subs, []};
+        {ok, [<<"1">>, [_, <<"1">>, []]]} ->
+            {true, Subs, []};
+        {ok, [<<"1">>, [_, <<"1">>, []], OldNode]} ->
+            {true, Subs, [binary_to_atom(OldNode)]};
+        {ok, _} ->
+            {error, unwanted_redis_response};
+        Err ->
+            Err
+    end;
+maybe_remap_subscriber({MP, ClientId}, _StartClean = false) ->
+    case vmq_redis_backend:remap_subscriber(MP, ClientId, false) of
+        {ok, [undefined, [NewNode, undefined, []]]} ->
+            {false, [{binary_to_atom(NewNode), false, []}], []};
+        {ok, [<<"1">>, [NewNode, undefined, TopicsWithQoS]]} ->
+            NewTopicsWithQoS = [
+                {vmq_topic:word(Topic), binary_to_term(QoS)}
+             || [Topic, QoS] <- TopicsWithQoS
+            ],
+            {true, [{binary_to_atom(NewNode), false, NewTopicsWithQoS}], []};
+        {ok, [<<"1">>, [NewNode, undefined, TopicsWithQoS], OldNode]} ->
+            NewTopicsWithQoS = [
+                {vmq_topic:word(Topic), binary_to_term(QoS)}
+             || [Topic, QoS] <- TopicsWithQoS
+            ],
+            NewSubs = [{binary_to_atom(NewNode), false, NewTopicsWithQoS}],
+            {true, NewSubs, [binary_to_atom(OldNode)]};
+        {ok, _} ->
+            {error, unwanted_redis_response};
+        Err ->
+            Err
+    end.
 
 -spec get_session_pids(subscriber_id()) ->
     {'error', 'not_found'} | {'ok', pid(), [pid()]}.
@@ -892,15 +943,25 @@ update_qos1_metrics(Topics) ->
 
 -spec migrate_offline_queue(subscriber_id(), node()) -> ok | node() | {error, _}.
 migrate_offline_queue({MP, ClientId} = SubscriberId, OldNode) ->
+    {ok, _QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId),
     case vmq_redis_backend:migrate_offline_queue(MP, ClientId, OldNode) of
         ok ->
+            vmq_queue:terminate(QPid, normal),
             ok;
-        {error, _} = Err ->
-            Err;
-        {ok, LocalNode} when LocalNode == node() ->
-            {ok, _QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId),
-            vmq_queue:init_offline_queue(QPid),
-            LocalNode;
-        {ok, RemoteNode} ->
-            RemoteNode
+        {ok, undefined} ->
+            vmq_queue:terminate(QPid, normal),
+            {error, client_does_not_exist};
+        {ok, NodeBin} when is_binary(NodeBin) ->
+            case binary_to_atom(NodeBin) of
+                LocalNode when LocalNode == node() ->
+                    vmq_queue:init_offline_queue(QPid),
+                    LocalNode;
+                RemoteNode ->
+                    vmq_queue:terminate(QPid, normal),
+                    RemoteNode
+            end;
+        Res ->
+            lager:warning("~p", [Res]),
+            vmq_queue:terminate(QPid, normal),
+            {error, unwanted_response}
     end.

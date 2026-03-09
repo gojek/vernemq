@@ -25,24 +25,24 @@
 ]).
 
 -callback subscribe(term(), term(), non_neg_integer(), list()) ->
-    {ok, list()} | {error, term()}.
+    {ok, term()} | {error, term()}.
 -callback delete_subscriber(term(), term()) -> ok.
--callback unsubscribe(term(), term(), list()) -> ok | {error, term()}.
+-callback unsubscribe(term(), term(), list()) -> {ok, term()} | {error, term()}.
 -callback remap_subscriber(term(), term(), boolean()) ->
-    {boolean(), list(), [node()]} | {error, term()}.
+    {ok, term()} | {error, term()}.
 -callback migrate_offline_queue(term(), term(), node()) ->
-    {ok, node()} | ok | {error, term()}.
--callback fetch_subscriber(term(), term()) -> {ok, list()} | not_found.
--callback fetch_matched_topic_subscribers(term(), list()) -> list() | {error, term()}.
--callback get_live_nodes() -> {ok, [binary()]} | {error, term()}.
+    ok | {ok, term()} | {error, term()}.
+-callback fetch_subscriber(term(), term()) -> {ok, term()} | {error, term()}.
+-callback fetch_matched_topic_subscribers(term(), list()) -> {ok, term()} | {error, term()}.
+-callback get_live_nodes() -> {ok, term()} | {error, term()}.
 -callback ensure_no_local_client() -> {ok, binary()} | {error, term()}.
--callback msg_store_write(term(), term()) -> {ok, non_neg_integer()} | ok | {error, term()}.
+-callback msg_store_write(term(), term()) -> ok | {ok, term()} | {error, term()}.
 -callback msg_store_read(term(), term()) -> {ok, term()} | {error, term()}.
--callback msg_store_delete(term()) -> {ok, non_neg_integer()} | ok | {error, term()}.
--callback msg_store_pop(term(), term()) -> {ok, non_neg_integer()} | ok | {error, term()}.
--callback msg_store_find(term()) -> {ok, list()} | {error, term()}.
+-callback msg_store_delete(term()) -> ok | {ok, term()} | {error, term()}.
+-callback msg_store_pop(term(), term()) -> ok | {ok, term()} | {error, term()}.
+-callback msg_store_find(term()) -> ok | {ok, term()} | {error, term()}.
 -callback enqueue_msg(atom(), string(), binary(), binary()) ->
-    {ok, non_neg_integer()} | ok | {error, term()}.
+    ok | {ok, term()} | {error, term()}.
 -callback poll_main_queue(atom(), string(), non_neg_integer()) ->
     {ok, undefined} | {ok, list()} | {error, term()}.
 -callback reap_subscribers(node(), non_neg_integer()) ->

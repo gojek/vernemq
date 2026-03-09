@@ -28,29 +28,43 @@ start() ->
 write(SubscriberId, Msg) ->
     case vmq_redis_backend:msg_store_write(SubscriberId, Msg) of
         ok -> ok;
-        {ok, OfflineMsgCount} -> ets:insert(?OFFLINE_MESSAGES, {count, OfflineMsgCount});
+        {ok, OfflineMsgCount} -> ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
         {error, _} = Err -> Err
     end.
 
-read(SubscriberId, MsgRef) ->
-    vmq_redis_backend:msg_store_read(SubscriberId, MsgRef).
+read(_SubscriberId, _MsgRef) ->
+    {error, not_supported}.
 
 delete(SubscriberId) ->
     case vmq_redis_backend:msg_store_delete(SubscriberId) of
         ok -> ok;
-        {ok, OfflineMsgCount} -> ets:insert(?OFFLINE_MESSAGES, {count, OfflineMsgCount});
+        {ok, OfflineMsgCount} -> ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
         {error, _} = Err -> Err
     end.
 
 delete(SubscriberId, MsgRef) ->
     case vmq_redis_backend:msg_store_pop(SubscriberId, MsgRef) of
         ok -> ok;
-        {ok, OfflineMsgCount} -> ets:insert(?OFFLINE_MESSAGES, {count, OfflineMsgCount});
+        {ok, OfflineMsgCount} -> ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
         {error, _} = Err -> Err
     end.
 
 find(SubscriberId) ->
-    vmq_redis_backend:msg_store_find(SubscriberId).
+    case vmq_redis_backend:msg_store_find(SubscriberId) of
+        {ok, MsgsInB} ->
+            DMsgs = lists:foldr(
+                fun(MsgB, Acc) ->
+                    Msg = binary_to_term(MsgB),
+                    D = #deliver{msg = Msg, qos = Msg#vmq_msg.qos},
+                    [D | Acc]
+                end,
+                [],
+                MsgsInB
+            ),
+            {ok, DMsgs};
+        Res ->
+            Res
+    end.
 
 nr_of_offline_messages() ->
     case ets:lookup(?OFFLINE_MESSAGES, count) of

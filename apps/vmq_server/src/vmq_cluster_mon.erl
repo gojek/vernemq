@@ -168,13 +168,11 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info(recheck, State) ->
     case vmq_redis_backend:get_live_nodes() of
-        {ok, LiveNodes} when is_list(LiveNodes), LiveNodes =/= [] ->
+        {ok, LiveNodes} when is_list(LiveNodes) ->
             LiveNodesAtom = update_cluster_status(LiveNodes, []),
             filter_dead_nodes(LiveNodesAtom, State#state.fall);
-        {ok, _} ->
-            ok;
-        {error, Reason} ->
-            lager:error("get_live_nodes: ~p", [Reason])
+        Res ->
+            lager:error("~p", [Res])
     end,
     NewTRef = erlang:send_after(
         State#state.recheck_interval,
