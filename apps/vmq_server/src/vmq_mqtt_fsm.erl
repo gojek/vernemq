@@ -758,6 +758,13 @@ check_user(#mqtt_connect{username = User, password = Password, properties = Prop
                                 "can't register client ~p with username ~p due to ~p",
                                 [SubscriberId, User, Reason]
                             ),
+                            _ = vmq_plugin:all(on_register_failed, [
+                                Peer,
+                                SubscriberId,
+                                User,
+                                CleanSession,
+                                Reason
+                            ]),
                             connack_terminate(?CONNACK_SERVER, State1)
                     end;
                 {error, no_matching_hook_found} ->
@@ -765,12 +772,26 @@ check_user(#mqtt_connect{username = User, password = Password, properties = Prop
                         "can't authenticate client ~p from ~s due to no_matching_hook_found",
                         [State#state.subscriber_id, peertoa(State#state.peer)]
                     ),
+                    _ = vmq_plugin:all(on_register_failed, [
+                        State#state.peer,
+                        State#state.subscriber_id,
+                        User,
+                        State#state.clean_session,
+                        ?NO_MATCHING_HOOK_FOUND
+                    ]),
                     connack_terminate(?CONNACK_AUTH, State);
                 {error, invalid_credentials} ->
                     lager:warning(
                         "can't authenticate client ~p from ~s due to invalid_credentials",
                         [State#state.subscriber_id, peertoa(State#state.peer)]
                     ),
+                    _ = vmq_plugin:all(on_register_failed, [
+                        State#state.peer,
+                        State#state.subscriber_id,
+                        User,
+                        State#state.clean_session,
+                        ?INVALID_CREDENTIALS
+                    ]),
                     connack_terminate(?CONNACK_CREDENTIALS, State);
                 {error, Error} ->
                     %% can't authenticate due to other reason
@@ -778,6 +799,13 @@ check_user(#mqtt_connect{username = User, password = Password, properties = Prop
                         "can't authenticate client ~p from ~s due to ~p",
                         [State#state.subscriber_id, peertoa(State#state.peer), Error]
                     ),
+                    _ = vmq_plugin:all(on_register_failed, [
+                        State#state.peer,
+                        State#state.subscriber_id,
+                        User,
+                        State#state.clean_session,
+                        Error
+                    ]),
                     connack_terminate(?CONNACK_AUTH, State)
             end;
         true ->
@@ -813,6 +841,13 @@ check_user(#mqtt_connect{username = User, password = Password, properties = Prop
                         "can't register client ~p due to reason ~p",
                         [SubscriberId, Reason]
                     ),
+                    _ = vmq_plugin:all(on_register_failed, [
+                        Peer,
+                        SubscriberId,
+                        User,
+                        CleanSession,
+                        Reason
+                    ]),
                     connack_terminate(?CONNACK_SERVER, State)
             end
     end.
@@ -864,6 +899,13 @@ check_will(
                 "                          for client ~p due to ~p",
                 [SubscriberId, Reason]
             ),
+            _ = vmq_plugin:all(on_register_failed, [
+                State#state.peer,
+                SubscriberId,
+                User,
+                false,
+                Reason
+            ]),
             connack_terminate(?CONNACK_AUTH, State)
     end.
 

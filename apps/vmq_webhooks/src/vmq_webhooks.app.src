@@ -24,6 +24,7 @@
             {vmq_webhooks_plugin, auth_on_publish, 7, []},
             {vmq_webhooks_plugin, auth_on_subscribe, 4, []},
             {vmq_webhooks_plugin, on_register, 5, []},
+            {vmq_webhooks_plugin, on_register_failed, 5, []},
             {vmq_webhooks_plugin, on_publish, 8, []},
             {vmq_webhooks_plugin, on_subscribe, 4, []},
             {vmq_webhooks_plugin, on_unsubscribe, 4, []},

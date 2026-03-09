@@ -48,6 +48,7 @@ all() ->
      on_delivery_complete_test,
      on_register_test,
      on_register_empty_properties_test,
+     on_register_failed_test,
      on_publish_test,
      on_subscribe_test,
      on_unsubscribe_test,
@@ -164,6 +165,14 @@ on_message_drop_test(_) ->
     [ok,ok] = vmq_plugin:all(on_message_drop, [{?MOUNTPOINT, Self}, fun() -> {?TOPIC, 1, ?PAYLOAD, #{}, #matched_acl{name = ?LABEL, pattern = ?PATTERN}} end, binary_to_atom(?MESSAGE_DROP_REASON), ?SESSION_ID]),
     ok = exp_response(on_message_drop_ok),
     disable_hook(on_message_drop).
+
+on_register_failed_test(_) ->
+    enable_hook(on_register_failed),
+    Self = pid_to_bin(self()),
+    [ok] = vmq_plugin:all(on_register_failed,
+                          [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, true, invalid_credentials]),
+    ok = exp_response(on_register_failed_ok),
+    disable_hook(on_register_failed).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% helper functions

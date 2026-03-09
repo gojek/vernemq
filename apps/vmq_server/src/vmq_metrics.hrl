@@ -83,8 +83,8 @@
 -define(SIDECAR_EVENTS, sidecar_events).
 -define(SIDECAR_EVENTS_ERROR, sidecar_events_error).
 -define(SIDECAR_EVENTS_DURATION, sidecar_events_duration).
--define(AUTH_ON_REGISTER, auth_on_register).
 -define(ON_REGISTER, on_register).
+-define(ON_REGISTER_FAILED, on_register_failed).
 -define(ON_PUBLISH, on_publish).
 -define(ON_SUBSCRIBE, on_subscribe).
 -define(ON_UNSUBSCRIBE, on_unsubscribe).

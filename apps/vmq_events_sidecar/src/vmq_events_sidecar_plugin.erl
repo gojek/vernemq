@@ -7,7 +7,6 @@
 -include_lib("vmq_commons/src/vmq_types_common.hrl").
 
 -behaviour(gen_server).
--behaviour(auth_on_register_hook).
 -behaviour(on_register_hook).
 -behaviour(on_publish_hook).
 -behaviour(on_subscribe_hook).
@@ -20,6 +19,7 @@
 -behaviour(on_session_expired_hook).
 -behaviour(on_delivery_complete_hook).
 -behaviour(on_message_drop_hook).
+-behaviour(on_register_failed_hook).
 
 -export([
     on_register/5,
@@ -33,7 +33,8 @@
     on_client_gone/4,
     on_session_expired/2,
     on_delivery_complete/9,
-    on_message_drop/4
+    on_message_drop/4,
+    on_register_failed/5
 ]).
 
 %% API
@@ -250,16 +251,13 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Hook functions
 %%%===================================================================
--spec auth_on_register(peer(), subscriber_id(), username(), password(), flag()) -> 'next'.
-auth_on_register(Peer, SubscriberId, UserName, _, CleanSession) ->
+-spec on_register_failed(peer(), subscriber_id(), username(), flag(), reason()) -> 'next'.
+on_register_failed(Peer, SubscriberId, UserName, CleanSession, Reason) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
-    lager:debug(
-        "auth_on_register hook called for client_id=~p, username=~p, peer=~p:~p, clean_session=~p",
-        [ClientId, UserName, PPeer, Port, CleanSession]
-    ),
-    send_event(auth_on_register, {MP, ClientId, PPeer, Port, normalise(UserName), CleanSession}),
-    next.
+    send_event(
+        on_register_failed, {MP, ClientId, PPeer, Port, normalise(UserName), CleanSession, Reason}
+    ).
 
 %% called as an all_till_ok hook
 -spec on_register(peer(), subscriber_id(), username(), properties(), session_id()) -> 'next'.
