@@ -1,6 +1,6 @@
--module(vmq_redis_backend_redis).
+-module(vmq_redis_store).
 
--behaviour(vmq_redis_backend).
+-behaviour(vmq_state_store_backend).
 
 -include("vmq_server.hrl").
 

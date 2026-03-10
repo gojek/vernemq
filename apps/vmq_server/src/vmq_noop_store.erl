@@ -1,6 +1,6 @@
--module(vmq_redis_backend_noop).
+-module(vmq_noop_store).
 
--behaviour(vmq_redis_backend).
+-behaviour(vmq_state_store_backend).
 
 -export([
     subscribe/4,

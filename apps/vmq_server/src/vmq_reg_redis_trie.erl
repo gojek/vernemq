@@ -84,7 +84,7 @@ fold_matched_topics(MP, [Topic | Rest], Acc) ->
     end.
 
 fetchSubscribers(Topics, MP) ->
-    case vmq_redis_backend:fetch_matched_topic_subscribers(MP, Topics) of
+    case vmq_state_store_backend:fetch_matched_topic_subscribers(MP, Topics) of
         {ok, SubscribersList} -> SubscribersList;
         Err -> Err
     end.

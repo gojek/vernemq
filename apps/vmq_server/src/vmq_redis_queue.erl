@@ -30,7 +30,7 @@ start_link(RegName, RedisNode) ->
 enqueue(Node, SubscriberBin, MsgBin) when is_binary(SubscriberBin) and is_binary(MsgBin) ->
     RedisClient = gen_redis_producer_client(SubscriberBin),
     MainQueueKey = "mainQueue" ++ "::" ++ atom_to_list(Node),
-    case vmq_redis_backend:enqueue_msg(RedisClient, MainQueueKey, SubscriberBin, MsgBin) of
+    case vmq_state_store_backend:enqueue_msg(RedisClient, MainQueueKey, SubscriberBin, MsgBin) of
         ok ->
             ok;
         {ok, MainQueueSize} ->
@@ -99,7 +99,7 @@ handle_info(
 ) ->
     MainQueue = "mainQueue::" ++ atom_to_list(node()),
     NewTimer =
-        case vmq_redis_backend:poll_main_queue(RedisNode, MainQueue, 20) of
+        case vmq_state_store_backend:poll_main_queue(RedisNode, MainQueue, 20) of
             {ok, undefined} ->
                 erlang:send_after(Interval, self(), poll_redis_main_queue);
             {ok, Msgs} ->

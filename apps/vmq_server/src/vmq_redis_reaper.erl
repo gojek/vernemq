@@ -104,7 +104,7 @@ handle_info(
 
     NextStep = lists:foldl(
         fun(RedisClient, Acc) ->
-            case vmq_redis_backend:poll_main_queue(RedisClient, MainQueue, MaxMsgs) of
+            case vmq_state_store_backend:poll_main_queue(RedisClient, MainQueue, MaxMsgs) of
                 {ok, undefined} ->
                     Acc;
                 {ok, Msgs} ->
@@ -157,7 +157,7 @@ handle_info(
         interval = Interval
     } = State
 ) ->
-    case vmq_redis_backend:reap_subscribers(DeadNode, MaxClients) of
+    case vmq_state_store_backend:reap_subscribers(DeadNode, MaxClients) of
         {ok, ClientList} when is_list(ClientList) ->
             Duration = vmq_config:get_env(persistent_client_expiration, 0),
             lists:foreach(

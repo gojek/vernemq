@@ -59,29 +59,19 @@ start_link() ->
 
 -spec nodes() -> [any()].
 nodes() ->
-    case
-        [
-            Node
-         || [{Node, true, _}] <-
-                ets:match(?VMQ_CLUSTER_STATUS, '$1')
-        ]
-    of
-        [] -> [node()];
-        Nodes -> Nodes
-    end.
+    [
+        Node
+     || [{Node, true, _}] <-
+            ets:match(?VMQ_CLUSTER_STATUS, '$1')
+    ].
 
 -spec status() -> [any()].
 status() ->
-    case application:get_env(vmq_server, redis_enabled, true) of
-        false ->
-            [{node(), true}];
-        true ->
-            [
-                {Node, Ready}
-             || [{Node, Ready, _}] <-
-                    ets:match(?VMQ_CLUSTER_STATUS, '$1')
-            ]
-    end.
+    [
+        {Node, Ready}
+     || [{Node, Ready, _}] <-
+            ets:match(?VMQ_CLUSTER_STATUS, '$1')
+    ].
 
 -spec is_node_alive(atom()) -> boolean().
 is_node_alive(Node) ->
@@ -111,7 +101,7 @@ init([]) ->
     Fall = application:get_env(vmq_server, cluster_node_liveness_fall, 3),
     RecheckInterval = application:get_env(vmq_server, cluster_node_liveness_check_interval, 500),
 
-    case vmq_redis_backend:ensure_no_local_client() of
+    case vmq_state_store_backend:ensure_no_local_client() of
         {ok, <<"0">>} ->
             Tref = erlang:send_after(0, self(), recheck),
             {ok, #state{
@@ -167,7 +157,7 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(recheck, State) ->
-    case vmq_redis_backend:get_live_nodes() of
+    case vmq_state_store_backend:get_live_nodes() of
         {ok, LiveNodes} when is_list(LiveNodes) ->
             LiveNodesAtom = update_cluster_status(LiveNodes, []),
             filter_dead_nodes(LiveNodesAtom, State#state.fall);

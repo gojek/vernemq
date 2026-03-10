@@ -25,6 +25,7 @@
 
 -define(MaxR, application:get_env(vmq_server, max_r, 5)).
 -define(MaxT, application:get_env(vmq_server, max_t, 10)).
+-define(VMQ_CLUSTER_STATUS, vmq_status).
 
 %% Helper macro for declaring children of supervisor
 -define(CHILD(I, Type, Args), {I, {I, start_link, Args}, permanent, 5000, Type, [I]}).
@@ -48,9 +49,9 @@ start_link() ->
         ]}}.
 init([]) ->
     persistent_term:put(subscribe_trie_ready, 0),
-    ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
+    ets:new(?VMQ_CLUSTER_STATUS, [{read_concurrency, true}, public, named_table]),
 
-    vmq_redis_backend:init(),
+    vmq_state_store_backend:init(),
 
     SentinelEndpoints = vmq_schema_util:parse_list(
         application:get_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]")
@@ -61,6 +62,13 @@ init([]) ->
     SentinelMaster = application:get_env(vmq_server, redis_sentinel_master, mymaster),
 
     RedisEnabled = application:get_env(vmq_server, redis_enabled, true),
+
+    case RedisEnabled of
+        true ->
+            ok;
+        false ->
+            ets:insert(?VMQ_CLUSTER_STATUS, {node(), true, 0})
+    end,
 
     RedisChildren =
         case RedisEnabled of

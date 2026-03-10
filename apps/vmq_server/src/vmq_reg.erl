@@ -102,7 +102,11 @@ subscribe_op({MP, ClientId} = SubscriberId, Topics) ->
             lists:ukeysort(1, Topics)
         ),
     OldSubs =
-        case vmq_redis_backend:subscribe(MP, ClientId, NumOfTopics, UnwordedTopicsWithBinaryQoS) of
+        case
+            vmq_state_store_backend:subscribe(
+                MP, ClientId, NumOfTopics, UnwordedTopicsWithBinaryQoS
+            )
+        of
             {ok, [_, CS, NTWQ]} ->
                 CleanSessionBool =
                     case CS of
@@ -127,7 +131,7 @@ subscribe_op({MP, ClientId} = SubscriberId, Topics) ->
         _ ->
             CacheLocally =
                 vmq_config:get_env(cache_shared_subscriptions_locally, false) orelse
-                    (vmq_redis_backend:backend() =:= vmq_redis_backend_noop),
+                    (vmq_state_store_backend:backend() =:= vmq_state_store_backend_noop),
             if
                 CacheLocally ->
                     lists:foreach(
@@ -799,7 +803,7 @@ del_subscriber(vmq_reg_redis_trie, {MP, ClientId} = _SubscriberId) ->
     Value = {ClientId, '$2'},
     ets:select_delete(?SHARED_SUBS_ETS_TABLE, [{{{Key, Value}}, [], [true]}]),
     vmq_metrics:incr_cache_delete(?LOCAL_SHARED_SUBS),
-    vmq_redis_backend:delete_subscriber(MP, ClientId),
+    vmq_state_store_backend:delete_subscriber(MP, ClientId),
     ok;
 del_subscriber(_, SubscriberId) ->
     vmq_subscriber_db:delete(SubscriberId).
@@ -819,7 +823,7 @@ del_subscriptions(Topics, {MP, ClientId} = _SubscriberId) ->
         Topics
     ),
     SortedUnwordedTopics = [vmq_topic:unword(T) || T <- lists:usort(Topics)],
-    case vmq_redis_backend:unsubscribe(MP, ClientId, SortedUnwordedTopics) of
+    case vmq_state_store_backend:unsubscribe(MP, ClientId, SortedUnwordedTopics) of
         {ok, <<"1">>} -> ok;
         {ok, _} -> {error, unwanted_redis_response};
         Err -> Err
@@ -832,7 +836,7 @@ del_subscriptions(Topics, {MP, ClientId} = _SubscriberId) ->
     {boolean(), undefined | vmq_subscriber:subs(), [node()]} | {error, binary | atom()}.
 maybe_remap_subscriber({MP, ClientId}, _StartClean = true) ->
     Subs = vmq_subscriber:new(true),
-    case vmq_redis_backend:remap_subscriber(MP, ClientId, true) of
+    case vmq_state_store_backend:remap_subscriber(MP, ClientId, true) of
         {ok, [undefined, [_, <<"1">>, []]]} -> {false, Subs, []};
         {ok, [<<"1">>, [_, <<"1">>, []]]} -> {true, Subs, []};
         {ok, [<<"1">>, [_, <<"1">>, []], OldNode]} -> {true, Subs, [binary_to_atom(OldNode)]};
@@ -840,7 +844,7 @@ maybe_remap_subscriber({MP, ClientId}, _StartClean = true) ->
         Err -> Err
     end;
 maybe_remap_subscriber({MP, ClientId}, _StartClean = false) ->
-    case vmq_redis_backend:remap_subscriber(MP, ClientId, false) of
+    case vmq_state_store_backend:remap_subscriber(MP, ClientId, false) of
         {ok, [undefined, [NewNode, undefined, []]]} ->
             {false, [{binary_to_atom(NewNode), false, []}], []};
         {ok, [<<"1">>, [NewNode, undefined, TopicsWithQoS]]} ->
@@ -945,7 +949,7 @@ update_qos1_metrics(Topics) ->
 -spec migrate_offline_queue(subscriber_id(), node()) -> ok | node() | {error, _}.
 migrate_offline_queue({MP, ClientId} = SubscriberId, OldNode) ->
     {ok, _QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId),
-    case vmq_redis_backend:migrate_offline_queue(MP, ClientId, OldNode) of
+    case vmq_state_store_backend:migrate_offline_queue(MP, ClientId, OldNode) of
         ok ->
             vmq_queue:terminate(QPid, normal),
             ok;

@@ -1,4 +1,4 @@
--module(vmq_redis_backend).
+-module(vmq_state_store_backend).
 
 -export([init/0, backend/0]).
 -export([
@@ -54,14 +54,14 @@
 init() ->
     Backend =
         case application:get_env(vmq_server, redis_enabled, true) of
-            true -> vmq_redis_backend_redis;
-            false -> vmq_redis_backend_noop
+            true -> vmq_redis_store;
+            false -> vmq_noop_store
         end,
-    persistent_term:put(vmq_redis_backend, Backend),
+    persistent_term:put(vmq_state_store_backend, Backend),
     ok.
 
 backend() ->
-    persistent_term:get(vmq_redis_backend).
+    persistent_term:get(vmq_state_store_backend).
 
 subscribe(MP, ClientId, NumOfTopics, UnwordedTopicsWithBinaryQoS) ->
     (backend()):subscribe(MP, ClientId, NumOfTopics, UnwordedTopicsWithBinaryQoS).

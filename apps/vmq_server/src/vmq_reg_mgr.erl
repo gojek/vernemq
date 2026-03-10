@@ -74,7 +74,7 @@ all_queues_setup_status() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    vmq_redis_backend:load_reg_functions(),
+    vmq_state_store_backend:load_reg_functions(),
 
     Self = self(),
     spawn_link(

@@ -106,7 +106,7 @@ init_redis(
         | ConnectOptions
     ]),
 
-    vmq_redis_backend:load_queue_functions(ProducerRedisClient, ConsumerRedisClient),
+    vmq_state_store_backend:load_queue_functions(ProducerRedisClient, ConsumerRedisClient),
 
     init_redis(ConnectOptionsList, UsernamesList, PasswordsList, Id + 1).
 

@@ -22,11 +22,11 @@
 
 start() ->
     Ret = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
-    vmq_redis_backend:load_msg_store_functions(),
+    vmq_state_store_backend:load_msg_store_functions(),
     Ret.
 
 write(SubscriberId, Msg) ->
-    case vmq_redis_backend:msg_store_write(SubscriberId, Msg) of
+    case vmq_state_store_backend:msg_store_write(SubscriberId, Msg) of
         ok ->
             ok;
         {ok, OfflineMsgCount} ->
@@ -39,7 +39,7 @@ read(_SubscriberId, _MsgRef) ->
     {error, not_supported}.
 
 delete(SubscriberId) ->
-    case vmq_redis_backend:msg_store_delete(SubscriberId) of
+    case vmq_state_store_backend:msg_store_delete(SubscriberId) of
         ok ->
             ok;
         {ok, OfflineMsgCount} ->
@@ -49,7 +49,7 @@ delete(SubscriberId) ->
     end.
 
 delete(SubscriberId, MsgRef) ->
-    case vmq_redis_backend:msg_store_pop(SubscriberId, MsgRef) of
+    case vmq_state_store_backend:msg_store_pop(SubscriberId, MsgRef) of
         ok ->
             ok;
         {ok, OfflineMsgCount} ->
@@ -59,7 +59,7 @@ delete(SubscriberId, MsgRef) ->
     end.
 
 find(SubscriberId) ->
-    case vmq_redis_backend:msg_store_find(SubscriberId) of
+    case vmq_state_store_backend:msg_store_find(SubscriberId) of
         {ok, MsgsInB} ->
             DMsgs = lists:foldr(
                 fun(MsgB, Acc) ->
