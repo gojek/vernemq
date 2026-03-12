@@ -70,7 +70,7 @@ init([]) ->
             ets:insert(?VMQ_CLUSTER_STATUS, {node(), true, 0})
     end,
 
-    RedisChildren =
+    RedisMainClient =
         case RedisEnabled of
             true ->
                 [
@@ -90,7 +90,7 @@ init([]) ->
                 []
         end,
 
-    RedisLateChildren =
+    RedisWorkersWithSup =
         case RedisEnabled of
             true ->
                 [
@@ -104,14 +104,14 @@ init([]) ->
 
     {ok, {
         {one_for_one, 5, 10},
-        RedisChildren ++
+        RedisMainClient ++
             [
                 ?CHILD(vmq_config, worker, []),
                 ?CHILD(vmq_metrics_sup, supervisor, []),
                 ?CHILD(vmq_crl_srv, worker, []),
                 ?CHILD(vmq_queue_sup_sup, supervisor, [infinity, ?MaxR, ?MaxT]),
                 ?CHILD(vmq_reg_sup, supervisor, [])
-            ] ++ RedisLateChildren ++
+            ] ++ RedisWorkersWithSup ++
             [
                 ?CHILD(vmq_sysmon, worker, []),
                 ?CHILD(vmq_ranch_sup, supervisor, [])

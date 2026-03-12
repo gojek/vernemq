@@ -50,8 +50,6 @@ delete(SubscriberId) ->
 
 delete(SubscriberId, MsgRef) ->
     case vmq_state_store_backend:msg_store_pop(SubscriberId, MsgRef) of
-        ok ->
-            ok;
         {ok, OfflineMsgCount} ->
             ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
         {error, _} ->
