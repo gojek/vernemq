@@ -36,10 +36,10 @@
 -callback fetch_matched_topic_subscribers(term(), list()) -> {ok, term()} | {error, term()}.
 -callback get_live_nodes() -> {ok, term()} | {error, term()}.
 -callback ensure_no_local_client() -> {ok, binary()} | {error, term()}.
--callback msg_store_write(term(), term()) -> ok | {ok, term()} | {error, term()}.
+-callback msg_store_write(term(), term()) -> {ok, term()} | {error, term()}.
 -callback msg_store_read(term(), term()) -> {ok, term()} | {error, term()}.
--callback msg_store_delete(term()) -> ok | {ok, term()} | {error, term()}.
--callback msg_store_pop(term(), term()) -> ok | {ok, term()} | {error, term()}.
+-callback msg_store_delete(term()) -> {ok, term()} | {error, term()}.
+-callback msg_store_pop(term(), term()) -> {ok, term()} | {error, term()}.
 -callback msg_store_find(term()) -> ok | {ok, term()} | {error, term()}.
 -callback load_reg_functions() -> ok.
 -callback load_msg_store_functions() -> ok.

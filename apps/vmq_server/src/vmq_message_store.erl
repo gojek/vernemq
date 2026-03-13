@@ -27,8 +27,6 @@ start() ->
 
 write(SubscriberId, Msg) ->
     case vmq_state_store_backend:msg_store_write(SubscriberId, Msg) of
-        ok ->
-            ok;
         {ok, OfflineMsgCount} ->
             ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
         {error, _} ->
@@ -40,8 +38,6 @@ read(_SubscriberId, _MsgRef) ->
 
 delete(SubscriberId) ->
     case vmq_state_store_backend:msg_store_delete(SubscriberId) of
-        ok ->
-            ok;
         {ok, OfflineMsgCount} ->
             ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
         {error, _} ->
