@@ -99,6 +99,7 @@ is_node_alive(Node) ->
 %%--------------------------------------------------------------------
 init([]) ->
     ets:new(?VMQ_CLUSTER_STATUS, [{read_concurrency, true}, public, named_table]),
+
     Fall = application:get_env(vmq_server, cluster_node_liveness_fall, 3),
     RecheckInterval = application:get_env(vmq_server, cluster_node_liveness_check_interval, 500),
 

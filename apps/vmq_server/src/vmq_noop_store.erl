@@ -2,6 +2,8 @@
 
 -behaviour(vmq_state_store_backend).
 
+-include("vmq_metrics.hrl").
+
 -export([
     subscribe/4,
     delete_subscriber/2,
@@ -55,4 +57,6 @@ ensure_reaper(_Node) -> ok.
 del_reaper(_Node) -> ok.
 get_reaper(_Node) -> {ok, self()}.
 
-enqueue(_Node, _SubscriberBin, _MsgBin) -> ok.
+enqueue(_Node, _SubscriberBin, _MsgBin) ->
+    vmq_metrics:incr(?NOOP_ENQUEUE),
+    ok.

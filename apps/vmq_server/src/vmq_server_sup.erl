@@ -83,12 +83,8 @@ init([]) ->
 
     RedisWorkersWithSup =
         case RedisEnabled of
-            true ->
-                [
-                    ?CHILD(vmq_redis_queue_sup, supervisor, [])
-                ];
-            false ->
-                []
+            true -> [?CHILD(vmq_redis_queue_sup, supervisor, [])];
+            false -> []
         end,
 
     {ok, {
