@@ -98,6 +98,7 @@ is_node_alive(Node) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
+    ets:new(?VMQ_CLUSTER_STATUS, [{read_concurrency, true}, public, named_table]),
     Fall = application:get_env(vmq_server, cluster_node_liveness_fall, 3),
     RecheckInterval = application:get_env(vmq_server, cluster_node_liveness_check_interval, 500),
 
@@ -208,7 +209,7 @@ update_cluster_status([], Acc) ->
     Acc;
 update_cluster_status([BNode | Rest], Acc) ->
     Node = binary_to_atom(BNode),
-    vmq_redis_reaper_sup:del_reaper(Node),
+    vmq_state_store_backend:del_reaper(Node),
     ets:insert(?VMQ_CLUSTER_STATUS, {Node, true, 0}),
     update_cluster_status(Rest, [Node | Acc]).
 
@@ -221,7 +222,7 @@ filter_dead_nodes(Nodes, Fall) ->
                 false when FailedAttempts > Fall ->
                     %% Node is not part of the cluster anymore
                     lager:warning("trigger reaper for node ~p", [Node]),
-                    vmq_redis_reaper_sup:ensure_reaper(Node),
+                    vmq_state_store_backend:ensure_reaper(Node),
                     ets:delete(?VMQ_CLUSTER_STATUS, Node);
                 false ->
                     ets:update_element(?VMQ_CLUSTER_STATUS, Node, [

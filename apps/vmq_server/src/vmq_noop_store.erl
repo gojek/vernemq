@@ -17,12 +17,13 @@
     msg_store_delete/1,
     msg_store_pop/2,
     msg_store_find/1,
-    enqueue_msg/4,
-    poll_main_queue/3,
-    reap_subscribers/2,
     load_reg_functions/0,
     load_msg_store_functions/0,
-    load_queue_functions/2
+    load_queue_functions/2,
+    ensure_reaper/1,
+    del_reaper/1,
+    get_reaper/1,
+    enqueue/3
 ]).
 
 subscribe(_MP, _ClientId, _NumOfTopics, _UnwordedTopicsWithBinaryQoS) -> {ok, []}.
@@ -32,7 +33,7 @@ remap_subscriber(_MP, _ClientId, true) ->
     {ok, [undefined, [atom_to_binary(node()), <<"1">>, []]]};
 remap_subscriber(_MP, _ClientId, false) ->
     {ok, [undefined, [atom_to_binary(node()), undefined, []]]}.
-migrate_offline_queue(_MP, _ClientId, _OldNode) -> ok.
+migrate_offline_queue(_MP, _ClientId, _OldNode) -> {ok, atom_to_binary(node())}.
 
 fetch_subscriber(_MP, _ClientId) -> {ok, []}.
 fetch_matched_topic_subscribers(_MP, _Topics) -> {ok, []}.
@@ -46,11 +47,12 @@ msg_store_delete(_SubscriberId) -> ok.
 msg_store_pop(_SubscriberId, _MsgRef) -> {ok, <<"0">>}.
 msg_store_find(_SubscriberId) -> {ok, []}.
 
-enqueue_msg(_RedisClient, _MainQueueKey, _SubscriberBin, _MsgBin) -> ok.
-poll_main_queue(_RedisClient, _MainQueue, _BatchSize) -> {ok, undefined}.
-
-reap_subscribers(_DeadNode, _MaxClients) -> {ok, undefined}.
-
 load_reg_functions() -> ok.
 load_msg_store_functions() -> ok.
 load_queue_functions(_ProducerClient, _ConsumerClient) -> ok.
+
+ensure_reaper(_Node) -> ok.
+del_reaper(_Node) -> ok.
+get_reaper(_Node) -> {ok, self()}.
+
+enqueue(_Node, _SubscriberBin, _MsgBin) -> ok.

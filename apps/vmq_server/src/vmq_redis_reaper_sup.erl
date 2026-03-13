@@ -28,7 +28,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 ensure_reaper(Node) ->
-    case get_reaper(Node) of
+    case vmq_state_store_backend:get_reaper(Node) of
         {error, not_found} ->
             {ok, _} = supervisor:start_child(?MODULE, child_spec(Node)),
             ok;

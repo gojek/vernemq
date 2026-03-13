@@ -456,7 +456,7 @@ publish_fold_fun(
 ) ->
     case vmq_cluster_mon:is_node_alive(Node) of
         true ->
-            vmq_redis_queue:enqueue(
+            vmq_state_store_backend:enqueue(
                 Node, term_to_binary(SubscriberId), term_to_binary({SubInfo, Msg})
             ),
             Acc#publish_fold_acc{remote_matches = RN + 1};
@@ -489,8 +489,6 @@ publish_fold_fun(
             %% 3. If the result was undefined then terminate the queue otherwise initialize offline queue
             %% and then enqueue.
             case migrate_offline_queue(SubscriberId, Node) of
-                ok ->
-                    Acc;
                 {error, _} ->
                     Acc;
                 NewNode ->
@@ -946,13 +944,10 @@ update_qos1_metrics(Topics) ->
         Topics
     ).
 
--spec migrate_offline_queue(subscriber_id(), node()) -> ok | node() | {error, _}.
+-spec migrate_offline_queue(subscriber_id(), node()) -> node() | {error, _}.
 migrate_offline_queue({MP, ClientId} = SubscriberId, OldNode) ->
     {ok, _QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId),
     case vmq_state_store_backend:migrate_offline_queue(MP, ClientId, OldNode) of
-        ok ->
-            vmq_queue:terminate(QPid, normal),
-            ok;
         {ok, undefined} ->
             vmq_queue:terminate(QPid, normal),
             {error, client_does_not_exist};

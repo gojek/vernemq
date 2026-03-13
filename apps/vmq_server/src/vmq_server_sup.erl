@@ -25,7 +25,6 @@
 
 -define(MaxR, application:get_env(vmq_server, max_r, 5)).
 -define(MaxT, application:get_env(vmq_server, max_t, 10)).
--define(VMQ_CLUSTER_STATUS, vmq_status).
 
 %% Helper macro for declaring children of supervisor
 -define(CHILD(I, Type, Args), {I, {I, start_link, Args}, permanent, 5000, Type, [I]}).
@@ -49,7 +48,6 @@ start_link() ->
         ]}}.
 init([]) ->
     persistent_term:put(subscribe_trie_ready, 0),
-    ets:new(?VMQ_CLUSTER_STATUS, [{read_concurrency, true}, public, named_table]),
 
     vmq_state_store_backend:init(),
 
@@ -62,13 +60,6 @@ init([]) ->
     SentinelMaster = application:get_env(vmq_server, redis_sentinel_master, mymaster),
 
     RedisEnabled = application:get_env(vmq_server, redis_enabled, true),
-
-    case RedisEnabled of
-        true ->
-            ok;
-        false ->
-            ets:insert(?VMQ_CLUSTER_STATUS, {node(), true, 0})
-    end,
 
     RedisMainClient =
         case RedisEnabled of
@@ -94,9 +85,7 @@ init([]) ->
         case RedisEnabled of
             true ->
                 [
-                    ?CHILD(vmq_redis_queue_sup, supervisor, []),
-                    ?CHILD(vmq_redis_reaper_sup, supervisor, []),
-                    ?CHILD(vmq_cluster_mon, worker, [])
+                    ?CHILD(vmq_redis_queue_sup, supervisor, [])
                 ];
             false ->
                 []
@@ -113,6 +102,8 @@ init([]) ->
                 ?CHILD(vmq_reg_sup, supervisor, [])
             ] ++ RedisWorkersWithSup ++
             [
+                ?CHILD(vmq_redis_reaper_sup, supervisor, []),
+                ?CHILD(vmq_cluster_mon, worker, []),
                 ?CHILD(vmq_sysmon, worker, []),
                 ?CHILD(vmq_ranch_sup, supervisor, [])
             ]

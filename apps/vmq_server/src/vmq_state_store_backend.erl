@@ -16,12 +16,13 @@
     msg_store_delete/1,
     msg_store_pop/2,
     msg_store_find/1,
-    enqueue_msg/4,
-    poll_main_queue/3,
-    reap_subscribers/2,
     load_reg_functions/0,
     load_msg_store_functions/0,
-    load_queue_functions/2
+    load_queue_functions/2,
+    ensure_reaper/1,
+    del_reaper/1,
+    get_reaper/1,
+    enqueue/3
 ]).
 
 -callback subscribe(term(), term(), non_neg_integer(), list()) ->
@@ -30,8 +31,7 @@
 -callback unsubscribe(term(), term(), list()) -> {ok, term()} | {error, term()}.
 -callback remap_subscriber(term(), term(), boolean()) ->
     {ok, term()} | {error, term()}.
--callback migrate_offline_queue(term(), term(), node()) ->
-    ok | {ok, term()} | {error, term()}.
+-callback migrate_offline_queue(term(), term(), node()) -> {ok, term()} | {error, term()}.
 -callback fetch_subscriber(term(), term()) -> {ok, term()} | {error, term()}.
 -callback fetch_matched_topic_subscribers(term(), list()) -> {ok, term()} | {error, term()}.
 -callback get_live_nodes() -> {ok, term()} | {error, term()}.
@@ -41,15 +41,13 @@
 -callback msg_store_delete(term()) -> ok | {ok, term()} | {error, term()}.
 -callback msg_store_pop(term(), term()) -> ok | {ok, term()} | {error, term()}.
 -callback msg_store_find(term()) -> ok | {ok, term()} | {error, term()}.
--callback enqueue_msg(atom(), string(), binary(), binary()) ->
-    ok | {ok, term()} | {error, term()}.
--callback poll_main_queue(atom(), string(), non_neg_integer()) ->
-    {ok, undefined} | {ok, list()} | {error, term()}.
--callback reap_subscribers(node(), non_neg_integer()) ->
-    {ok, list()} | {ok, undefined} | {error, term()}.
 -callback load_reg_functions() -> ok.
 -callback load_msg_store_functions() -> ok.
 -callback load_queue_functions(atom(), atom()) -> ok.
+-callback ensure_reaper(node()) -> ok.
+-callback del_reaper(node()) -> ok | {error, not_found}.
+-callback get_reaper(node()) -> {ok, pid()} | {error, not_found}.
+-callback enqueue(node(), binary(), binary()) -> ok | {ok, term()} | {error, term()}.
 
 init() ->
     Backend =
@@ -105,15 +103,6 @@ msg_store_pop(SubscriberId, MsgRef) ->
 msg_store_find(SubscriberId) ->
     (backend()):msg_store_find(SubscriberId).
 
-enqueue_msg(RedisClient, MainQueueKey, SubscriberBin, MsgBin) ->
-    (backend()):enqueue_msg(RedisClient, MainQueueKey, SubscriberBin, MsgBin).
-
-poll_main_queue(RedisClient, MainQueue, BatchSize) ->
-    (backend()):poll_main_queue(RedisClient, MainQueue, BatchSize).
-
-reap_subscribers(DeadNode, MaxClients) ->
-    (backend()):reap_subscribers(DeadNode, MaxClients).
-
 load_reg_functions() ->
     (backend()):load_reg_functions().
 
@@ -122,3 +111,15 @@ load_msg_store_functions() ->
 
 load_queue_functions(ProducerClient, ConsumerClient) ->
     (backend()):load_queue_functions(ProducerClient, ConsumerClient).
+
+ensure_reaper(Node) ->
+    (backend()):ensure_reaper(Node).
+
+del_reaper(Node) ->
+    (backend()):del_reaper(Node).
+
+get_reaper(Node) ->
+    (backend()):get_reaper(Node).
+
+enqueue(Node, SubscriberBin, MsgBin) ->
+    (backend()):enqueue(Node, SubscriberBin, MsgBin).

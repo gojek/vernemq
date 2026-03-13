@@ -19,12 +19,13 @@
     msg_store_delete/1,
     msg_store_pop/2,
     msg_store_find/1,
-    enqueue_msg/4,
-    poll_main_queue/3,
-    reap_subscribers/2,
     load_reg_functions/0,
     load_msg_store_functions/0,
-    load_queue_functions/2
+    load_queue_functions/2,
+    ensure_reaper/1,
+    del_reaper/1,
+    get_reaper/1,
+    enqueue/3
 ]).
 
 %%%===================================================================
@@ -228,56 +229,24 @@ msg_store_find(SubscriberId) ->
     ).
 
 %%%===================================================================
-%%% Main Queue
+%%% Queue
 %%%===================================================================
 
-enqueue_msg(RedisClient, MainQueueKey, SubscriberBin, MsgBin) ->
-    vmq_redis:query(
-        RedisClient,
-        [
-            ?FCALL,
-            ?ENQUEUE_MSG,
-            1,
-            MainQueueKey,
-            SubscriberBin,
-            MsgBin
-        ],
-        ?FCALL,
-        ?ENQUEUE_MSG
-    ).
-
-poll_main_queue(RedisClient, MainQueue, BatchSize) ->
-    vmq_redis:query(
-        RedisClient,
-        [
-            ?FCALL,
-            ?POLL_MAIN_QUEUE,
-            1,
-            MainQueue,
-            BatchSize
-        ],
-        ?FCALL,
-        ?POLL_MAIN_QUEUE
-    ).
+enqueue(Node, SubscriberBin, MsgBin) ->
+    vmq_redis_queue:enqueue(Node, SubscriberBin, MsgBin).
 
 %%%===================================================================
 %%% Reaper
 %%%===================================================================
 
-reap_subscribers(DeadNode, MaxClients) ->
-    vmq_redis:query(
-        vmq_redis_client,
-        [
-            ?FCALL,
-            ?REAP_SUBSCRIBERS,
-            0,
-            DeadNode,
-            node(),
-            MaxClients
-        ],
-        ?FCALL,
-        ?REAP_SUBSCRIBERS
-    ).
+ensure_reaper(Node) ->
+    vmq_redis_reaper_sup:ensure_reaper(Node).
+
+del_reaper(Node) ->
+    vmq_redis_reaper_sup:del_reaper(Node).
+
+get_reaper(Node) ->
+    vmq_redis_reaper_sup:get_reaper(Node).
 
 %%%===================================================================
 %%% Initialization
