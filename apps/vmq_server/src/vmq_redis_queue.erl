@@ -106,57 +106,52 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(
-    poll_redis_main_queue, #state{shard = RedisNode, interval = Interval} = State
-) ->
+handle_info(poll_redis_main_queue, #state{shard = RedisNode, interval = Interval} = State) ->
     MainQueue = "mainQueue::" ++ atom_to_list(node()),
-    NewTimer =
-        case
-            vmq_redis:query(
-                RedisNode,
-                [
-                    ?FCALL,
-                    ?POLL_MAIN_QUEUE,
-                    1,
-                    MainQueue,
-                    20
-                ],
+    case
+        vmq_redis:query(
+            RedisNode,
+            [
                 ?FCALL,
-                ?POLL_MAIN_QUEUE
-            )
-        of
-            {ok, undefined} ->
-                erlang:send_after(Interval, self(), poll_redis_main_queue);
-            {ok, Msgs} ->
-                lists:foreach(
-                    fun([SubBin, MsgBin, TimeInQueue]) ->
-                        vmq_metrics:pretimed_measurement(
-                            {?MODULE, time_spent_in_main_queue},
-                            binary_to_integer(TimeInQueue)
-                        ),
-                        case binary_to_term(SubBin) of
-                            {_, _CId} = SId ->
-                                {SubInfo, Msg} = binary_to_term(MsgBin),
-                                vmq_reg:enqueue_msg({SId, SubInfo}, Msg);
-                            RandSubs when is_list(RandSubs) ->
-                                vmq_shared_subscriptions:publish_to_group(
-                                    binary_to_term(MsgBin),
-                                    RandSubs,
-                                    {0, 0}
-                                );
-                            UnknownMsg ->
-                                lager:error("Unknown Msg in Redis Main Queue : ~p", [
-                                    UnknownMsg
-                                ])
-                        end
-                    end,
-                    Msgs
-                ),
-                erlang:send_after(0, self(), poll_redis_main_queue);
-            _ ->
-                erlang:send_after(Interval, self(), poll_redis_main_queue)
-        end,
-    {noreply, State#state{timer = NewTimer}};
+                ?POLL_MAIN_QUEUE,
+                1,
+                MainQueue,
+                20
+            ],
+            ?FCALL,
+            ?POLL_MAIN_QUEUE
+        )
+    of
+        {ok, undefined} ->
+            erlang:send_after(Interval, self(), poll_redis_main_queue);
+        {ok, Msgs} ->
+            lists:foreach(
+                fun([SubBin, MsgBin, TimeInQueue]) ->
+                    vmq_metrics:pretimed_measurement(
+                        {?MODULE, time_spent_in_main_queue},
+                        binary_to_integer(TimeInQueue)
+                    ),
+                    case binary_to_term(SubBin) of
+                        {_, _CId} = SId ->
+                            {SubInfo, Msg} = binary_to_term(MsgBin),
+                            vmq_reg:enqueue_msg({SId, SubInfo}, Msg);
+                        RandSubs when is_list(RandSubs) ->
+                            vmq_shared_subscriptions:publish_to_group(
+                                binary_to_term(MsgBin),
+                                RandSubs,
+                                {0, 0}
+                            );
+                        UnknownMsg ->
+                            lager:error("Unknown Msg in Redis Main Queue : ~p", [UnknownMsg])
+                    end
+                end,
+                Msgs
+            ),
+            erlang:send_after(0, self(), poll_redis_main_queue);
+        _ ->
+            erlang:send_after(Interval, self(), poll_redis_main_queue)
+    end,
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
