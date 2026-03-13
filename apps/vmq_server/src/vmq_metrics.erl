@@ -1745,6 +1745,13 @@ counter_entries_def() ->
             shared_subscription_group_publish_attempt_failed,
             shared_subscription_group_publish_attempt_failed,
             <<"The number of times publish attempt failed for a shared subscription group.">>
+        ),
+        m(
+            counter,
+            [],
+            noop_enqueue,
+            noop_enqueue,
+            <<"The number of times a message enqueue operation was triggered from noop operations.">>
         )
     ].
 
@@ -2831,7 +2838,7 @@ met2idx({?REDIS_STALE_CMD, ?FCALL, ?DELETE_SUBS_OFFLINE_MESSAGES}) -> 372;
 met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?DELETE_SUBS_OFFLINE_MESSAGES}) -> 373;
 met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?DELETE_SUBS_OFFLINE_MESSAGES}) -> 374;
 met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?DELETE_SUBS_OFFLINE_MESSAGES}) -> 375;
-met2idx(?NOOP_ENQUEUE) -> 376.
+met2idx(?METRIC_NOOP_ENQUEUE) -> 376.
 
 -ifdef(TEST).
 clear_stored_rates() ->

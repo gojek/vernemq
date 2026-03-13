@@ -58,5 +58,5 @@ del_reaper(_Node) -> ok.
 get_reaper(_Node) -> {ok, self()}.
 
 enqueue(_Node, _SubscriberBin, _MsgBin) ->
-    vmq_metrics:incr(?NOOP_ENQUEUE),
+    vmq_metrics:incr(?METRIC_NOOP_ENQUEUE),
     ok.
