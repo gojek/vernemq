@@ -1749,7 +1749,7 @@ counter_entries_def() ->
         m(
             counter,
             [],
-            noop_enqueue,
+            ?METRIC_NOOP_ENQUEUE,
             noop_enqueue,
             <<"The number of times a message enqueue operation was triggered from noop operations.">>
         )
