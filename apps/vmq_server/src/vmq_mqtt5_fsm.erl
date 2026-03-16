@@ -1503,7 +1503,8 @@ publish(RegView, User, {_, ClientId} = SubscriberId, Msg, State) ->
                 on_publish_hook(
                     vmq_reg:publish(RegView, ClientId, MaybeChangedMsg),
                     HookArgs,
-                    SubscriberId
+                    SubscriberId,
+                    undefined
                 )
             of
                 ok -> {ok, MaybeChangedMsg, SessCtrl};
@@ -1514,23 +1515,22 @@ publish(RegView, User, {_, ClientId} = SubscriberId, Msg, State) ->
     ).
 
 -spec on_publish_hook(
-    {ok, {integer(), integer()}} | {error, _}, list(), subscriber_id()
+    {ok, {integer(), integer()}} | {error, _}, list(), subscriber_id(), session_id()
 ) -> ok | {error, _}.
-on_publish_hook({ok, {0, 0}}, HookParams, SubscriberId) ->
+on_publish_hook({ok, {0, 0}}, HookParams, SubscriberId, _SessionId) ->
     _ = vmq_plugin:all(on_publish_m5, HookParams),
-    [_User, _SubscriberId, QoS, Topic, Payload, IsRetain, #matched_acl{name = AclName}, SessionId] =
-        HookParams,
+    [_User, _SubscriberId, QoS, Topic, Payload, IsRetain | _Rest] = HookParams,
     _ = vmq_plugin:all(on_message_drop, [
         SubscriberId,
-        fun() -> {Topic, QoS, Payload, #{is_retain => IsRetain}, #matched_acl{name = AclName}} end,
+        fun() -> {Topic, QoS, Payload, #{is_retain => IsRetain}, #matched_acl{}} end,
         no_matching_subscribers,
-        SessionId
+        undefined
     ]),
     ok;
-on_publish_hook({ok, _NumMatched}, HookParams, _SubscriberId) ->
+on_publish_hook({ok, _NumMatched}, HookParams, _SubscriberId, _SessionId) ->
     _ = vmq_plugin:all(on_publish_m5, HookParams),
     ok;
-on_publish_hook(Other, _, _SubscriberId) ->
+on_publish_hook(Other, _, _SubscriberId, _SessionId) ->
     Other.
 
 -spec dispatch_publish(qos(), msg_id(), msg(), state()) ->
@@ -1880,7 +1880,8 @@ schedule_last_will_msg(#state{
                     filter_outgoing_pub_props(Msg)
                 ),
                 HookArgs,
-                SubscriberId
+                SubscriberId,
+                undefined
             )
         end,
     case get_last_will_delay(Msg) of
