@@ -23,6 +23,7 @@ setup() ->
     application:set_env(vmq_server, systree_reg_view, vmq_reg_redis_trie),
     application:set_env(vmq_server, redis_sentinel_endpoints, "[{\"localhost\", 26379}]"),
     application:set_env(vmq_server, redis_lua_dir, PrivDir ++ "/lua_scripts"),
+    application:set_env(vmq_server, complex_trie_file, PrivDir ++ "/vmq.trie"),
     application:set_env(vmq_server, ignore_db_config, true),
     application:load(vmq_plugin),
     application:set_env(vmq_plugin, default_schema_dir, [PrivDir]),
