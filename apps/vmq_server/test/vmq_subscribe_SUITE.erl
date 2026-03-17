@@ -15,13 +15,26 @@ init_per_suite(_Config) ->
 end_per_suite(_Config) ->
     _Config.
 
+init_per_group(redis_disabled, Config) ->
+    application:set_env(vmq_server, redis_enabled, false),
+    vmq_test_utils:setup(),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5,131"}]),
+    enable_on_subscribe(),
+    enable_on_publish(),
+    Config;
 init_per_group(_Group, _Config) ->
+    application:set_env(vmq_server, redis_enabled, true),
     vmq_test_utils:setup(),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5,131"}]),
     enable_on_subscribe(),
     enable_on_publish(),
     _Config.
 
+end_per_group(redis_disabled, _Config) ->
+    disable_on_subscribe(),
+    disable_on_publish(),
+    vmq_test_utils:teardown(false),
+    _Config;
 end_per_group(_Group, _Config) ->
     disable_on_subscribe(),
     disable_on_publish(),
@@ -40,7 +53,8 @@ end_per_testcase(_, Config) ->
 all() ->
     [
      {group, mqttv4},
-     {group, mqttv5}
+     {group, mqttv5},
+     {group, redis_disabled}
     ].
 
 groups() ->
@@ -67,9 +81,24 @@ groups() ->
         [subscribe_no_local_test,
         subscribe_illegal_opt,
         subscription_ids],
+
+    %% Only include tests that are safe to run with Redis disabled (noop backend)
+    RedisDisabled =
+        [subscribe_qos0_test,
+         subscribe_qos1_test,
+         subscribe_qos2_test,
+         subscribe_qos1_with_opts_test,
+         suback_with_nack_test,
+         subnack_test,
+         unsubscribe_qos0_test,
+         unsubscribe_qos1_test,
+         unsubscribe_qos2_test
+        ],
+
     [
      {mqttv4, [shuffle,sequence], TestsMqttV4},
-     {mqttv5, [shuffle], TestsMqttV5}
+     {mqttv5, [shuffle], TestsMqttV5},
+     {redis_disabled, [sequence], RedisDisabled}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

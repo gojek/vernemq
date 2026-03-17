@@ -84,22 +84,7 @@ fold_matched_topics(MP, [Topic | Rest], Acc) ->
     end.
 
 fetchSubscribers(Topics, MP) ->
-    UnwordedTopics = [vmq_topic:unword(T) || T <- Topics],
-    case
-        vmq_redis:query(
-            vmq_redis_client,
-            [
-                ?FCALL,
-                ?FETCH_MATCHED_TOPIC_SUBSCRIBERS,
-                0,
-                MP,
-                length(UnwordedTopics)
-                | UnwordedTopics
-            ],
-            ?FCALL,
-            ?FETCH_MATCHED_TOPIC_SUBSCRIBERS
-        )
-    of
+    case vmq_state_store_backend:fetch_matched_topic_subscribers(MP, Topics) of
         {ok, SubscribersList} -> SubscribersList;
         Err -> Err
     end.

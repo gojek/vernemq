@@ -56,7 +56,9 @@ publish_to_group(
             case vmq_cluster_mon:is_node_alive(Node) of
                 true ->
                     case
-                        vmq_redis_queue:enqueue(Node, term_to_binary(RandSubs), term_to_binary(Msg))
+                        vmq_state_store_backend:enqueue(
+                            Node, term_to_binary(RandSubs), term_to_binary(Msg)
+                        )
                     of
                         ok ->
                             {ok, {Local, Remote + 1}};

@@ -1802,6 +1802,13 @@
                                                               {datatype, integer}
                                                              ]}.
 
+%% @doc Master switch for Redis. When 'off', all Redis features are disabled.
+%% When 'on', Redis is used for subscriptions, message store, and queue polling.
+{mapping, "redis_enabled", "vmq_server.redis_enabled", [
+    {default, on},
+    {datatype, flag}
+]}.
+
 %% @doc This option specifies the connect options for redis as message store
 {mapping, "message_store.redis.connect_options", "vmq_server.message_store.redis.connect_options",
     [{datatype, string}]}.

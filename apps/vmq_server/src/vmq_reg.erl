@@ -103,21 +103,8 @@ subscribe_op({MP, ClientId} = SubscriberId, Topics) ->
         ),
     OldSubs =
         case
-            vmq_redis:query(
-                vmq_redis_client,
-                [
-                    ?FCALL,
-                    ?SUBSCRIBE,
-                    0,
-                    MP,
-                    ClientId,
-                    node(),
-                    os:system_time(nanosecond),
-                    NumOfTopics
-                    | UnwordedTopicsWithBinaryQoS
-                ],
-                ?FCALL,
-                ?SUBSCRIBE
+            vmq_state_store_backend:subscribe(
+                MP, ClientId, NumOfTopics, UnwordedTopicsWithBinaryQoS
             )
         of
             {ok, [_, CS, NTWQ]} ->
@@ -142,7 +129,9 @@ subscribe_op({MP, ClientId} = SubscriberId, Topics) ->
         {error, _} = ErrRes ->
             ErrRes;
         _ ->
-            CacheLocally = vmq_config:get_env(cache_shared_subscriptions_locally, false),
+            CacheLocally =
+                vmq_config:get_env(cache_shared_subscriptions_locally, false) orelse
+                    (vmq_state_store_backend:backend() =:= vmq_state_store_backend_noop),
             if
                 CacheLocally ->
                     lists:foreach(
@@ -467,7 +456,7 @@ publish_fold_fun(
 ) ->
     case vmq_cluster_mon:is_node_alive(Node) of
         true ->
-            vmq_redis_queue:enqueue(
+            vmq_state_store_backend:enqueue(
                 Node, term_to_binary(SubscriberId), term_to_binary({SubInfo, Msg})
             ),
             Acc#publish_fold_acc{remote_matches = RN + 1};
@@ -812,20 +801,7 @@ del_subscriber(vmq_reg_redis_trie, {MP, ClientId} = _SubscriberId) ->
     Value = {ClientId, '$2'},
     ets:select_delete(?SHARED_SUBS_ETS_TABLE, [{{{Key, Value}}, [], [true]}]),
     vmq_metrics:incr_cache_delete(?LOCAL_SHARED_SUBS),
-    vmq_redis:query(
-        vmq_redis_client,
-        [
-            ?FCALL,
-            ?DELETE_SUBSCRIBER,
-            0,
-            MP,
-            ClientId,
-            node(),
-            os:system_time(nanosecond)
-        ],
-        ?FCALL,
-        ?DELETE_SUBSCRIBER
-    ),
+    vmq_state_store_backend:delete_subscriber(MP, ClientId),
     ok;
 del_subscriber(_, SubscriberId) ->
     vmq_subscriber_db:delete(SubscriberId).
@@ -845,24 +821,7 @@ del_subscriptions(Topics, {MP, ClientId} = _SubscriberId) ->
         Topics
     ),
     SortedUnwordedTopics = [vmq_topic:unword(T) || T <- lists:usort(Topics)],
-    case
-        vmq_redis:query(
-            vmq_redis_client,
-            [
-                ?FCALL,
-                ?UNSUBSCRIBE,
-                0,
-                MP,
-                ClientId,
-                node(),
-                os:system_time(nanosecond),
-                length(SortedUnwordedTopics)
-                | SortedUnwordedTopics
-            ],
-            ?FCALL,
-            ?UNSUBSCRIBE
-        )
-    of
+    case vmq_state_store_backend:unsubscribe(MP, ClientId, SortedUnwordedTopics) of
         {ok, <<"1">>} -> ok;
         {ok, _} -> {error, unwanted_redis_response};
         Err -> Err
@@ -875,23 +834,7 @@ del_subscriptions(Topics, {MP, ClientId} = _SubscriberId) ->
     {boolean(), undefined | vmq_subscriber:subs(), [node()]} | {error, binary | atom()}.
 maybe_remap_subscriber({MP, ClientId}, _StartClean = true) ->
     Subs = vmq_subscriber:new(true),
-    case
-        vmq_redis:query(
-            vmq_redis_client,
-            [
-                ?FCALL,
-                ?REMAP_SUBSCRIBER,
-                0,
-                MP,
-                ClientId,
-                node(),
-                true,
-                os:system_time(nanosecond)
-            ],
-            ?FCALL,
-            ?REMAP_SUBSCRIBER
-        )
-    of
+    case vmq_state_store_backend:remap_subscriber(MP, ClientId, true) of
         {ok, [undefined, [_, <<"1">>, []]]} -> {false, Subs, []};
         {ok, [<<"1">>, [_, <<"1">>, []]]} -> {true, Subs, []};
         {ok, [<<"1">>, [_, <<"1">>, []], OldNode]} -> {true, Subs, [binary_to_atom(OldNode)]};
@@ -899,23 +842,7 @@ maybe_remap_subscriber({MP, ClientId}, _StartClean = true) ->
         Err -> Err
     end;
 maybe_remap_subscriber({MP, ClientId}, _StartClean = false) ->
-    case
-        vmq_redis:query(
-            vmq_redis_client,
-            [
-                ?FCALL,
-                ?REMAP_SUBSCRIBER,
-                0,
-                MP,
-                ClientId,
-                node(),
-                false,
-                os:system_time(nanosecond)
-            ],
-            ?FCALL,
-            ?REMAP_SUBSCRIBER
-        )
-    of
+    case vmq_state_store_backend:remap_subscriber(MP, ClientId, false) of
         {ok, [undefined, [NewNode, undefined, []]]} ->
             {false, [{binary_to_atom(NewNode), false, []}], []};
         {ok, [<<"1">>, [NewNode, undefined, TopicsWithQoS]]} ->
@@ -1020,23 +947,7 @@ update_qos1_metrics(Topics) ->
 -spec migrate_offline_queue(subscriber_id(), node()) -> node() | {error, _}.
 migrate_offline_queue({MP, ClientId} = SubscriberId, OldNode) ->
     {ok, _QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId),
-    case
-        vmq_redis:query(
-            vmq_redis_client,
-            [
-                ?FCALL,
-                ?MIGRATE_OFFLINE_QUEUE,
-                0,
-                MP,
-                ClientId,
-                OldNode,
-                node(),
-                os:system_time(nanosecond)
-            ],
-            ?FCALL,
-            ?MIGRATE_OFFLINE_QUEUE
-        )
-    of
+    case vmq_state_store_backend:migrate_offline_queue(MP, ClientId, OldNode) of
         {ok, undefined} ->
             vmq_queue:terminate(QPid, normal),
             {error, client_does_not_exist};

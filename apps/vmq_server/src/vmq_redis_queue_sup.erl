@@ -26,6 +26,14 @@ start_link() ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init(_) ->
+    case application:get_env(vmq_server, redis_enabled, true) of
+        false ->
+            {ok, {{one_for_one, 5, 5}, []}};
+        true ->
+            init_with_redis()
+    end.
+
+init_with_redis() ->
     ConnectOptionsList = vmq_schema_util:parse_list(
         application:get_env(
             vmq_server,
@@ -98,16 +106,7 @@ init_redis(
         | ConnectOptions
     ]),
 
-    LuaDir = application:get_env(vmq_server, redis_lua_dir, "./etc/lua"),
-    {ok, EnqueueMsgScript} = file:read_file(LuaDir ++ "/enqueue_msg.lua"),
-    {ok, PollMainQueueScript} = file:read_file(LuaDir ++ "/poll_main_queue.lua"),
-
-    {ok, <<"enqueue_msg">>} = eredis:q(ProducerRedisClient, [
-        ?FUNCTION, "LOAD", "REPLACE", EnqueueMsgScript
-    ]),
-    {ok, <<"poll_main_queue">>} = eredis:q(ConsumerRedisClient, [
-        ?FUNCTION, "LOAD", "REPLACE", PollMainQueueScript
-    ]),
+    vmq_state_store_backend:load_queue_functions(ProducerRedisClient, ConsumerRedisClient),
 
     init_redis(ConnectOptionsList, UsernamesList, PasswordsList, Id + 1).
 

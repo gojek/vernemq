@@ -48,20 +48,7 @@ read(SubscriberId, Default) ->
     Result.
 
 read(vmq_reg_redis_trie, {MP, ClientId}, Default) ->
-    case
-        vmq_redis:query(
-            vmq_redis_client,
-            [
-                ?FCALL,
-                ?FETCH_SUBSCRIBER,
-                0,
-                MP,
-                ClientId
-            ],
-            ?FCALL,
-            ?FETCH_SUBSCRIBER
-        )
-    of
+    case vmq_state_store_backend:fetch_subscriber(MP, ClientId) of
         {ok, []} ->
             Default;
         {ok, [NodeBinary, CS, TopicsWithQoSBinary]} ->

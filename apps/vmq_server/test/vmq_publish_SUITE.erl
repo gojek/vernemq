@@ -29,10 +29,24 @@ init_per_group(mqttv4, Config) ->
 init_per_group(mqttv5, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
-    [{protover, 5} | Config].
-end_per_group(_Group, _Config) ->
+    [{protover, 5} | Config];
+init_per_group(mqttv3_no_redis, Config) ->
+    application:set_env(vmq_server, redis_enabled, false),
+    vmq_test_utils:setup(),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
+    Config;
+init_per_group(mqttv4_no_redis, Config) ->
+    application:set_env(vmq_server, redis_enabled, false),
+    vmq_test_utils:setup(),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
+    [{protover, 4} | Config].
+end_per_group(Group, _Config) ->
     vmq_server_cmd:listener_stop(1888, "127.0.0.1", false),
-    vmq_test_utils:teardown(),
+    case Group of
+        mqttv3_no_redis -> vmq_test_utils:teardown(false);
+        mqttv4_no_redis -> vmq_test_utils:teardown(false);
+        _ -> vmq_test_utils:teardown()
+    end,
     ok.
 
 init_per_testcase(Case, Config) ->
@@ -71,7 +85,9 @@ all() ->
     [
         {group, mqttv3},
         {group, mqttv4},
-        {group, mqttv5}
+        {group, mqttv5},
+        {group, mqttv3_no_redis},
+        {group, mqttv4_no_redis}
     ].
 
 groups() ->
@@ -111,6 +127,19 @@ groups() ->
             publish_b2c_retry_qos2_test
             | V4V5Tests
         ],
+    V4NoRedisTests =
+        [
+            not_allowed_publish_close_qos0_mqtt_3_1_1,
+            not_allowed_publish_close_qos1_mqtt_3_1_1,
+            not_allowed_publish_close_qos2_mqtt_3_1_1,
+            shared_subscription_does_not_honor_grouping,
+            message_size_exceeded_close,
+            publish_c2b_retry_qos2_test,
+            publish_qos1_test,
+            publish_qos2_test,
+            publish_c2b_disconnect_qos2_test,
+            drop_dollar_topic_publish
+        ],
     V5Tests =
         [
             not_allowed_publish_qos0_mqtt_5,
@@ -126,7 +155,9 @@ groups() ->
     [
         {mqttv3, [shuffle], V3Tests},
         {mqttv4, [shuffle], V4Tests},
-        {mqttv5, [shuffle], V5Tests}
+        {mqttv5, [shuffle], V5Tests},
+        {mqttv3_no_redis, [shuffle], V3Tests},
+        {mqttv4_no_redis, [shuffle], V4NoRedisTests}
     ].
 
 -define(CLIENT_OFFLINE_EVENT_SRV, vmq_client_offline_event_server).
