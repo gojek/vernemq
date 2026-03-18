@@ -131,7 +131,7 @@ subscribe_op({MP, ClientId} = SubscriberId, Topics) ->
         _ ->
             CacheLocally =
                 vmq_config:get_env(cache_shared_subscriptions_locally, false) orelse
-                    (vmq_state_store_backend:backend() =:= vmq_state_store_backend_noop),
+                    (vmq_state_store_backend:backend() =:= vmq_noop_store),
             if
                 CacheLocally ->
                     lists:foreach(
