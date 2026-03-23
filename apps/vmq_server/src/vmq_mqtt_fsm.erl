@@ -1020,7 +1020,8 @@ publish(RegView, User, {_, ClientId} = SubscriberId, Msg) ->
             case
                 on_publish_hook(
                     vmq_reg:publish(RegView, ClientId, ChangedMsg),
-                    HookArgs
+                    HookArgs,
+                    SubscriberId
                 )
             of
                 ok ->
@@ -1031,11 +1032,23 @@ publish(RegView, User, {_, ClientId} = SubscriberId, Msg) ->
         end
     ).
 
--spec on_publish_hook({ok, {integer(), integer()}} | {error, _}, list()) -> ok | {error, _}.
-on_publish_hook({ok, _NumMatched}, HookParams) ->
+-spec on_publish_hook(
+    {ok, {integer(), integer()}} | {error, _}, list(), subscriber_id()
+) -> ok | {error, _}.
+on_publish_hook({ok, {0, 0}}, HookParams, SubscriberId) ->
+    _ = vmq_plugin:all(on_publish, HookParams),
+    [_User, _SubscriberId, QoS, Topic, Payload, IsRetain, #matched_acl{name = AclName}] =
+        HookParams,
+    _ = vmq_plugin:all(on_message_drop, [
+        SubscriberId,
+        fun() -> {Topic, QoS, Payload, #{is_retain => IsRetain}, #matched_acl{name = AclName}} end,
+        no_matching_subscribers
+    ]),
+    ok;
+on_publish_hook({ok, _NumMatched}, HookParams, _SubscriberId) ->
     _ = vmq_plugin:all(on_publish, HookParams),
     ok;
-on_publish_hook(Other, _) ->
+on_publish_hook(Other, _, _SubscriberId) ->
     Other.
 
 -spec dispatch_publish(qos(), msg_id(), msg(), state()) ->
@@ -1376,7 +1389,8 @@ maybe_publish_last_will(
                     ClientId,
                     Msg
                 ),
-                HookArgs
+                HookArgs,
+                SubscriberId
             ),
             ok;
         true ->

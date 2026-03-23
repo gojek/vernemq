@@ -1522,6 +1522,8 @@ hook_on_message_drop(_, Promise, max_packet_size_exceeded) ->
     {_QoS, _Topic, <<"large enough to be discarded publish">> = _Payload, _Props} = Promise(),
     ok;
 hook_on_message_drop({"", <<"message-expiry-sub">>}, _, expired) ->
+    ok;
+hook_on_message_drop(_, _, no_matching_subscribers) ->
     ok.
 
 hook_on_client_offline(SubscriberId, Reason, Username) ->

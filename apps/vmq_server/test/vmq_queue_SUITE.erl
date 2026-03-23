@@ -414,4 +414,5 @@ enable_hooks() ->
 
 hook_auth_on_publish(_, _, _, _, _, _) -> ok.
 hook_auth_on_subscribe(_, _, _) -> ok.
-hook_on_message_drop(_, _, queue_full) -> ok.
+hook_on_message_drop(_, _, queue_full) -> ok;
+hook_on_message_drop(_, _, no_matching_subscribers) -> ok.
