@@ -510,7 +510,7 @@ retain_compat_pre_test(_Cfg) ->
 hook_auth_on_subscribe(_,_,_, _) -> ok.
 hook_auth_on_publish(_, _, _, _, _, _, _) -> ok.
 hook_on_message_drop(_, _, expired, _) -> ok;
-hook_on_message_drop(_, _, no_matching_subscribers) -> ok.
+hook_on_message_drop(_, _, no_matching_subscribers, _) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
