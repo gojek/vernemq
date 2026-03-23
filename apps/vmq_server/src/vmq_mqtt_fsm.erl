@@ -1075,12 +1075,13 @@ publish(RegView, User, {_, ClientId} = SubscriberId, Msg, SessionId) ->
 ) -> ok | {error, _}.
 on_publish_hook({ok, {0, 0}}, HookParams, SubscriberId) ->
     _ = vmq_plugin:all(on_publish, HookParams),
-    [_User, _SubscriberId, QoS, Topic, Payload, IsRetain, #matched_acl{name = AclName}] =
+    [_User, _SubscriberId, QoS, Topic, Payload, IsRetain, #matched_acl{name = AclName}, SessionId] =
         HookParams,
     _ = vmq_plugin:all(on_message_drop, [
         SubscriberId,
         fun() -> {Topic, QoS, Payload, #{is_retain => IsRetain}, #matched_acl{name = AclName}} end,
-        no_matching_subscribers
+        no_matching_subscribers,
+        SessionId
     ]),
     ok;
 on_publish_hook({ok, _NumMatched}, HookParams, _SubscriberId) ->
@@ -1426,14 +1427,15 @@ maybe_publish_last_will(
         username = User,
         will_msg = Msg,
         reg_view = RegView,
-        def_opts = DOpts
+        def_opts = DOpts,
+        session_id = SessionId
     },
     Reason
 ) ->
     case suppress_lwt(Reason, DOpts) of
         false ->
             #vmq_msg{qos = QoS, routing_key = Topic, payload = Payload, retain = IsRetain} = Msg,
-            HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
+            HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain, SessionId],
             _ = on_publish_hook(
                 vmq_reg:publish(
                     RegView,
