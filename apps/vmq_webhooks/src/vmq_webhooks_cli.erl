@@ -194,6 +194,7 @@ hook_keyspec() ->
                             "auth_on_publish",
                             "auth_on_subscribe",
                             "on_register",
+                            "on_register_failed",
                             "on_publish",
                             "on_subscribe",
                             "on_unsubscribe",

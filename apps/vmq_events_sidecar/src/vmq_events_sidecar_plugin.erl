@@ -19,6 +19,7 @@
 -behaviour(on_session_expired_hook).
 -behaviour(on_delivery_complete_hook).
 -behaviour(on_message_drop_hook).
+-behaviour(on_register_failed_hook).
 
 -export([
     on_register/4,
@@ -32,7 +33,8 @@
     on_client_gone/3,
     on_session_expired/1,
     on_delivery_complete/8,
-    on_message_drop/3
+    on_message_drop/3,
+    on_register_failed/5
 ]).
 
 %% API
@@ -249,6 +251,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Hook functions
 %%%===================================================================
+-spec on_register_failed(peer(), subscriber_id(), username(), flag(), reason()) -> 'next'.
+on_register_failed(Peer, SubscriberId, UserName, CleanSession, Reason) ->
+    {PPeer, Port} = peer(Peer),
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    send_event(
+        on_register_failed, {MP, ClientId, PPeer, Port, normalise(UserName), CleanSession, Reason}
+    ).
+
 %% called as an all_till_ok hook
 -spec on_register(peer(), subscriber_id(), username(), properties()) -> 'next'.
 on_register(Peer, SubscriberId, UserName, Props) ->

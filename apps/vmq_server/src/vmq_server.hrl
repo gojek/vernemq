@@ -1,6 +1,7 @@
 -ifndef(VMQ_SERVER_HRL).
 -define(VMQ_SERVER_HRL, true).
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
 
 -type plugin_id() :: {plugin, atom(), pid()}.
 
@@ -25,6 +26,8 @@
 -define(DISCONNECT_KEEP_ALIVE, disconnect_keep_alive).
 -define(DISCONNECT_MIGRATION, disconnect_migration).
 -define(CLIENT_DISCONNECT, mqtt_client_disconnect).
+-define(NO_MATCHING_HOOK_FOUND, no_matching_hook_found).
+-define(INVALID_CREDENTIALS, invalid_credentials).
 
 -type disconnect_reasons() ::
     ?NOT_AUTHORIZED
