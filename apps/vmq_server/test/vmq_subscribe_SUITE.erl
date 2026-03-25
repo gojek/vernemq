@@ -4,6 +4,7 @@
 -compile(nowarn_export_all).
 
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("vmq_server/src/vmq_server.hrl").
 
 %% ===================================================================
 %% common_test callbacks
@@ -92,7 +93,8 @@ groups() ->
          subnack_test,
          unsubscribe_qos0_test,
          unsubscribe_qos1_test,
-         unsubscribe_qos2_test
+         unsubscribe_qos2_test,
+         shared_subscription_local_caching_false_noop_test
         ],
 
     [
@@ -542,6 +544,22 @@ shared_subs_topic_not_allowed_test(Config) ->
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:send(Socket, Publish),
     {error, timeout} = packet:expect_packet(Socket, "publish", Publish),
+    ok = gen_tcp:close(Socket).
+
+shared_subscription_local_caching_false_noop_test(_) ->
+    application:set_env(vmq_server, cache_shared_subscriptions_locally, false),
+    Connect = packet:gen_connect("shared_client_test", [{keepalive,60}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(80, "$share/group/qos1/test", 1),
+    Suback = packet:gen_suback(80, 1),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    ok = case ets:match(?SHARED_SUBS_ETS_TABLE,
+        {{{'_', '_'}, {<<"shared_client_test">>, '_'}}}) of
+        [] -> not_found;
+        _ -> ok
+    end,
     ok = gen_tcp:close(Socket).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
