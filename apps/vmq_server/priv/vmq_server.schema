@@ -1673,10 +1673,10 @@
                                                          ]}.
 
 %% @doc Lua based plugins.
-{mapping, "plugins.vmq_diversity", "vmq_server.user_plugins", [
-                                                               {datatype, flag},
-                                                               {default, off}
-                                                              ]}.
+% {mapping, "plugins.vmq_diversity", "vmq_server.user_plugins", [
+%                                                                {datatype, flag},
+%                                                                {default, off}
+%                                                               ]}.
 
 %% @doc Webhook based plugins.
 {mapping, "plugins.vmq_webhooks", "vmq_server.user_plugins", [
