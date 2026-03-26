@@ -2,6 +2,7 @@
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
 -include("vmq_events_sidecar_test.hrl").
 -include_lib("vmq_proto/include/on_register_pb.hrl").
+-include_lib("vmq_proto/include/on_register_failed_pb.hrl").
 -include_lib("vmq_proto/include/on_publish_pb.hrl").
 -include_lib("vmq_proto/include/on_subscribe_pb.hrl").
 -include_lib("vmq_proto/include/on_unsubscribe_pb.hrl").
@@ -71,6 +72,8 @@ decode({_, "type.googleapis.com/eventssidecar.v1.OnDeliver", Value}) ->
     on_deliver_pb:decode_msg(Value, 'eventssidecar.v1.OnDeliver');
 decode({_, "type.googleapis.com/eventssidecar.v1.OnRegister", Value}) ->
     on_register_pb:decode_msg(Value, 'eventssidecar.v1.OnRegister');
+decode({_, "type.googleapis.com/eventssidecar.v1.OnRegisterFailed", Value}) ->
+    on_register_failed_pb:decode_msg(Value, 'eventssidecar.v1.OnRegisterFailed');
 decode({_, "type.googleapis.com/eventssidecar.v1.OnSubscribe", Value}) ->
     on_subscribe_pb:decode_msg(Value, 'eventssidecar.v1.OnSubscribe');
 decode({_, "type.googleapis.com/eventssidecar.v1.OnUnsubscribe", Value}) ->
@@ -107,6 +110,16 @@ on_register(#'eventssidecar.v1.OnRegister'{peer_addr = ?PEER_BIN,
   client_id = ?ALLOWED_CLIENT_ID}) ->
   Pid = list_to_pid(binary_to_list(BinPid)),
   Pid ! on_register_ok.
+
+on_register_failed(#'eventssidecar.v1.OnRegisterFailed'{peer_addr = ?PEER_BIN,
+                     peer_port = ?PEERPORT,
+                     username = BinPid,
+                     mountpoint = ?MOUNTPOINT_BIN,
+                     client_id = ?ALLOWED_CLIENT_ID,
+                     clean_session = true,
+                     reason = 'REASON_INVALID_CREDENTIALS'}) ->
+    Pid = list_to_pid(binary_to_list(BinPid)),
+    Pid ! on_register_failed_ok.
     
 
 on_publish(#'eventssidecar.v1.OnPublish'{username = BinPid,
@@ -204,6 +217,8 @@ on_message_drop(#'eventssidecar.v1.OnMessageDrop'{
 
 process_hook(Event) when is_record(Event, 'eventssidecar.v1.OnRegister') ->
     on_register(Event);
+process_hook(Event) when is_record(Event, 'eventssidecar.v1.OnRegisterFailed') ->
+    on_register_failed(Event);
 process_hook(Event) when is_record(Event, 'eventssidecar.v1.OnSubscribe') ->
     on_subscribe(Event);
 process_hook(Event) when is_record(Event, 'eventssidecar.v1.OnUnsubscribe') ->

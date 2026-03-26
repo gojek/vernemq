@@ -30,6 +30,7 @@
 -behaviour(on_client_gone_hook).
 -behaviour(on_session_expired_hook).
 -behaviour(on_delivery_complete_hook).
+-behaviour(on_register_failed_hook).
 
 -behaviour(auth_on_register_m5_hook).
 -behaviour(auth_on_publish_m5_hook).
@@ -56,7 +57,7 @@
     on_client_gone/3,
     on_session_expired/1,
     on_delivery_complete/8,
-
+    on_register_failed/5,
     auth_on_register_m5/6,
     auth_on_publish_m5/7,
     auth_on_subscribe_m5/4,
@@ -282,6 +283,20 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
         {username, nullify(UserName)},
         {password, nullify(Password)},
         {clean_session, CleanSession}
+    ]).
+
+-spec on_register_failed(peer(), subscriber_id(), username(), boolean(), _) -> 'next'.
+on_register_failed(Peer, SubscriberId, UserName, CleanSession, Reason) ->
+    {PPeer, Port} = peer(Peer),
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all(on_register_failed, [
+        {addr, PPeer},
+        {port, Port},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {username, nullify(UserName)},
+        {clean_session, CleanSession},
+        {reason, Reason}
     ]).
 
 -spec auth_on_register_m5(peer(), subscriber_id(), username(), password(), boolean(), properties()) ->
