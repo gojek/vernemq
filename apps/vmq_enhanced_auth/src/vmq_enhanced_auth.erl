@@ -31,11 +31,11 @@
 ]).
 
 -export([
-    auth_on_subscribe/3,
-    auth_on_publish/6,
+    auth_on_subscribe/4,
+    auth_on_publish/7,
     auth_on_subscribe_m5/4,
     auth_on_publish_m5/7,
-    auth_on_register/5,
+    auth_on_register/6,
     change_config/1
 ]).
 
@@ -96,15 +96,15 @@ change_config(Configs) ->
             vmq_enhanced_auth_reloader:change_config_now()
     end.
 
-auth_on_subscribe(User, SubscriberId, TopicList) ->
-    auth_on_subscribe(User, SubscriberId, TopicList, []).
+auth_on_subscribe(User, SubscriberId, TopicList, SessionId) ->
+    auth_on_subscribe(User, SubscriberId, TopicList, SessionId, []).
 
-auth_on_subscribe(_, _, [], Modifiers) ->
+auth_on_subscribe(_, _, [], _, Modifiers) ->
     {ok, lists:reverse(Modifiers)};
-auth_on_subscribe(User, SubscriberId, TopicList, Modifiers) ->
-    auth_on_subscribe(?RegView, User, SubscriberId, TopicList, Modifiers).
+auth_on_subscribe(User, SubscriberId, TopicList, SessionId, Modifiers) ->
+    auth_on_subscribe(?RegView, User, SubscriberId, TopicList, SessionId, Modifiers).
 
-auth_on_subscribe(RegView, User, SubscriberId, [{Topic, Qos} | Rest], Modifiers) ->
+auth_on_subscribe(RegView, User, SubscriberId, [{Topic, Qos} | Rest], SessionId, Modifiers) ->
     D = is_topic_invalid(RegView, Topic) orelse is_acl_auth_disabled(),
     if
         D ->
@@ -116,6 +116,7 @@ auth_on_subscribe(RegView, User, SubscriberId, [{Topic, Qos} | Rest], Modifiers)
                         User,
                         SubscriberId,
                         Rest,
+                        SessionId,
                         [{Topic, Qos, MatchedAcl} | Modifiers]
                     );
                 false ->
@@ -124,12 +125,13 @@ auth_on_subscribe(RegView, User, SubscriberId, [{Topic, Qos} | Rest], Modifiers)
                         User,
                         SubscriberId,
                         Rest,
+                        SessionId,
                         [ModTopic | Modifiers]
                     )
             end
     end.
 
-auth_on_publish(User, SubscriberId, _Qos, Topic, _, _) ->
+auth_on_publish(User, SubscriberId, _Qos, Topic, _, _, _SessionId) ->
     D = is_acl_auth_disabled(),
     if
         D ->
@@ -148,7 +150,7 @@ auth_on_subscribe_m5(_, _, []) ->
 auth_on_subscribe_m5(User, SubscriberId, [{Topic, _Qos} | Rest]) ->
     case check(read, Topic, User, SubscriberId) of
         {true, _} ->
-            auth_on_subscribe(User, SubscriberId, Rest);
+            auth_on_subscribe(User, SubscriberId, Rest, undefined);
         false ->
             next
     end.
@@ -156,14 +158,15 @@ auth_on_subscribe_m5(User, SubscriberId, Topics, _Props) ->
     auth_on_subscribe_m5(User, SubscriberId, Topics).
 
 auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, _Props) ->
-    auth_on_publish(User, SubscriberId, QoS, Topic, Payload, IsRetain).
+    auth_on_publish(User, SubscriberId, QoS, Topic, Payload, IsRetain, undefined).
 
 auth_on_register(
     {_IpAddr, _Port} = _Peer,
     {_MountPoint, _ClientId} = _SubscriberId,
     UserName,
     Password,
-    _CleanSession
+    _CleanSession,
+    _SessionId
 ) ->
     %% do whatever you like with the params, all that matters
     %% is the return value of this function
@@ -769,7 +772,8 @@ simple_acl(_) ->
                 [
                     {[<<"a">>, <<"b">>, <<"id">>, <<"c">>], 0},
                     {[<<"a">>, <<"b">>, <<"1">>, <<"c">>], 0}
-                ]
+                ],
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -789,7 +793,8 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"c">>], 0},
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
-                ]
+                ],
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -809,7 +814,8 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"c">>], 0},
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"example">>, <<"profile-id">>], 0}
-                ]
+                ],
+                <<"test-session">>
             )
         ),
 
@@ -831,7 +837,8 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"c">>], 0},
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
-                ]
+                ],
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -855,7 +862,8 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"c">>], 0},
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
-                ]
+                ],
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -866,7 +874,8 @@ simple_acl(_) ->
                 1,
                 [<<"a">>, <<"b">>, <<"c">>],
                 <<"payload">>,
-                false
+                false,
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -877,7 +886,8 @@ simple_acl(_) ->
                 1,
                 [<<"write-topic">>, <<"a">>, <<"b">>, <<"id">>, <<"c">>],
                 <<"payload">>,
-                false
+                false,
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -888,7 +898,8 @@ simple_acl(_) ->
                 1,
                 [<<"x">>, <<"y">>, <<"z">>, <<"test">>],
                 <<"payload">>,
-                false
+                false,
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -899,7 +910,8 @@ simple_acl(_) ->
                 1,
                 [<<"">>, <<"test">>, <<"my-client-id">>],
                 <<"payload">>,
-                false
+                false,
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -910,7 +922,8 @@ simple_acl(_) ->
                 1,
                 [<<"x">>, <<"y">>, <<"z">>, <<"test">>],
                 <<"payload">>,
-                false
+                false,
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -921,7 +934,8 @@ simple_acl(_) ->
                 1,
                 [<<"">>, <<"test">>, <<"my-client-id">>],
                 <<"payload">>,
-                false
+                false,
+                <<"test-session">>
             )
         ),
         %% ACL with Labels
@@ -1054,7 +1068,8 @@ add_complex_acl_test(_) ->
                 {"", <<"my-client-id">>},
                 [
                     {Topic1, 0}
-                ]
+                ],
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -1066,7 +1081,8 @@ add_complex_acl_test(_) ->
                 {"", <<"my-client-id">>},
                 [
                     {Topic2, 0}
-                ]
+                ],
+                <<"test-session">>
             )
         )
     ].
@@ -1088,7 +1104,8 @@ delete_complex_acl_test(_) ->
                 {"", <<"my-client-id">>},
                 [
                     {Topic1, 0}
-                ]
+                ],
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -1100,7 +1117,8 @@ delete_complex_acl_test(_) ->
                 {"", <<"my-client-id">>},
                 [
                     {Topic2, 0}
-                ]
+                ],
+                <<"test-session">>
             )
         )
     ].
@@ -1123,7 +1141,8 @@ subtopic_subscribe_test(_) ->
                 {"", <<"my-client-id">>},
                 [
                     {Topic1, 0}
-                ]
+                ],
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -1135,7 +1154,8 @@ subtopic_subscribe_test(_) ->
                 {"", <<"my-client-id">>},
                 [
                     {SubTopic1, 0}
-                ]
+                ],
+                <<"test-session">>
             )
         ),
         ?_assertEqual(
@@ -1145,7 +1165,8 @@ subtopic_subscribe_test(_) ->
                 {"", <<"my-client-id">>},
                 [
                     {SubTopic2, 0}
-                ]
+                ],
+                <<"test-session">>
             )
         ),
         ?_assertEqual(

@@ -29,8 +29,8 @@
 ]).
 
 -export([
-    auth_on_subscribe/3,
-    auth_on_publish/6,
+    auth_on_subscribe/4,
+    auth_on_publish/7,
     auth_on_subscribe_m5/4,
     auth_on_publish_m5/7,
     change_config/1
@@ -79,21 +79,21 @@ change_config(Configs) ->
             vmq_acl_reloader:change_config_now()
     end.
 
-auth_on_subscribe(User, SubscriberId, TopicList) ->
-    auth_on_subscribe(User, SubscriberId, TopicList, []).
+auth_on_subscribe(User, SubscriberId, TopicList, SessionId) ->
+    auth_on_subscribe(User, SubscriberId, TopicList, SessionId, []).
 
-auth_on_subscribe(_, _, [], Modifiers) ->
+auth_on_subscribe(_, _, [], _, Modifiers) ->
     {ok, lists:reverse(Modifiers)};
-auth_on_subscribe(User, SubscriberId, [{Topic, Qos} | Rest], Modifiers) ->
+auth_on_subscribe(User, SubscriberId, [{Topic, Qos} | Rest], SessionId, Modifiers) ->
     case check(read, Topic, User, SubscriberId) of
         true ->
-            auth_on_subscribe(User, SubscriberId, Rest, [{Topic, Qos} | Modifiers]);
+            auth_on_subscribe(User, SubscriberId, Rest, SessionId, [{Topic, Qos} | Modifiers]);
         false ->
             ModTopic = {Topic, not_allowed},
-            auth_on_subscribe(User, SubscriberId, Rest, [ModTopic | Modifiers])
+            auth_on_subscribe(User, SubscriberId, Rest, SessionId, [ModTopic | Modifiers])
     end.
 
-auth_on_publish(User, SubscriberId, _, Topic, _, _) ->
+auth_on_publish(User, SubscriberId, _, Topic, _, _, _SessionId) ->
     case check(write, Topic, User, SubscriberId) of
         true ->
             ok;
@@ -106,7 +106,7 @@ auth_on_subscribe_m5(_, _, []) ->
 auth_on_subscribe_m5(User, SubscriberId, [{Topic, _Qos} | Rest]) ->
     case check(read, Topic, User, SubscriberId) of
         true ->
-            auth_on_subscribe(User, SubscriberId, Rest);
+            auth_on_subscribe(User, SubscriberId, Rest, undefined, []);
         false ->
             next
     end.
@@ -115,7 +115,7 @@ auth_on_subscribe_m5(User, SubscriberId, Topics, _Props) ->
     auth_on_subscribe_m5(User, SubscriberId, Topics).
 
 auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, _Props) ->
-    auth_on_publish(User, SubscriberId, QoS, Topic, Payload, IsRetain).
+    auth_on_publish(User, SubscriberId, QoS, Topic, Payload, IsRetain, undefined).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal
@@ -372,7 +372,8 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"c">>], 0},
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
-                ]
+                ],
+                undefined
             )
         ),
         ?_assertEqual(
@@ -388,7 +389,8 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"c">>], 0},
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
-                ]
+                ],
+                undefined
             )
         ),
         ?_assertEqual(
@@ -404,7 +406,8 @@ simple_acl(_) ->
                     {[<<"a">>, <<"b">>, <<"c">>], 0},
                     {[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0},
                     {[<<"">>, <<"test">>, <<"my-client-id">>], 0}
-                ]
+                ],
+                undefined
             )
         ),
         ?_assertEqual(
@@ -415,7 +418,8 @@ simple_acl(_) ->
                 1,
                 [<<"a">>, <<"b">>, <<"c">>],
                 <<"payload">>,
-                false
+                false,
+                undefined
             )
         ),
         ?_assertEqual(
@@ -426,7 +430,8 @@ simple_acl(_) ->
                 1,
                 [<<"x">>, <<"y">>, <<"z">>, <<"blabla">>],
                 <<"payload">>,
-                false
+                false,
+                undefined
             )
         ),
         ?_assertEqual(
@@ -437,7 +442,8 @@ simple_acl(_) ->
                 1,
                 [<<"">>, <<"test">>, <<"my-client-id">>],
                 <<"payload">>,
-                false
+                false,
+                undefined
             )
         ),
         ?_assertEqual(
@@ -448,7 +454,8 @@ simple_acl(_) ->
                 1,
                 [<<"x">>, <<"y">>, <<"z">>, <<"blabla">>],
                 <<"payload">>,
-                false
+                false,
+                undefined
             )
         ),
         ?_assertEqual(
@@ -459,7 +466,8 @@ simple_acl(_) ->
                 1,
                 [<<"">>, <<"test">>, <<"my-client-id">>],
                 <<"payload">>,
-                false
+                false,
+                undefined
             )
         )
     ].
