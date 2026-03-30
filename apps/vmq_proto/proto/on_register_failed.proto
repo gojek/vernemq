@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+import "registration_failure_reason.proto";
+
+option go_package = "source.golabs.io/courier/apis-go/eventssidecar/v1";
+
+package eventssidecar.v1;
+
+message OnRegisterFailed {
+    google.protobuf.Timestamp timestamp = 1;
+    string mountpoint = 2;
+    string client_id = 3;
+    string peer_addr = 4;
+    int32 peer_port = 5;
+    string username = 6;
+    bool clean_session = 7;
+    eventssidecar.v1.RegistrationFailureReason reason = 8;
+}
