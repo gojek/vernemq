@@ -80,6 +80,9 @@ queue_hooks_lifecycle_test1(_) ->
 
     ok = hook_called(on_client_wakeup),
 
+    QPid = vmq_queue_sup_sup:get_queue_pid({"", <<"queue-client">>}),
+    ok = vmq_queue:set_session_id(QPid, <<"test-session-id">>),
+
     gen_tcp:close(Socket),
     ok = hook_called(on_topic_unsubscribed),
     ok = hook_called(on_client_gone).
@@ -90,6 +93,9 @@ queue_hooks_lifecycle_test2(_) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
 
     ok = hook_called(on_client_wakeup),
+
+    QPid = vmq_queue_sup_sup:get_queue_pid({"", <<"queue-client">>}),
+    ok = vmq_queue:set_session_id(QPid, <<"test-session-id">>),
 
     gen_tcp:close(Socket),
     ok = hook_called(on_client_offline).
@@ -102,6 +108,9 @@ queue_hooks_lifecycle_test3(_) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
 
     ok = hook_called(on_client_wakeup),
+
+    QPid = vmq_queue_sup_sup:get_queue_pid({"", <<"queue-client">>}),
+    ok = vmq_queue:set_session_id(QPid, <<"test-session-id">>),
 
     gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
@@ -127,6 +136,10 @@ queue_hooks_lifecycle_test4(_) ->
     Connack = packet:gen_connack(0),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = hook_called(on_client_wakeup),
+
+    QPid0 = vmq_queue_sup_sup:get_queue_pid({"", <<"queue-client">>}),
+    ok = vmq_queue:set_session_id(QPid0, <<"test-session-id">>),
+
     gen_tcp:close(Socket),
     ok = hook_called(on_client_offline),
     QPid = vmq_queue_sup_sup:get_queue_pid({"", <<"queue-client">>}),
@@ -178,23 +191,23 @@ hook_on_client_wakeup({"" , <<"queue-client">>}, _) ->
 hook_on_client_wakeup(_, _) ->
     ok.
 
-hook_on_client_gone({"" , <<"queue-client">>}, _, _, _) ->
+hook_on_client_gone({"" , <<"queue-client">>}, _, _, <<"test-session-id">>) ->
     ets:insert(?MODULE, {on_client_gone, true});
 hook_on_client_gone(_, _, _, _) ->
     ok.
 
-hook_on_client_offline({"" , <<"queue-client">>}, _, _, _) ->
+hook_on_client_offline({"" , <<"queue-client">>}, _, _, <<"test-session-id">>) ->
     ets:insert(?MODULE, {on_client_offline, true});
 hook_on_client_offline(_, _, _, _) ->
     ok.
 
-hook_on_session_expired({"" , <<"queue-client">>}, _) ->
+hook_on_session_expired({"" , <<"queue-client">>}, <<"test-session-id">>) ->
     ets:insert(?MODULE, {on_session_expired, true});
 hook_on_session_expired(_, _) ->
     ok.
 
 hook_on_offline_message({"", <<"queue-client">>}, 1,
-                        [<<"queue">>, <<"hook">>, <<"test">>], <<"message">>, false, _) ->
+                        [<<"queue">>, <<"hook">>, <<"test">>], <<"message">>, false, <<"test-session-id">>) ->
     ets:insert(?MODULE, {on_offline_message, true});
 hook_on_offline_message(_, _, _, _, _, _) ->
     ok.

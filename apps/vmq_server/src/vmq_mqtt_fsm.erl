@@ -645,8 +645,8 @@ terminate(
     maybe_publish_last_will(State, Reason),
     ProtoReason = vmq_mqtt_fsm_util:terminate_proto_reason(NewReason),
     _ = vmq_metrics:incr({?MQTT_DISONNECT, ProtoReason}),
-    catch vmq_queue:set_username(QueuePid, UserName),
-    catch vmq_queue:set_last_disconnect_reason(QueuePid, ProtoReason),
+    vmq_queue:set_username(QueuePid, UserName),
+    vmq_queue:set_last_disconnect_reason(QueuePid, ProtoReason),
     {stop, terminate_reason(Reason), []}.
 
 terminate_reason(Reason) -> vmq_mqtt_fsm_util:terminate_reason(Reason).
