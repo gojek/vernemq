@@ -882,7 +882,8 @@ add_session_(
                 queue = queue:new()
             },
             opts = maps:merge(OldOpts, Opts),
-            sessions = NewSessions
+            sessions = NewSessions,
+            session_id = NewSessionId
         }
     ).
 
