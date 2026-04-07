@@ -518,7 +518,7 @@ offline(init_offline_queue, #state{id = SId} = State) ->
             gen_fsm:send_event_after(1000, init_offline_queue),
             {next_state, offline, State}
     end;
-offline({enqueue, Enq}, #state{id = SId} = State) ->
+offline({enqueue, Enq}, #state{id = SId, session_id = SessionId} = State) ->
     case Enq of
         #deliver{
             qos = QoS,
@@ -529,7 +529,7 @@ offline({enqueue, Enq}, #state{id = SId} = State) ->
             }
         } ->
             _ = vmq_plugin:all(on_offline_message, [
-                SId, QoS, Topic, Payload, Retain, State#state.session_id
+                SId, QoS, Topic, Payload, Retain, SessionId
             ]);
         _ ->
             ignore
@@ -537,13 +537,15 @@ offline({enqueue, Enq}, #state{id = SId} = State) ->
     %% storing the message in the offline queue
     _ = vmq_metrics:incr_queue_in(),
     {next_state, offline, insert(Enq, State)};
-offline(expire_session, #state{id = SId, offline = #queue{queue = Q}} = State) ->
+offline(
+    expire_session, #state{id = SId, offline = #queue{queue = Q}, session_id = SessionId} = State
+) ->
     %% session has expired cleanup and go down
     vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
     vmq_reg:delete_subscriptions(SId),
     vmq_message_store:delete(SId),
     cleanup_queue(SId, Q),
-    _ = vmq_plugin:all(on_session_expired, [SId, State#state.session_id]),
+    _ = vmq_plugin:all(on_session_expired, [SId, SessionId]),
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
     State1 = publish_last_will(State),
     {stop, normal, State1};
@@ -906,7 +908,8 @@ handle_session_down(
         id = SId,
         waiting_call = WaitingCall,
         last_disconnect_reason = Reason,
-        username = UserName
+        username = UserName,
+        session_id = SessionId
     } = State
 ) ->
     {NewState, DeletedSession} = del_session(SessionPid, State),
@@ -920,11 +923,11 @@ handle_session_down(
             case DeletedSession#session.cleanup_on_disconnect of
                 true ->
                     _ = vmq_plugin:all(on_client_gone, [
-                        SId, Reason, UserName, State#state.session_id
+                        SId, Reason, UserName, SessionId
                     ]);
                 false ->
                     _ = vmq_plugin:all(on_client_offline, [
-                        SId, Reason, UserName, State#state.session_id
+                        SId, Reason, UserName, SessionId
                     ])
             end,
             {next_state, state_change({'DOWN', add_session}, wait_for_offline, online),
@@ -937,7 +940,7 @@ handle_session_down(
             vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
             vmq_reg:delete_subscriptions(SId),
             vmq_message_store:delete(SId),
-            _ = vmq_plugin:all(on_client_gone, [SId, Reason, UserName, State#state.session_id]),
+            _ = vmq_plugin:all(on_client_gone, [SId, Reason, UserName, SessionId]),
             gen_fsm:reply(From, ok),
             {stop, normal, NewState};
         {0, wait_for_offline, {migrate, _, _}} ->
@@ -945,7 +948,7 @@ handle_session_down(
             %% ... but we've a migrate request waiting
             %%     go into drain state
             gen_fsm:send_event(self(), drain_start),
-            _ = vmq_plugin:all(on_client_offline, [SId, Reason, UserName, State#state.session_id]),
+            _ = vmq_plugin:all(on_client_offline, [SId, Reason, UserName, SessionId]),
             {next_state, state_change({'DOWN', migrate}, wait_for_offline, drain), NewState};
         {0, wait_for_offline, {{cleanup, _Reason}, From}} ->
             %% Forcefully cleaned up, we have to cleanup remaining offline messages
@@ -955,11 +958,11 @@ handle_session_down(
             vmq_message_store:delete(SId),
             _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
             gen_fsm:reply(From, ok),
-            _ = vmq_plugin:all(on_client_gone, [SId, Reason, UserName, State#state.session_id]),
+            _ = vmq_plugin:all(on_client_gone, [SId, Reason, UserName, SessionId]),
             {stop, normal, NewState};
         {0, wait_for_offline, {{terminate, _Reason}, From}} ->
             %% Terminate queue process due to remote sub
-            _ = vmq_plugin:all(on_client_offline, [SId, Reason, UserName, State#state.session_id]),
+            _ = vmq_plugin:all(on_client_offline, [SId, Reason, UserName, SessionId]),
             gen_fsm:reply(From, ok),
             {stop, normal, NewState};
         {0, _, _} when DeletedSession#session.cleanup_on_disconnect ->
@@ -971,13 +974,13 @@ handle_session_down(
             vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
             vmq_reg:delete_subscriptions(SId),
             vmq_message_store:delete(SId),
-            _ = vmq_plugin:all(on_client_gone, [SId, Reason, UserName, State#state.session_id]),
+            _ = vmq_plugin:all(on_client_gone, [SId, Reason, UserName, SessionId]),
             {stop, normal, NewState};
         {0, OldStateName, _} ->
             %% last session gone
             %% ... we've to stay around and store the messages
             %%     inside the offline queue
-            _ = vmq_plugin:all(on_client_offline, [SId, Reason, UserName, State#state.session_id]),
+            _ = vmq_plugin:all(on_client_offline, [SId, Reason, UserName, SessionId]),
             {next_state, state_change('DOWN', OldStateName, offline),
                 maybe_set_last_will_timer(
                     maybe_set_expiry_timer(NewState#state{
@@ -1142,13 +1145,16 @@ insert(#deliver{msg = #vmq_msg{qos = 0}}, #state{sessions = Sessions} = State) w
 ->
     %% no session online, skip QoS0 message for QoS1 or QoS2 Subscription
     State;
-insert(MsgOrRef, #state{id = SId, offline = Offline, sessions = Sessions} = State) when
+insert(
+    MsgOrRef,
+    #state{id = SId, offline = Offline, sessions = Sessions, session_id = SessionId} = State
+) when
     Sessions == #{}
 ->
     %% no session online, insert in offline queue
     State#state{
         offline = queue_insert(
-            true, maybe_set_expiry_ts(MsgOrRef), Offline, SId, State#state.session_id
+            true, maybe_set_expiry_ts(MsgOrRef), Offline, SId, SessionId
         )
     };
 %% Online Queue

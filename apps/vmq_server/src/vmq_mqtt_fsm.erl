@@ -340,7 +340,8 @@ connected(
     #state{
         waiting_acks = WAcks,
         subscriber_id = SubscriberId,
-        username = Username
+        username = Username,
+        session_id = SessionId
     } = State
 ) ->
     %% qos1 flow
@@ -365,7 +366,7 @@ connected(
                 IsRetain,
                 #matched_acl{name = Name},
                 Persisted,
-                State#state.session_id
+                SessionId
             ]),
             maybe_send_puback(Name, PubPid, PubMsgId),
             handle_waiting_msgs(State#state{waiting_acks = maps:remove(MessageId, WAcks)});
@@ -379,7 +380,8 @@ connected(#mqtt_pubrec{message_id = MessageId}, State) ->
         retry_interval = RetryInterval,
         retry_queue = RetryQueue,
         subscriber_id = SubscriberId,
-        username = Username
+        username = Username,
+        session_id = SessionId
     } = State,
     %% qos2 flow
     _ = vmq_metrics:incr_mqtt_pubrec_received(),
@@ -401,7 +403,7 @@ connected(#mqtt_pubrec{message_id = MessageId}, State) ->
                 IsRetain,
                 #matched_acl{name = Name},
                 Persisted,
-                State#state.session_id
+                SessionId
             ]),
             PubRelFrame = #mqtt_pubrel{message_id = MessageId},
             _ = vmq_metrics:incr_mqtt_pubrel_sent(),
@@ -461,7 +463,8 @@ connected(
 ) ->
     #state{
         subscriber_id = SubscriberId,
-        username = User
+        username = User,
+        session_id = SessionId
     } = State,
     _ = vmq_metrics:incr_mqtt_subscribe_received(),
     SubTopics = subtopics(Topics, ProtoVer),
@@ -491,13 +494,13 @@ connected(
                 end,
             case vmq_reg:subscribe(SubscriberId, Subscriptions) of
                 {ok, _} = Res ->
-                    vmq_plugin:all(on_subscribe, [User, SubscriberId, T, State#state.session_id]),
+                    vmq_plugin:all(on_subscribe, [User, SubscriberId, T, SessionId]),
                     Res;
                 Res ->
                     Res
             end
         end,
-    case auth_on_subscribe(User, SubscriberId, SubTopics, OnAuthSuccess, State#state.session_id) of
+    case auth_on_subscribe(User, SubscriberId, SubTopics, OnAuthSuccess, SessionId) of
         {ok, QoSs} ->
             check_mqtt_auth_errors(QoSs),
             Frame = #mqtt_suback{message_id = MessageId, qos_table = QoSs},
@@ -518,7 +521,8 @@ connected(
 connected(#mqtt_unsubscribe{message_id = MessageId, topics = Topics}, State) ->
     #state{
         subscriber_id = SubscriberId,
-        username = User
+        username = User,
+        session_id = SessionId
     } = State,
     _ = vmq_metrics:incr_mqtt_unsubscribe_received(),
     OnSuccess =
@@ -526,14 +530,14 @@ connected(#mqtt_unsubscribe{message_id = MessageId, topics = Topics}, State) ->
             case vmq_reg:unsubscribe(SubscriberId, MaybeChangedTopics) of
                 ok ->
                     vmq_plugin:all(on_topic_unsubscribed, [
-                        SubscriberId, MaybeChangedTopics, State#state.session_id
+                        SubscriberId, MaybeChangedTopics, SessionId
                     ]),
                     ok;
                 V ->
                     V
             end
         end,
-    case unsubscribe(User, SubscriberId, Topics, OnSuccess, State#state.session_id) of
+    case unsubscribe(User, SubscriberId, Topics, OnSuccess, SessionId) of
         ok ->
             Frame = #mqtt_unsuback{message_id = MessageId},
             _ = vmq_metrics:incr_mqtt_unsuback_sent(),
@@ -813,7 +817,8 @@ check_user(#mqtt_connect{username = User, password = Password, properties = Prop
                 peer = Peer,
                 subscriber_id = SubscriberId,
                 clean_session = CleanSession,
-                def_opts = DOpts
+                def_opts = DOpts,
+                session_id = SessionId
             } = State,
             CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
             case
@@ -831,7 +836,7 @@ check_user(#mqtt_connect{username = User, password = Password, properties = Prop
                 }} ->
                     monitor(process, QPid),
                     _ = vmq_plugin:all(on_register, [
-                        Peer, SubscriberId, User, Properties, State#state.session_id
+                        Peer, SubscriberId, User, Properties, SessionId
                     ]),
                     check_will(F, SessionPresent, State#state{
                         queue_pid = QPid, username = User, next_msg_id = MsgId
@@ -864,7 +869,8 @@ check_will(
     SessionPresent,
     State
 ) ->
-    #state{username = User, subscriber_id = {MountPoint, _} = SubscriberId} = State,
+    #state{username = User, subscriber_id = {MountPoint, _} = SubscriberId, session_id = SessionId} =
+        State,
     case
         auth_on_publish(
             User,
@@ -878,7 +884,7 @@ check_will(
                 mountpoint = MountPoint
             },
             fun(Msg, _, SessCtrl) -> {ok, Msg, SessCtrl} end,
-            State#state.session_id
+            SessionId
         )
     of
         {ok, Msg, SessCtrl} ->
@@ -1161,9 +1167,10 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
         username = User,
         subscriber_id = SubscriberId,
         proto_ver = Proto,
-        reg_view = RegView
+        reg_view = RegView,
+        session_id = SessionId
     } = State,
-    case publish(RegView, User, SubscriberId, Msg, State#state.session_id) of
+    case publish(RegView, User, SubscriberId, Msg, SessionId) of
         {ok, _, SessCtrl} ->
             {[], SessCtrl};
         {error, not_allowed} when ?IS_PROTO_4(Proto) ->
@@ -1185,9 +1192,10 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
         username = User,
         subscriber_id = SubscriberId,
         proto_ver = Proto,
-        reg_view = RegView
+        reg_view = RegView,
+        session_id = SessionId
     } = State,
-    case publish(RegView, User, SubscriberId, Msg, State#state.session_id) of
+    case publish(RegView, User, SubscriberId, Msg, SessionId) of
         {ok, #vmq_msg{acl_name = AclName}, SessCtrl} ->
             {maybe_send_immediate_puback(AclName, MessageId), SessCtrl};
         {error, not_allowed} when ?IS_PROTO_4(Proto) ->
@@ -1226,11 +1234,12 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
         subscriber_id = SubscriberId,
         proto_ver = Proto,
         reg_view = RegView,
-        waiting_acks = WAcks
+        waiting_acks = WAcks,
+        session_id = SessionId
     } = State,
     case maps:get({qos2, MessageId}, WAcks, not_found) of
         not_found ->
-            case publish(RegView, User, SubscriberId, Msg, State#state.session_id) of
+            case publish(RegView, User, SubscriberId, Msg, SessionId) of
                 {ok, _, SessCtrl} ->
                     Frame = #mqtt_pubrec{message_id = MessageId},
                     _ = vmq_metrics:incr_mqtt_pubrec_sent(),
@@ -1359,7 +1368,8 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State) ->
         subscriber_id = SubscriberId,
         waiting_acks = WAcks,
         retry_queue = RetryQueue,
-        retry_interval = RetryInterval
+        retry_interval = RetryInterval,
+        session_id = SessionId
     } = State,
     #vmq_msg{
         routing_key = Topic,
@@ -1383,7 +1393,7 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State) ->
                 IsRetained,
                 #matched_acl{name = Name},
                 Persisted,
-                State#state.session_id
+                SessionId
             )
         of
             {error, _} ->
@@ -1791,7 +1801,8 @@ get_info_items([client_id | Rest], State, Acc) ->
     #state{subscriber_id = {_, ClientId}} = State,
     get_info_items(Rest, State, [{client_id, ClientId} | Acc]);
 get_info_items([session_id | Rest], State, Acc) ->
-    get_info_items(Rest, State, [{session_id, State#state.session_id} | Acc]);
+    #state{session_id = SessionId} = State,
+    get_info_items(Rest, State, [{session_id, SessionId} | Acc]);
 get_info_items([mountpoint | Rest], State, Acc) ->
     #state{subscriber_id = {MountPoint, _}} = State,
     get_info_items(Rest, State, [{mountpoint, MountPoint} | Acc]);
