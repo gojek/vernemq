@@ -179,23 +179,23 @@ hook_on_client_wakeup({"" , <<"queue-client">>}, _) ->
 hook_on_client_wakeup(_, _) ->
     ok.
 
-hook_on_client_gone({"" , <<"queue-client">>}, _, _, <<"test-session-id">>) ->
+hook_on_client_gone({"" , <<"queue-client">>}, _, _, SessionId) when is_binary(SessionId) ->
     ets:insert(?MODULE, {on_client_gone, true});
 hook_on_client_gone(_, _, _, _) ->
     ok.
 
-hook_on_client_offline({"" , <<"queue-client">>}, _, _, <<"test-session-id">>) ->
+hook_on_client_offline({"" , <<"queue-client">>}, _, _, SessionId) when is_binary(SessionId) ->
     ets:insert(?MODULE, {on_client_offline, true});
 hook_on_client_offline(_, _, _, _) ->
     ok.
 
-hook_on_session_expired({"" , <<"queue-client">>}, <<"test-session-id">>) ->
+hook_on_session_expired({"" , <<"queue-client">>}, SessionId) when is_binary(SessionId) ->
     ets:insert(?MODULE, {on_session_expired, true});
 hook_on_session_expired(_, _) ->
     ok.
 
 hook_on_offline_message({"", <<"queue-client">>}, 1,
-                        [<<"queue">>, <<"hook">>, <<"test">>], <<"message">>, false, <<"test-session-id">>) ->
+                        [<<"queue">>, <<"hook">>, <<"test">>], <<"message">>, false, SessionId) when is_binary(SessionId) ->
     ets:insert(?MODULE, {on_offline_message, true});
 hook_on_offline_message(_, _, _, _, _, _) ->
     ok.
