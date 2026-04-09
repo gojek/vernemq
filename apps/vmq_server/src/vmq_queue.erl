@@ -59,8 +59,7 @@
     init_offline_queue/1,
     set_last_disconnect_reason/2,
     update_session_expiry/2,
-    set_username/2,
-    set_session_id/2
+    set_username/2
 ]).
 
 -export([
@@ -172,9 +171,6 @@ set_last_disconnect_reason(Queue, Reason) when is_pid(Queue) ->
 
 set_username(Queue, UserName) when is_pid(Queue) ->
     gen_fsm:sync_send_all_state_event(Queue, {set_username, UserName}, infinity).
-
-set_session_id(Queue, SessionId) when is_pid(Queue) ->
-    gen_fsm:sync_send_all_state_event(Queue, {set_session_id, SessionId}, infinity).
 
 force_disconnect(Queue, Reason) when is_pid(Queue) ->
     force_disconnect(Queue, Reason, false).
@@ -722,8 +718,6 @@ handle_sync_event({set_last_disconnect_reason, Reason}, _From, StateName, State)
     {reply, ok, StateName, State#state{last_disconnect_reason = Reason}};
 handle_sync_event({set_username, Username}, _From, StateName, State) ->
     {reply, ok, StateName, State#state{username = Username}};
-handle_sync_event({set_session_id, SessionId}, _From, StateName, State) ->
-    {reply, ok, StateName, State#state{session_id = SessionId}};
 handle_sync_event(Event, _From, _StateName, State) ->
     {stop, {error, {unknown_sync_event, Event}}, State}.
 

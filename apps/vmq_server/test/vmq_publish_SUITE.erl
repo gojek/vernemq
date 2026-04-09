@@ -960,8 +960,6 @@ shared_subscription_offline(Cfg) ->
     Suback = mqtt5_v4compat:gen_suback(1, 1, Cfg),
     ok = gen_tcp:send(SubSocketOffline, Subscribe),
     ok = mqtt5_v4compat:expect_packet(SubSocketOffline, "suback", Suback, Cfg),
-    SubQPid = vmq_queue_sup_sup:get_queue_pid({"", list_to_binary(SubOfflineClientId)}),
-    ok = vmq_queue:set_session_id(SubQPid, <<"test-session-id">>),
     Disconnect = mqtt5_v4compat:gen_disconnect(Cfg),
     ok = gen_tcp:send(SubSocketOffline, Disconnect),
 
@@ -1032,8 +1030,6 @@ shared_subscription_online_first(Cfg) ->
     ok = mqtt5_v4compat:expect_packet(SubSocketOffline, "suback", Suback, Cfg),
     ok = gen_tcp:send(SubSocketOnline, Subscribe),
     ok = mqtt5_v4compat:expect_packet(SubSocketOnline, "suback", Suback, Cfg),
-    SubQPid = vmq_queue_sup_sup:get_queue_pid({"", list_to_binary(SubOfflineClientId)}),
-    ok = vmq_queue:set_session_id(SubQPid, <<"test-session-id">>),
 
     Disconnect = mqtt5_v4compat:gen_disconnect(Cfg),
     ok = gen_tcp:send(SubSocketOffline, Disconnect),
@@ -1634,7 +1630,7 @@ wait_for_offline_event(ClientId, Timeout) ->
                 ClientId
         end,
     receive
-        {on_client_offline, {"", ClientIdBin}, _, _, <<"test-session-id">>} ->
+        {on_client_offline, {"", ClientIdBin}, _, _, SessionId} when is_binary(SessionId) ->
             ok
     after Timeout ->
         throw(client_not_offline)

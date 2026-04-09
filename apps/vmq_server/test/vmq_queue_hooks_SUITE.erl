@@ -80,9 +80,6 @@ queue_hooks_lifecycle_test1(_) ->
 
     ok = hook_called(on_client_wakeup),
 
-    QPid = vmq_queue_sup_sup:get_queue_pid({"", <<"queue-client">>}),
-    ok = vmq_queue:set_session_id(QPid, <<"test-session-id">>),
-
     gen_tcp:close(Socket),
     ok = hook_called(on_topic_unsubscribed),
     ok = hook_called(on_client_gone).
@@ -93,9 +90,6 @@ queue_hooks_lifecycle_test2(_) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
 
     ok = hook_called(on_client_wakeup),
-
-    QPid = vmq_queue_sup_sup:get_queue_pid({"", <<"queue-client">>}),
-    ok = vmq_queue:set_session_id(QPid, <<"test-session-id">>),
 
     gen_tcp:close(Socket),
     ok = hook_called(on_client_offline).
@@ -108,9 +102,6 @@ queue_hooks_lifecycle_test3(_) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
 
     ok = hook_called(on_client_wakeup),
-
-    QPid = vmq_queue_sup_sup:get_queue_pid({"", <<"queue-client">>}),
-    ok = vmq_queue:set_session_id(QPid, <<"test-session-id">>),
 
     gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
@@ -136,9 +127,6 @@ queue_hooks_lifecycle_test4(_) ->
     Connack = packet:gen_connack(0),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = hook_called(on_client_wakeup),
-
-    QPid0 = vmq_queue_sup_sup:get_queue_pid({"", <<"queue-client">>}),
-    ok = vmq_queue:set_session_id(QPid0, <<"test-session-id">>),
 
     gen_tcp:close(Socket),
     ok = hook_called(on_client_offline),
