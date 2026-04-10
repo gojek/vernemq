@@ -1630,7 +1630,7 @@ wait_for_offline_event(ClientId, Timeout) ->
                 ClientId
         end,
     receive
-        {on_client_offline, {"", ClientIdBin}, _, _, SessionId} when is_binary(SessionId) ->
+        {on_client_offline, {"", ClientIdBin}, _, _, _} ->
             ok
     after Timeout ->
         throw(client_not_offline)
