@@ -594,6 +594,12 @@ format_all_till_ok_(
 ) ->
     {"Calling ~p(~p,~p,~s,~s,~p) ~n", [Hook, Peer, SubscriberId, User, Password, CleanSession]};
 format_all_till_ok_(
+    auth_on_register = Hook,
+    [Peer, SubscriberId, User, Password, CleanSession, _SessionId],
+    _Opts
+) ->
+    {"Calling ~p(~p,~p,~s,~s,~p) ~n", [Hook, Peer, SubscriberId, User, Password, CleanSession]};
+format_all_till_ok_(
     auth_on_publish = Hook,
     [User, SubscriberId, QoS, Topic, Payload, IsRetain],
     _Opts
@@ -603,7 +609,19 @@ format_all_till_ok_(
         "    ~s~n",
         [Hook, User, SubscriberId, QoS, jtopic(Topic), IsRetain, Payload]
     };
+format_all_till_ok_(
+    auth_on_publish = Hook,
+    [User, SubscriberId, QoS, Topic, Payload, IsRetain, _SessionId],
+    _Opts
+) ->
+    {
+        "Calling ~p(~s,~p,~p,~s,~p) with payload:~n"
+        "    ~s~n",
+        [Hook, User, SubscriberId, QoS, jtopic(Topic), IsRetain, Payload]
+    };
 format_all_till_ok_(auth_on_subscribe = Hook, [User, SubscriberId, Topics], _Opts) ->
+    [{"Calling ~p(~s,~p) with topics:~n", [Hook, User, SubscriberId]}, ftopics(Topics)];
+format_all_till_ok_(auth_on_subscribe = Hook, [User, SubscriberId, Topics, _SessionId], _Opts) ->
     [{"Calling ~p(~s,~p) with topics:~n", [Hook, User, SubscriberId]}, ftopics(Topics)];
 format_all_till_ok_(
     auth_on_register_m5 = Hook,
