@@ -212,9 +212,9 @@ hook_auth_on_publish(_, {"", <<"pub-rewrite-test">>}, _MsgId, [<<"pub">>, <<"rew
 hook_auth_on_publish(_, _, _MsgId, _, _, _, _) ->
     ok.
 
-hook_on_publish_modified_payload(_UserName, _SubscriberId, _QoS, _Topic, <<"rewritten">>, _IsRetain) ->
+hook_on_publish_modified_payload(_UserName, _SubscriberId, _QoS, _Topic, <<"rewritten">>, _IsRetain, _MatchedAcl, _SessionId) ->
     ok;
-hook_on_publish_modified_payload(_UserName, _SubscriberId, _QoS, _Topic, Payload, _IsRetain) ->
+hook_on_publish_modified_payload(_UserName, _SubscriberId, _QoS, _Topic, Payload, _IsRetain, _MatchedAcl, _SessionId) ->
     throw({expected_payload, <<"rewritten">>, got, Payload}).
 
 hook_on_deliver(_User, {"", <<"dlvr-rewrite-test">>}, [<<"dlvr">>, <<"rewrite">>, <<"payload">>],
@@ -241,7 +241,7 @@ enable_on_deliver() ->
       on_deliver, ?MODULE, hook_on_deliver, 4).
 enable_hook_on_publish_modified_payload() ->
     ok = vmq_plugin_mgr:enable_module_plugin(
-      on_publish, ?MODULE, hook_on_publish_modified_payload, 6).
+      on_publish, ?MODULE, hook_on_publish_modified_payload, 8).
 disable_auth_on_subscribe() ->
     ok = vmq_plugin_mgr:disable_module_plugin(
       auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 4).
@@ -253,6 +253,6 @@ disable_on_deliver() ->
       on_deliver, ?MODULE, hook_on_deliver, 4).
 disable_hook_on_publish_modified_payload() ->
     ok = vmq_plugin_mgr:disable_module_plugin(
-      on_publish, ?MODULE, hook_on_publish_modified_payload, 6).
+      on_publish, ?MODULE, hook_on_publish_modified_payload, 8).
 
 

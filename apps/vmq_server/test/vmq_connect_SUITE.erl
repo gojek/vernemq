@@ -168,10 +168,10 @@ change_subscriber_id_test(Config) ->
     ok = vmq_plugin_mgr:enable_module_plugin(
       auth_on_register, ?MODULE, hook_change_subscriber_id, 6),
     ok = vmq_plugin_mgr:enable_module_plugin(
-      on_register, ?MODULE, hook_on_register_changed_subscriber_id, 3),
+      on_register, ?MODULE, hook_on_register_changed_subscriber_id, 5),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, conn_opts(Config)),
     ok = vmq_plugin_mgr:disable_module_plugin(
-      on_register, ?MODULE, hook_on_register_changed_subscriber_id, 3),
+      on_register, ?MODULE, hook_on_register_changed_subscriber_id, 5),
     ok = vmq_plugin_mgr:disable_module_plugin(
       auth_on_register, ?MODULE, hook_change_subscriber_id, 6),
     ok = close(Socket, Config).
@@ -184,7 +184,7 @@ auth_on_register_change_username_test(Config) ->
     ok = vmq_plugin_mgr:enable_module_plugin(
       auth_on_register, ?MODULE, hook_change_username, 6),
     ok = vmq_plugin_mgr:enable_module_plugin(
-      on_register, ?MODULE, hook_on_register_changed_username, 3),
+      on_register, ?MODULE, hook_on_register_changed_username, 5),
 
     ok = vmq_plugin_mgr:enable_module_plugin(
       auth_on_register_m5, ?MODULE, hook_change_username_m5, 6),
@@ -199,7 +199,7 @@ auth_on_register_change_username_test(Config) ->
       on_register_m5, ?MODULE, hook_on_register_changed_username_m5, 4),
 
     ok = vmq_plugin_mgr:disable_module_plugin(
-      on_register, ?MODULE, hook_on_register_changed_username, 3),
+      on_register, ?MODULE, hook_on_register_changed_username, 5),
     ok = vmq_plugin_mgr:disable_module_plugin(
       auth_on_register, ?MODULE, hook_change_username, 6),
     ok = close(Socket, Config).
@@ -229,12 +229,12 @@ hook_uname_password_denied(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, <<
 hook_uname_password_success(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, <<"password9">>, _, _) -> ok.
 hook_change_subscriber_id(_, {"", <<"change-sub-id-test">>}, _, _, _, _) ->
     {ok, [{subscriber_id, {"newmp", <<"changed-client-id">>}}]}.
-hook_on_register_changed_subscriber_id(_, {"newmp", <<"changed-client-id">>}, _) ->
+hook_on_register_changed_subscriber_id(_, {"newmp", <<"changed-client-id">>}, _, _, _) ->
     ok.
 
 hook_change_username(_, _, <<"old_username">>, _, _, _) ->
     {ok, [{username, <<"new_username">>}]}.
-hook_on_register_changed_username(_, _, <<"new_username">>) ->
+hook_on_register_changed_username(_, _, <<"new_username">>, _, _) ->
     ok.
 
 hook_change_username_m5(_, _, <<"old_username">>, _, _, _) ->
