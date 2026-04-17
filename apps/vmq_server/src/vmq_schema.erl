@@ -104,6 +104,9 @@ translate_listeners(Conf) ->
     {WS_SSLIPs, WS_SSLMaxConns} = lists:unzip(
         extract("listener.wss", "max_connections", InfIntVal, Conf)
     ),
+    {VMQIPs, VMQMaxConns} = lists:unzip(
+        extract("listener.vmq", "max_connections", InfIntVal, Conf)
+    ),
     {HTTPIPs, HTTPMaxConns} = lists:unzip(
         extract("listener.http", "max_connections", InfIntVal, Conf)
     ),
@@ -123,6 +126,9 @@ translate_listeners(Conf) ->
     {WS_SSLIPs, WS_SSLNrOfAcceptors} = lists:unzip(
         extract("listener.wss", "nr_of_acceptors", InfIntVal, Conf)
     ),
+    {VMQIPs, VMQNrOfAcceptors} = lists:unzip(
+        extract("listener.vmq", "nr_of_acceptors", InfIntVal, Conf)
+    ),
     {HTTPIPs, HTTPNrOfAcceptors} = lists:unzip(
         extract("listener.http", "nr_of_acceptors", InfIntVal, Conf)
     ),
@@ -134,6 +140,7 @@ translate_listeners(Conf) ->
     {SSLIPs, SSLMountPoint} = lists:unzip(extract("listener.ssl", "mountpoint", MPVal, Conf)),
     {WSIPs, WSMountPoint} = lists:unzip(extract("listener.ws", "mountpoint", MPVal, Conf)),
     {WS_SSLIPs, WS_SSLMountPoint} = lists:unzip(extract("listener.wss", "mountpoint", MPVal, Conf)),
+    {VMQIPs, VMQMountPoint} = lists:unzip(extract("listener.vmq", "mountpoint", MPVal, Conf)),
 
     {TCPIPs, TCPProxyProto} = lists:unzip(extract("listener.tcp", "proxy_protocol", BoolVal, Conf)),
     {WSIPs, WSProxyProto} = lists:unzip(extract("listener.ws", "proxy_protocol", BoolVal, Conf)),
@@ -159,6 +166,21 @@ translate_listeners(Conf) ->
     ),
     {SSLIPs, SSLBufferSizes} = lists:unzip(
         extract("listener.ssl", "buffer_sizes", StringIntegerListVal, Conf)
+    ),
+    {VMQIPs, VMQBufferSizes} = lists:unzip(
+        extract("listener.vmq", "buffer_sizes", StringIntegerListVal, Conf)
+    ),
+    {VMQIPs, VMQHighWatermarks} = lists:unzip(
+        extract("listener.vmq", "high_watermark", IntVal, Conf)
+    ),
+    {VMQIPs, VMQHighMsgQWatermarks} = lists:unzip(
+        extract("listener.vmq", "high_msgq_watermark", IntVal, Conf)
+    ),
+    {VMQIPs, VMQLowWatermarks} = lists:unzip(
+        extract("listener.vmq", "low_watermark", IntVal, Conf)
+    ),
+    {VMQIPs, VMQLowMsgQWatermarks} = lists:unzip(
+        extract("listener.vmq", "low_msgq_watermark", IntVal, Conf)
     ),
 
     {HTTPIPs, HTTPConfigMod} = lists:unzip(extract("listener.http", "config_mod", AtomVal, Conf)),
@@ -265,6 +287,19 @@ translate_listeners(Conf) ->
             WSAllowedProto
         ])
     ),
+    VMQ = lists:zip(
+        VMQIPs,
+        MZip([
+            VMQMaxConns,
+            VMQNrOfAcceptors,
+            VMQMountPoint,
+            VMQBufferSizes,
+            VMQHighWatermarks,
+            VMQLowWatermarks,
+            VMQHighMsgQWatermarks,
+            VMQLowMsgQWatermarks
+        ])
+    ),
     HTTP = lists:zip(
         HTTPIPs,
         MZip([
@@ -356,6 +391,7 @@ translate_listeners(Conf) ->
         {mqtts, DropUndef(SSL)},
         {mqttws, DropUndef(WS)},
         {mqttwss, DropUndef(WSS)},
+        {vmq, DropUndef(VMQ)},
         {vmqs, DropUndef(VMQS)},
         {http, DropUndef(HTTP)},
         {https, DropUndef(HTTPS)}
@@ -377,6 +413,11 @@ extract(Prefix, Suffix, Val, Conf) ->
             "tls_version",
             "use_identity_as_username",
             "buffer_sizes",
+            "high_watermark",
+            "low_watermark",
+            "high_msgq_watermark",
+            "low_msgq_watermark",
+            "tls_handshake_timeout",
             %% http listener specific
             "config_mod",
             "config_fun",
