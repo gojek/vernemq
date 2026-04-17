@@ -165,3 +165,6 @@
 -define(REASON_TCP_CLOSED, 'REASON_TCP_CLOSED').
 -define(REASON_UNSPECIFIED, 'REASON_UNSPECIFIED').
 -define(METRIC_NOOP_ENQUEUE, noop_enqueue).
+-define(METRIC_CLUSTER_BYTES_DROPPED, cluster_bytes_dropped).
+-define(METRIC_CLUSTER_BYTES_SENT, cluster_bytes_sent).
+-define(METRIC_CLUSTER_BYTES_RECEIVED, cluster_bytes_received).
