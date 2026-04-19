@@ -413,9 +413,7 @@ route_remote_msg(RegView, MP, Topic, Msg) ->
     % don't increment the router_matches_[local|remote] here, as they're already counted
     % at the origin node.
     ok.
-route_remote_msg_fold_fun({_, _} = SubscriberIdAndSubInfo, From, Acc) ->
-    publish_fold_fun(SubscriberIdAndSubInfo, From, Acc);
-route_remote_msg_fold_fun({_, _, _} = SubscriberIdAndSubInfo, From, Acc) ->
+route_remote_msg_fold_fun({Node, _, _} = SubscriberIdAndSubInfo, From, Acc) when Node =:= node() ->
     publish_fold_fun(SubscriberIdAndSubInfo, From, Acc);
 route_remote_msg_fold_fun(_Node, _, Acc) ->
     %% we ignore remote subscriptions, they are already covered
