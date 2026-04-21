@@ -48,14 +48,7 @@ check_publish_rate(Username) when is_binary(Username) ->
         [] ->
             allow;
         [{Username, MaxRate}] ->
-            Count =
-                try
-                    ets:update_counter(?RATE_COUNTER_TBL, Username, 1)
-                catch
-                    error:badarg ->
-                        ets:insert_new(?RATE_COUNTER_TBL, {Username, 0}),
-                        ets:update_counter(?RATE_COUNTER_TBL, Username, 1)
-                end,
+            Count = ets:update_counter(?RATE_COUNTER_TBL, Username, 1, {Username, 0}),
             case Count > MaxRate of
                 true ->
                     vmq_enhanced_auth_metrics:incr_drop_metric(Username),
@@ -101,6 +94,10 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State) ->
+    case get(reset_timer) of
+        undefined -> ok;
+        TRef -> timer:cancel(TRef)
+    end,
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

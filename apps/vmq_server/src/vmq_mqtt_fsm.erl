@@ -1218,7 +1218,8 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
             [#mqtt_puback{message_id = MessageId}];
         {error, rate_limited} ->
-            [];
+            _ = vmq_metrics:incr_mqtt_puback_sent(),
+            [#mqtt_puback{message_id = MessageId}];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
             _ = vmq_metrics:incr_mqtt_error_publish(),
@@ -1274,7 +1275,9 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
                     Frame = #mqtt_pubrec{message_id = MessageId},
                     [Frame];
                 {error, rate_limited} ->
-                    [];
+                    _ = vmq_metrics:incr_mqtt_pubrec_sent(),
+                    Frame = #mqtt_pubrec{message_id = MessageId},
+                    [Frame];
                 {error, _Reason} ->
                     %% can't publish due to overload or netsplit
                     _ = vmq_metrics:incr_mqtt_error_publish(),

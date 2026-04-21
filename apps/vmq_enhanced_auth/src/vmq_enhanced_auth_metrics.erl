@@ -165,13 +165,7 @@ rate_limit_metrics() ->
 
 -spec incr_drop_metric(binary()) -> ok.
 incr_drop_metric(Username) ->
-    try
-        ets:update_counter(?RATE_LIMIT_METRICS_TBL, Username, 1)
-    catch
-        error:badarg ->
-            ets:insert_new(?RATE_LIMIT_METRICS_TBL, {Username, 0}),
-            ets:update_counter(?RATE_LIMIT_METRICS_TBL, Username, 1)
-    end,
+    ets:update_counter(?RATE_LIMIT_METRICS_TBL, Username, 1, {Username, 0}),
     ok.
 
 %% don't do the update
