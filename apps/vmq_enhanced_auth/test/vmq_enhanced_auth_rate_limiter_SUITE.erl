@@ -162,13 +162,13 @@ rate_limit_metrics_format_test(_Config) ->
     ok = vmq_enhanced_auth_rate_limiter:set_rate(<<"user1">>, 1),
     allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"user1">>),
     drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"user1">>),
-    [Metric] = vmq_enhanced_auth_rate_limiter:rate_limit_metrics(),
+    [Metric] = vmq_enhanced_auth_metrics:rate_limit_metrics(),
     {counter, [{username, "user1"}], {?PUBLISH_RATE_LIMITED, <<"user1">>},
      ?PUBLISH_RATE_LIMITED, Desc, 1} = Metric,
     true = is_binary(Desc).
 
 metrics_empty_when_no_drops_test(_Config) ->
-    [] = vmq_enhanced_auth_rate_limiter:rate_limit_metrics().
+    [] = vmq_enhanced_auth_metrics:rate_limit_metrics().
 
 config_loaded_on_start_test(_Config) ->
     Rates = vmq_enhanced_auth_rate_limiter:list_rates(),
