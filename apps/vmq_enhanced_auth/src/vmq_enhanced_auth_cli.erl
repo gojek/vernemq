@@ -64,8 +64,17 @@ enable_ratelimit_cmd() ->
             (_, [_, _] = List, []) ->
                 Username = get_value(username, List),
                 Rate = get_value(rate, List),
-                vmq_enhanced_auth_rate_limiter:set_rate(Username, Rate),
-                [clique_status:text("Done")];
+                case {Username, Rate} of
+                    {undefined, _} ->
+                        Text = clique_status:text(enable_ratelimit_usage()),
+                        [clique_status:alert([Text])];
+                    {_, undefined} ->
+                        Text = clique_status:text(enable_ratelimit_usage()),
+                        [clique_status:alert([Text])];
+                    _ ->
+                        vmq_enhanced_auth_rate_limiter:set_rate(Username, Rate),
+                        [clique_status:text("Done")]
+                end;
             (_, _, _) ->
                 Text = clique_status:text(enable_ratelimit_usage()),
                 [clique_status:alert([Text])]
@@ -113,9 +122,11 @@ username_keyspec() ->
 rate_keyspec() ->
     {rate, [
         {typecast, fun(StrR) ->
-            case catch list_to_integer(StrR) of
-                R when is_integer(R), R > 0 -> R;
+            try list_to_integer(StrR) of
+                R when R > 0 -> R;
                 _ -> {error, {invalid_args, [{rate, StrR}]}}
+            catch
+                error:badarg -> {error, {invalid_args, [{rate, StrR}]}}
             end
         end}
     ]}.
