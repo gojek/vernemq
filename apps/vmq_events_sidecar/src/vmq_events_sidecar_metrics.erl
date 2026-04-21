@@ -219,7 +219,7 @@ sampling_metric_description(dropped) ->
     <<"The number of events dropped due to sampling enabled.">>.
 
 sampling_metric_labels(HookName, Criterion) ->
-    [{hook, atom_to_list(HookName)}, {acl_name, binary_to_list(Criterion)}].
+    [{hook, atom_to_list(HookName)}, {acl_name, Criterion}].
 
 sampling_metric_id(HookName, Criterion, Type) ->
     [sampling_metric_name(Type) | sampling_metric_labels(HookName, Criterion)].
