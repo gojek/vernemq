@@ -618,6 +618,7 @@ check_rid(Claims, UserName) ->
     end.
 
 -ifdef(TEST).
+
 %%%%%%%%%%%%%
 %%% Tests
 %%%%%%%%%%%%%
@@ -636,14 +637,21 @@ acl_test_() ->
             {setup, fun setup_vmq_reg_redis_trie/0, fun teardown/1, fun subtopic_subscribe_test/1}}
     ].
 
+init_rate_limiter() ->
+    ets:new(vmq_enhanced_auth_rate_config, [public, named_table, {read_concurrency, true}]),
+    ets:new(vmq_enhanced_auth_rate_counter, [public, named_table, {write_concurrency, true}]),
+    ets:new(vmq_enhanced_auth_rate_limit_metrics, [public, named_table, {write_concurrency, true}]),
+    ok.
 setup() ->
     ok = application:set_env(vmq_enhanced_auth, enable_acl_hooks, true),
     ets:new(?TOPIC_LABEL_TABLE, [named_table, public, {write_concurrency, true}]),
+    init_rate_limiter(),
     insert_regex(),
     init().
 setup_vmq_reg_redis_trie() ->
     ok = application:set_env(vmq_enhanced_auth, enable_acl_hooks, true),
     ok = application:set_env(vmq_server, default_reg_view, vmq_reg_redis_trie),
+    init_rate_limiter(),
     init(),
     ets:new(?TOPIC_LABEL_TABLE, [named_table, public, {write_concurrency, true}]),
     ets:new(vmq_redis_trie_node, [{keypos, 2} | ?TABLE_OPTS]),
@@ -663,6 +671,9 @@ teardown(RegView) ->
         _ ->
             ok
     end,
+    ets:delete(vmq_enhanced_auth_rate_config),
+    ets:delete(vmq_enhanced_auth_rate_counter),
+    ets:delete(vmq_enhanced_auth_rate_limit_metrics),
     ets:delete(vmq_enhanced_auth_acl_read_all),
     ets:delete(vmq_enhanced_auth_acl_write_all),
     ets:delete(vmq_enhanced_auth_acl_read_user),
