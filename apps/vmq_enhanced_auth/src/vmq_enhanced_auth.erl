@@ -132,16 +132,21 @@ auth_on_subscribe(RegView, User, SubscriberId, [{Topic, Qos} | Rest], SessionId,
     end.
 
 auth_on_publish(User, SubscriberId, _Qos, Topic, _, _, _SessionId) ->
-    D = is_acl_auth_disabled(),
-    if
-        D ->
-            next;
-        true ->
-            case check(write, Topic, User, SubscriberId) of
-                {true, MatchedAcl} ->
-                    {ok, [{matched_acl, MatchedAcl}]};
-                false ->
-                    next
+    case vmq_enhanced_auth_rate_limiter:check_publish_rate(User) of
+        drop ->
+            {error, rate_limited};
+        allow ->
+            D = is_acl_auth_disabled(),
+            if
+                D ->
+                    next;
+                true ->
+                    case check(write, Topic, User, SubscriberId) of
+                        {true, MatchedAcl} ->
+                            {ok, [{matched_acl, MatchedAcl}]};
+                        false ->
+                            next
+                    end
             end
     end.
 

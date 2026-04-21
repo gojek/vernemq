@@ -28,3 +28,34 @@
                                                                     {datatype, atom},
                                                                     {default, false}
                                                                     ]}.
+
+%% @doc Set the maximum publish rate (messages per second) for a username.
+%% The $username variable is replaced with the actual username.
+{mapping, "vmq_enhanced_auth.publish_rate_limit.$username", "vmq_enhanced_auth.publish_rate_limit", [
+                                                                    {datatype, integer}
+                                                                    ]}.
+
+{translation, "vmq_enhanced_auth.publish_rate_limit",
+  fun(Conf) ->
+    RateLimits = lists:filter(
+        fun({K, _V}) ->
+            cuttlefish_variable:is_fuzzy_match(
+                K, string:tokens("vmq_enhanced_auth.publish_rate_limit.$username", ".")
+            )
+        end,
+        Conf
+    ),
+    [
+        begin
+            case R > 0 of
+                true -> ok;
+                _ -> cuttlefish:invalid(
+                    "vmq_enhanced_auth.publish_rate_limit." ++ Username ++
+                    " must be a positive integer, got " ++ integer_to_list(R))
+            end,
+            {Username, R}
+        end
+     || {[_, _, Username], R} <- RateLimits
+    ]
+  end
+}.

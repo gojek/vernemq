@@ -9,7 +9,9 @@
     start_link/0,
     metrics/0,
     incr/1,
-    incr/2
+    incr/2,
+    rate_limit_metrics/0,
+    incr_drop_metric/1
 ]).
 
 %% gen_server callbacks
@@ -75,16 +77,14 @@ metrics() ->
                 }} ->
                     {true, {Type, GotLabels, Id, Name, Description, Val}};
                 error ->
-                    %% this could happen if metric definitions does
-                    %% not correspond to the ids returned with the
-                    %% metrics values.
                     lager:warning("unknown metrics id: ~p", [Id]),
                     false
             end
         end,
         MetricValues
     ),
-    Metrics.
+    RateLimitMetrics = rate_limit_metrics(),
+    Metrics ++ RateLimitMetrics.
 
 -spec incr(any()) -> 'ok'.
 incr(Entry) ->
@@ -142,6 +142,37 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+-spec rate_limit_metrics() -> list().
+rate_limit_metrics() ->
+    case ets:info(?RATE_LIMIT_METRICS_TBL) of
+        undefined ->
+            [];
+        _ ->
+            ets:foldl(
+                fun({Username, DroppedCount}, Acc) ->
+                    UStr = binary_to_list(Username),
+                    Labels = [{username, UStr}],
+                    Id = {?PUBLISH_RATE_LIMITED, Username},
+                    Name = ?PUBLISH_RATE_LIMITED,
+                    Desc = <<"The number of publishes dropped due to per-user rate limiting.">>,
+                    [{counter, Labels, Id, Name, Desc, DroppedCount} | Acc]
+                end,
+                [],
+                ?RATE_LIMIT_METRICS_TBL
+            )
+    end.
+
+-spec incr_drop_metric(binary()) -> ok.
+incr_drop_metric(Username) ->
+    try
+        ets:update_counter(?RATE_LIMIT_METRICS_TBL, Username, 1)
+    catch
+        error:badarg ->
+            ets:insert_new(?RATE_LIMIT_METRICS_TBL, {Username, 0}),
+            ets:update_counter(?RATE_LIMIT_METRICS_TBL, Username, 1)
+    end,
+    ok.
 
 %% don't do the update
 incr_item(_, 0) ->
