@@ -276,7 +276,7 @@ connected(
     case Ret of
         {error, not_allowed} ->
             terminate(?PUBLISH_AUTH_ERROR, State);
-        {error, rate_limited} ->
+        {error, rate_limit_exceeded} ->
             {State, []};
         Out when is_list(Out) ->
             case do_throttle(#{}, State) of
@@ -1066,8 +1066,8 @@ auth_on_publish(
                 HookArgs1,
                 SessCtrl
             );
-        {error, rate_limited} ->
-            {error, rate_limited};
+        {error, rate_limit_exceeded} ->
+            {error, rate_limit_exceeded};
         {error, Re} ->
             lager:error("can't auth publish ~p due to ~p", [HookArgs, Re]),
             {error, not_allowed}
@@ -1147,7 +1147,7 @@ on_publish_hook(Other, _, _SubscriberId) ->
     | {list(), session_ctrl()}
     | {state(), list(), session_ctrl()}
     | {error, not_allowed}
-    | {error, rate_limited}.
+    | {error, rate_limit_exceeded}.
 dispatch_publish(Qos, MessageId, Msg, State) ->
     dispatch_publish_(Qos, MessageId, Msg, State).
 
@@ -1156,7 +1156,7 @@ dispatch_publish(Qos, MessageId, Msg, State) ->
     | {list(), session_ctrl()}
     | {state(), list(), session_ctrl()}
     | {error, not_allowed}
-    | {error, rate_limited}.
+    | {error, rate_limit_exceeded}.
 dispatch_publish_(0, MessageId, Msg, State) ->
     dispatch_publish_qos0(MessageId, Msg, State);
 dispatch_publish_(1, MessageId, Msg, State) ->
@@ -1168,7 +1168,7 @@ dispatch_publish_(2, MessageId, Msg, State) ->
     list()
     | {list(), session_ctrl()}
     | {error, not_allowed}
-    | {error, rate_limited}.
+    | {error, rate_limit_exceeded}.
 dispatch_publish_qos0(_MessageId, Msg, State) ->
     #state{
         username = User,
@@ -1184,7 +1184,7 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
             %% we have to close connection for 3.1.1
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             {error, not_allowed};
-        {error, rate_limited} ->
+        {error, rate_limit_exceeded} ->
             [];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
@@ -1196,7 +1196,7 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
     list()
     | {list(), session_ctrl()}
     | {error, not_allowed}
-    | {error, rate_limited}.
+    | {error, rate_limit_exceeded}.
 dispatch_publish_qos1(MessageId, Msg, State) ->
     #state{
         username = User,
@@ -1217,7 +1217,7 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             _ = vmq_metrics:incr_mqtt_puback_sent(),
             [#mqtt_puback{message_id = MessageId}];
-        {error, rate_limited} ->
+        {error, rate_limit_exceeded} ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
             [#mqtt_puback{message_id = MessageId}];
         {error, _Reason} ->
@@ -1241,7 +1241,7 @@ maybe_send_immediate_puback(AclName, MessageId) ->
     list()
     | {state(), list(), session_ctrl()}
     | {error, not_allowed}
-    | {error, rate_limited}.
+    | {error, rate_limit_exceeded}.
 dispatch_publish_qos2(MessageId, Msg, State) ->
     #state{
         username = User,
@@ -1274,7 +1274,7 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
                     _ = vmq_metrics:incr_mqtt_pubrec_sent(),
                     Frame = #mqtt_pubrec{message_id = MessageId},
                     [Frame];
-                {error, rate_limited} ->
+                {error, rate_limit_exceeded} ->
                     _ = vmq_metrics:incr_mqtt_pubrec_sent(),
                     Frame = #mqtt_pubrec{message_id = MessageId},
                     [Frame];

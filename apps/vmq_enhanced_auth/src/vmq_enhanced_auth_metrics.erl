@@ -11,7 +11,7 @@
     incr/1,
     incr/2,
     rate_limit_metrics/0,
-    incr_drop_metric/1
+    incr_publish_drop_metric/1
 ]).
 
 %% gen_server callbacks
@@ -77,6 +77,9 @@ metrics() ->
                 }} ->
                     {true, {Type, GotLabels, Id, Name, Description, Val}};
                 error ->
+                    %% this could happen if metric definitions does
+                    %% not correspond to the ids returned with the
+                    %% metrics values.
                     lager:warning("unknown metrics id: ~p", [Id]),
                     false
             end
@@ -150,12 +153,12 @@ rate_limit_metrics() ->
             [];
         _ ->
             ets:foldl(
-                fun({Username, DroppedCount}, Acc) ->
-                    UStr = binary_to_list(Username),
-                    Labels = [{username, UStr}],
-                    Id = {?PUBLISH_RATE_LIMITED, Username},
-                    Name = ?PUBLISH_RATE_LIMITED,
-                    Desc = <<"The number of publishes dropped due to per-user rate limiting.">>,
+                fun({AclName, DroppedCount}, Acc) ->
+                    AclStr = binary_to_list(AclName),
+                    Labels = [{acl_name, AclStr}],
+                    Id = {?PUBLISH_RATE_LIMIT_EXCEEDED, AclName},
+                    Name = ?PUBLISH_RATE_LIMIT_EXCEEDED,
+                    Desc = <<"The number of publishes dropped due to per-acl_name rate limiting.">>,
                     [{counter, Labels, Id, Name, Desc, DroppedCount} | Acc]
                 end,
                 [],
@@ -163,8 +166,8 @@ rate_limit_metrics() ->
             )
     end.
 
--spec incr_drop_metric(binary()) -> ok.
-incr_drop_metric(Username) ->
+-spec incr_publish_drop_metric(binary()) -> ok.
+incr_publish_drop_metric(Username) ->
     ets:update_counter(?RATE_LIMIT_METRICS_TBL, Username, 1, {Username, 0}),
     ok.
 
