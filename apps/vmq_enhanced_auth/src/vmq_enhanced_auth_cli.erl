@@ -47,7 +47,7 @@ show_ratelimit_cmd() ->
             (_, [], []) ->
                 Rates = vmq_enhanced_auth_rate_limiter:list_rates(),
                 Table =
-                    [[{username, Username}, {rate, Rate}] || {Username, Rate} <- Rates],
+                    [[{acl_name, AclName}, {rate, Rate}] || {AclName, Rate} <- Rates],
                 [clique_status:table(Table)];
             (_, _, _) ->
                 Text = clique_status:text(show_ratelimit_usage()),
@@ -57,14 +57,14 @@ show_ratelimit_cmd() ->
 
 enable_ratelimit_cmd() ->
     Cmd = ["vmq-admin", "publish-ratelimit", "enable"],
-    KeySpecs = [username_keyspec(), rate_keyspec()],
+    KeySpecs = [acl_name_keyspec(), rate_keyspec()],
     FlagSpecs = [],
     Callback =
         fun
             (_, [_, _] = List, []) ->
-                Username = get_value(username, List),
+                AclName = get_value(acl_name, List),
                 Rate = get_value(rate, List),
-                case {Username, Rate} of
+                case {AclName, Rate} of
                     {undefined, _} ->
                         Text = clique_status:text(enable_ratelimit_usage()),
                         [clique_status:alert([Text])];
@@ -72,7 +72,7 @@ enable_ratelimit_cmd() ->
                         Text = clique_status:text(enable_ratelimit_usage()),
                         [clique_status:alert([Text])];
                     _ ->
-                        vmq_enhanced_auth_rate_limiter:set_rate(Username, Rate),
+                        vmq_enhanced_auth_rate_limiter:set_rate(AclName, Rate),
                         [clique_status:text("Done")]
                 end;
             (_, _, _) ->
@@ -83,17 +83,17 @@ enable_ratelimit_cmd() ->
 
 disable_ratelimit_cmd() ->
     Cmd = ["vmq-admin", "publish-ratelimit", "disable"],
-    KeySpecs = [username_keyspec()],
+    KeySpecs = [acl_name_keyspec()],
     FlagSpecs = [],
     Callback =
         fun
-            (_, [{username, Username}], []) ->
-                case vmq_enhanced_auth_rate_limiter:delete_rate(Username) of
+            (_, [{acl_name, AclName}], []) ->
+                case vmq_enhanced_auth_rate_limiter:delete_rate(AclName) of
                     ok ->
                         [clique_status:text("Done")];
                     {error, not_found} ->
                         Text = io_lib:format(
-                            "no rate limit configured for username '~s'", [Username]
+                            "no rate limit configured for acl_name '~s'", [AclName]
                         ),
                         [clique_status:alert([clique_status:text(Text)])]
                 end;
@@ -109,13 +109,13 @@ get_value(Key, List) ->
         {_, Value} -> Value
     end.
 
-username_keyspec() ->
-    {username, [
+acl_name_keyspec() ->
+    {acl_name, [
         {typecast, fun
-            (U) when is_list(U) ->
-                list_to_binary(U);
-            (U) ->
-                {error, {invalid_value, U}}
+            (N) when is_list(N) ->
+                list_to_binary(N);
+            (N) ->
+                {error, {invalid_value, N}}
         end}
     ]}.
 
@@ -148,32 +148,32 @@ register_cli_usage() ->
 ratelimit_usage() ->
     [
         "vmq-admin publish-ratelimit <sub-command>\n\n",
-        "  Manage per-username publish rate limits.\n\n",
+        "  Manage per-acl_name publish rate limits.\n\n",
         "  Sub-commands:\n",
         "    show      Show all configured publish rate limits\n",
-        "    enable    Enable a publish rate limit for a username\n",
-        "    disable   Disable a publish rate limit for a username\n"
+        "    enable    Enable a publish rate limit for an acl_name\n",
+        "    disable   Disable a publish rate limit for an acl_name\n"
     ].
 
 show_ratelimit_usage() ->
     [
         "vmq-admin publish-ratelimit show\n\n",
-        "  Show all configured per-username publish rate limits.\n"
+        "  Show all configured per-acl_name publish rate limits.\n"
     ].
 
 enable_ratelimit_usage() ->
     [
-        "vmq-admin publish-ratelimit enable username=<username> rate=<pub_per_sec>\n\n",
-        "  Enable the publish rate limit for a username with the specified rate.\n\n",
+        "vmq-admin publish-ratelimit enable acl_name=<acl_name> rate=<pub_per_sec>\n\n",
+        "  Enable the publish rate limit for an acl_name with the specified rate.\n\n",
         "  Options:\n",
-        "    username    The username to rate limit\n",
-        "    rate        Maximum publishes per second (positive integer)\n"
+        "    acl_name   The ACL name to rate limit\n",
+        "    rate       Maximum publishes per second (positive integer)\n"
     ].
 
 disable_ratelimit_usage() ->
     [
-        "vmq-admin publish-ratelimit disable username=<username>\n\n",
-        "  Disable the publish rate limit for a username.\n\n",
+        "vmq-admin publish-ratelimit disable acl_name=<acl_name>\n\n",
+        "  Disable the publish rate limit for an acl_name.\n\n",
         "  Options:\n",
-        "    username    The username to disable the rate limit for\n"
+        "    acl_name   The ACL name to disable the rate limit for\n"
     ].
