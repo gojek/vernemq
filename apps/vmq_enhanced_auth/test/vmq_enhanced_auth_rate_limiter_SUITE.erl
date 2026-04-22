@@ -83,38 +83,38 @@ wait_for_exit(Pid) ->
     end.
 
 undefined_acl_name_allowed_test(_Config) ->
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(undefined).
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(undefined, 0).
 
 no_config_allowed_test(_Config) ->
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"unknown_acl">>).
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"unknown_acl">>, 0).
 
 under_limit_allowed_test(_Config) ->
     ok = vmq_enhanced_auth_rate_limiter:set_rate(<<"acl1">>, 5),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>).
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 0),
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 1),
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 2).
 
 at_limit_allowed_test(_Config) ->
     ok = vmq_enhanced_auth_rate_limiter:set_rate(<<"acl1">>, 3),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>).
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 0),
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 1),
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 0).
 
 over_limit_dropped_test(_Config) ->
     ok = vmq_enhanced_auth_rate_limiter:set_rate(<<"acl1">>, 2),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
-    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
-    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>).
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 0),
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 1),
+    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 0),
+    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 1).
 
 multiple_acl_names_independent_test(_Config) ->
     ok = vmq_enhanced_auth_rate_limiter:set_rate(<<"acl_a">>, 1),
     ok = vmq_enhanced_auth_rate_limiter:set_rate(<<"acl_b">>, 2),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl_a">>),
-    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl_a">>),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl_b">>),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl_b">>),
-    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl_b">>).
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl_a">>, 0),
+    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl_a">>, 0),
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl_b">>, 1),
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl_b">>, 1),
+    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl_b">>, 1).
 
 set_rate_test(_Config) ->
     ok = vmq_enhanced_auth_rate_limiter:set_rate(<<"acl1">>, 100),
@@ -141,29 +141,29 @@ list_rates_test(_Config) ->
 
 counter_reset_test(_Config) ->
     ok = vmq_enhanced_auth_rate_limiter:set_rate(<<"acl1">>, 2),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
-    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 0),
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 0),
+    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 0),
     Pid = whereis(vmq_enhanced_auth_rate_limiter),
     Pid ! reset_counters,
     timer:sleep(50),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>).
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 0),
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 0).
 
 drop_metric_incremented_test(_Config) ->
     ok = vmq_enhanced_auth_rate_limiter:set_rate(<<"acl1">>, 1),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
-    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
-    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
-    [{<<"acl1">>, DroppedCount}] = ets:tab2list(?RATE_LIMIT_METRICS_TBL),
-    2 = DroppedCount.
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 0),
+    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 0),
+    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 1),
+    Metrics = lists:sort(ets:tab2list(?RATE_LIMIT_METRICS_TBL)),
+    [{{<<"acl1">>, 0}, 1}, {{<<"acl1">>, 1}, 1}] = Metrics.
 
 rate_limit_metrics_format_test(_Config) ->
     ok = vmq_enhanced_auth_rate_limiter:set_rate(<<"acl1">>, 1),
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
-    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>),
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 1),
+    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 1),
     [Metric] = vmq_enhanced_auth_metrics:rate_limit_metrics(),
-    {counter, [{acl_name, "acl1"}], {?PUBLISH_RATE_LIMIT_EXCEEDED, <<"acl1">>},
+    {counter, [{acl_name, "acl1"}, {qos, "1"}], {?PUBLISH_RATE_LIMIT_EXCEEDED, <<"acl1">>, 1},
      ?PUBLISH_RATE_LIMIT_EXCEEDED, Desc, 1} = Metric,
     true = is_binary(Desc).
 
@@ -173,4 +173,4 @@ metrics_empty_when_no_drops_test(_Config) ->
 config_loaded_on_start_test(_Config) ->
     Rates = vmq_enhanced_auth_rate_limiter:list_rates(),
     [{<<"configacl">>, 50}] = Rates,
-    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"configacl">>).
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"configacl">>, 0).

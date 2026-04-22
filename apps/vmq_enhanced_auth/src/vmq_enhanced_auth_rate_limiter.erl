@@ -6,7 +6,7 @@
 
 -export([
     start_link/0,
-    check_publish_rate/1,
+    check_publish_rate/2,
     set_rate/2,
     delete_rate/1,
     list_rates/0
@@ -40,10 +40,10 @@ delete_rate(AclName) when is_binary(AclName) ->
 list_rates() ->
     gen_server:call(?SERVER, list_rates).
 
--spec check_publish_rate(AclName :: undefined | binary()) -> allow | drop.
-check_publish_rate(undefined) ->
+-spec check_publish_rate(AclName :: undefined | binary(), QoS :: non_neg_integer()) -> allow | drop.
+check_publish_rate(undefined, _QoS) ->
     allow;
-check_publish_rate(AclName) when is_binary(AclName) ->
+check_publish_rate(AclName, QoS) when is_binary(AclName) ->
     case ets:lookup(?RATE_CONFIG_TBL, AclName) of
         [] ->
             allow;
@@ -51,7 +51,7 @@ check_publish_rate(AclName) when is_binary(AclName) ->
             Count = ets:update_counter(?RATE_COUNTER_TBL, AclName, 1, {AclName, 0}),
             case Count > MaxRate of
                 true ->
-                    vmq_enhanced_auth_metrics:incr_publish_drop_metric(AclName),
+                    vmq_enhanced_auth_metrics:incr_publish_drop_metric(AclName, QoS),
                     drop;
                 false ->
                     allow
