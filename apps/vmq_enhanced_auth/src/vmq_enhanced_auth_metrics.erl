@@ -11,7 +11,7 @@
     incr/1,
     incr/2,
     rate_limit_metrics/0,
-    incr_publish_drop_metric/1
+    incr_publish_drop_metric/2
 ]).
 
 %% gen_server callbacks
@@ -153,10 +153,9 @@ rate_limit_metrics() ->
             [];
         _ ->
             ets:foldl(
-                fun({AclName, DroppedCount}, Acc) ->
-                    AclStr = binary_to_list(AclName),
-                    Labels = [{acl_name, AclStr}],
-                    Id = {?PUBLISH_RATE_LIMIT_EXCEEDED, AclName},
+                fun({{AclName, QoS}, DroppedCount}, Acc) ->
+                    Labels = [{acl_name, binary_to_list(AclName)}, {qos, integer_to_list(QoS)}],
+                    Id = {?PUBLISH_RATE_LIMIT_EXCEEDED, AclName, QoS},
                     Name = ?PUBLISH_RATE_LIMIT_EXCEEDED,
                     Desc = <<"The number of publishes dropped due to per-acl_name rate limiting.">>,
                     [{counter, Labels, Id, Name, Desc, DroppedCount} | Acc]
@@ -166,9 +165,10 @@ rate_limit_metrics() ->
             )
     end.
 
--spec incr_publish_drop_metric(binary()) -> ok.
-incr_publish_drop_metric(Username) ->
-    ets:update_counter(?RATE_LIMIT_METRICS_TBL, Username, 1, {Username, 0}),
+-spec incr_publish_drop_metric(binary(), non_neg_integer()) -> ok.
+incr_publish_drop_metric(AclName, QoS) ->
+    Key = {AclName, QoS},
+    ets:update_counter(?RATE_LIMIT_METRICS_TBL, Key, 1, {Key, 0}),
     ok.
 
 %% don't do the update
