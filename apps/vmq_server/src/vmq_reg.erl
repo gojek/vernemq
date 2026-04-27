@@ -475,10 +475,14 @@ publish_fold_fun(
 ) ->
     case vmq_cluster_mon:is_node_alive(Node) of
         true ->
-            % vmq_state_store_backend:enqueue(
-            %     Node, term_to_binary(SubscriberId), term_to_binary({SubInfo, Msg})
-            % ),
-            vmq_cluster:publish(Node, Msg),
+            case vmq_config:get_env(direct_message_passing, false) of
+                true ->
+                    vmq_cluster:publish(Node, Msg);
+                false ->
+                    vmq_state_store_backend:enqueue(
+                        Node, term_to_binary(SubscriberId), term_to_binary({SubInfo, Msg})
+                    )
+            end,
             Acc#publish_fold_acc{remote_matches = RN + 1};
         _ ->
             %% Transfer the client on local node if the remote node is not alive.

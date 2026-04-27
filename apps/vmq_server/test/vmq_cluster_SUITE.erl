@@ -72,7 +72,18 @@ end_per_suite(_Config) ->
 init_per_testcase(convert_new_msgs_to_old_format, Config) ->
     %% no setup necessary,
     Config;
+init_per_testcase(Case, Config) when
+    Case =:= cluster_dead_node_message_reaper_test;
+    Case =:= shared_subs_random_policy_dead_node_message_reaper_test
+->
+    Config1 = do_init_per_testcase(Case, Config),
+    [rpc:call(Node, vmq_config, set_env, [direct_message_passing, false, false])
+     || {_, Node, _} <- proplists:get_value(nodes, Config1)],
+    Config1;
 init_per_testcase(Case, Config) ->
+    do_init_per_testcase(Case, Config).
+
+do_init_per_testcase(Case, Config) ->
     {ok, RedisClient} = eredis:start_link([{host, "127.0.0.1"}, {reconnect_sleep, no_reconnect}]),
     eredis:q(RedisClient, ["FLUSHALL"]),
     vmq_test_utils:seed_rand(Config),
