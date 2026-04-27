@@ -1919,3 +1919,9 @@
 %% @doc This option specifies the password for redis as message store
 {mapping, "message_store.redis.password", "vmq_server.message_store.redis.password",
     [{datatype, atom}]}.
+
+%% @doc Enables direct message passing between nodes. Will be removed in a future release.
+{mapping, "direct_message_passing", "vmq_server.direct_message_passing", [
+    {default, off},
+    {datatype, flag}
+]}.

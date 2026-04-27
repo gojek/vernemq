@@ -31,10 +31,11 @@
     wait_until_disconnected/2,
     wait_until_connected/2,
     start_node/3,
+    start_vmq_listener/1,
     partition_cluster/2,
     heal_cluster/2,
     ensure_cluster/1,
-    start_peer/2, 
+    start_peer/2,
     stop_peer/2
     ]).
 
@@ -115,6 +116,9 @@ start_node(Name, Config, Case) ->
             NodeDir = filename:join([PrivDir, Node, Case]),
             ok = rpc:call(Node, application, load, [vmq_server]),
             ok = rpc:call(Node, application, set_env, [vmq_server,
+                direct_message_passing,
+                true]),
+            ok = rpc:call(Node, application, set_env, [vmq_server,
                 default_reg_view,
                 vmq_reg_redis_trie]),
             ok = rpc:call(Node, application, set_env, [vmq_server,
@@ -156,6 +160,7 @@ start_node(Name, Config, Case) ->
                                 _ -> false
                             end
                     end, 60, 500),
+            ok = start_vmq_listener(Node),
             {ok, Peer, Node};
         Other ->
             Other
@@ -251,7 +256,18 @@ stop_peer(Node, _) ->
     ct_slave:stop(Node),
     ok.
 
--endif.    
+-endif.
+
+start_vmq_listener(Node) ->
+    {ok, TmpSocket} = rpc:call(Node, gen_tcp, listen, [0, [{ip, {127,0,0,1}}]]),
+    {ok, VmqPort} = rpc:call(Node, inet, port, [TmpSocket]),
+    ok = rpc:call(Node, gen_tcp, close, [TmpSocket]),
+    ok = rpc:call(Node, vmq_ranch_config, start_listener,
+                  [vmq, "127.0.0.1", VmqPort, []]),
+    CurrentListeners = rpc:call(Node, vmq_config, get_env, [listeners]),
+    NewListeners = [{vmq, [{{"127.0.0.1", VmqPort}, []}]}
+                    | proplists:delete(vmq, CurrentListeners)],
+    ok = rpc:call(Node, vmq_config, set_env, [listeners, NewListeners, false]).
 
 partition_cluster(ANodes, BNodes) ->
     pmap(fun({Node1, Node2}) ->

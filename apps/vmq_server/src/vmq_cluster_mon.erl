@@ -116,7 +116,15 @@ init([]) ->
     RedisDownStatusThreshold = application:get_env(vmq_server, redis_down_status_threshold, 5),
     RedisRestartThreshold = application:get_env(vmq_server, redis_restart_threshold, 300),
 
-    case vmq_state_store_backend:ensure_no_local_client() of
+    ReadyResult =
+        case vmq_config:get_env(direct_message_passing, false) of
+            true ->
+                {ok, <<"0">>};
+            false ->
+                vmq_state_store_backend:ensure_no_local_client()
+        end,
+
+    case ReadyResult of
         {ok, <<"0">>} ->
             Tref = erlang:send_after(0, self(), recheck),
             {ok, #state{
