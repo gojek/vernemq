@@ -29,6 +29,7 @@
     wait_until_joined/2,
     wait_until_offline/1,
     wait_until_disconnected/2,
+    is_cluster_node_reachable/1,
     wait_until_connected/2,
     start_node/3,
     partition_cluster/2,
@@ -89,15 +90,28 @@ wait_until_joined(Nodes, ExpectedCluster) ->
                         end, Nodes))
         end, 60*2, 500).
 
+
+%% Checks if the cluster node is reachable via TCP direct message passing
+is_cluster_node_reachable(Node) ->
+    case rpc:call(Node, vmq_cluster_node_sup, get_cluster_node, [Node]) of
+        {ok, Pid} when is_pid(Pid) ->
+            %% Optionally, check status if needed
+            case rpc:call(Node, vmq_cluster_node, status, [Pid]) of
+                up -> true;
+                _ -> false
+            end;
+        _ -> false
+    end.
+
 wait_until_offline(Node) ->
     wait_until(fun() ->
-                pang == net_adm:ping(Node)
-        end, 60*2, 500).
+        not is_cluster_node_reachable(Node)
+    end, 60*2, 500).
 
-wait_until_disconnected(Node1, Node2) ->
+wait_until_disconnected(_, Node2) ->
     wait_until(fun() ->
-                pang == rpc:call(Node1, net_adm, ping, [Node2])
-        end, 60*2, 500).
+        not is_cluster_node_reachable(Node2)
+    end, 60*2, 500).
 
 wait_until_connected(Node1, Node2) ->
     wait_until(fun() ->
