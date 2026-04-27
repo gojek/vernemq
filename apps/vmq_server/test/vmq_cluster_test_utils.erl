@@ -259,9 +259,13 @@ stop_peer(Node, _) ->
 -endif.
 
 start_vmq_listener(Node) ->
-    {ok, TmpSocket} = rpc:call(Node, gen_tcp, listen, [0, []]),
-    {ok, VmqPort} = rpc:call(Node, inet, port, [TmpSocket]),
-    ok = rpc:call(Node, gen_tcp, close, [TmpSocket]),
+    %% Probe locally — all peer nodes share the same machine, so a port
+    %% free here is free on the remote node. Probing via RPC would close
+    %% the socket when the RPC handler process exits, making inet:port
+    %% return {error, einval} on the dead socket handle.
+    {ok, TmpSocket} = gen_tcp:listen(0, []),
+    {ok, VmqPort} = inet:port(TmpSocket),
+    ok = gen_tcp:close(TmpSocket),
     ok = rpc:call(Node, vmq_ranch_config, start_listener,
                   [vmq, "127.0.0.1", VmqPort, []]),
     CurrentListeners = rpc:call(Node, vmq_config, get_env, [listeners]),
