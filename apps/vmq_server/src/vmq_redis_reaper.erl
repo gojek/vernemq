@@ -100,65 +100,76 @@ handle_info(
         interval = Interval
     } = State
 ) ->
-    MainQueue = "mainQueue::" ++ atom_to_list(DeadNode),
-
-    NextStep = lists:foldl(
-        fun(RedisClient, Acc) ->
-            case
-                vmq_redis:query(
-                    RedisClient,
-                    [
-                        ?FCALL,
-                        ?POLL_MAIN_QUEUE,
-                        1,
-                        MainQueue,
-                        MaxMsgs
-                    ],
-                    ?FCALL,
-                    ?POLL_MAIN_QUEUE
+    NextStep =
+        case vmq_config:get_env(direct_message_passing, false) of
+            true ->
+                reap_subscribers;
+            false ->
+                MainQueue = "mainQueue::" ++ atom_to_list(DeadNode),
+                lists:foldl(
+                    fun(RedisClient, Acc) ->
+                        case
+                            vmq_redis:query(
+                                RedisClient,
+                                [
+                                    ?FCALL,
+                                    ?POLL_MAIN_QUEUE,
+                                    1,
+                                    MainQueue,
+                                    MaxMsgs
+                                ],
+                                ?FCALL,
+                                ?POLL_MAIN_QUEUE
+                            )
+                        of
+                            {ok, undefined} ->
+                                Acc;
+                            {ok, Msgs} ->
+                                lists:foreach(
+                                    fun([SubBin, MsgBin, TimeInQueue]) ->
+                                        vmq_metrics:pretimed_measurement(
+                                            {?MODULE, time_spent_in_main_queue},
+                                            binary_to_integer(TimeInQueue)
+                                        ),
+                                        case binary_to_term(SubBin) of
+                                            {_, _CId} = SId ->
+                                                case vmq_reg:migrate_offline_queue(SId, DeadNode) of
+                                                    {error, _} ->
+                                                        ignore;
+                                                    LocalNode when LocalNode == node() ->
+                                                        {SubInfo, Msg} = binary_to_term(MsgBin),
+                                                        vmq_reg:enqueue_msg({SId, SubInfo}, Msg);
+                                                    RemoteNode ->
+                                                        vmq_redis_queue:enqueue(
+                                                            RemoteNode, SubBin, MsgBin
+                                                        )
+                                                end;
+                                            RandSubs when is_list(RandSubs) ->
+                                                vmq_shared_subscriptions:publish_to_group(
+                                                    binary_to_term(MsgBin),
+                                                    RandSubs,
+                                                    {0, 0}
+                                                );
+                                            UnknownMsg ->
+                                                lager:error(
+                                                    "Unknown Msg in Redis Main Queue : ~p", [
+                                                        UnknownMsg
+                                                    ]
+                                                )
+                                        end
+                                    end,
+                                    Msgs
+                                ),
+                                reap_messages;
+                            Res ->
+                                lager:warning("~p", [Res]),
+                                Acc
+                        end
+                    end,
+                    reap_subscribers,
+                    ShardClients
                 )
-            of
-                {ok, undefined} ->
-                    Acc;
-                {ok, Msgs} ->
-                    lists:foreach(
-                        fun([SubBin, MsgBin, TimeInQueue]) ->
-                            vmq_metrics:pretimed_measurement(
-                                {?MODULE, time_spent_in_main_queue},
-                                binary_to_integer(TimeInQueue)
-                            ),
-                            case binary_to_term(SubBin) of
-                                {_, _CId} = SId ->
-                                    case vmq_reg:migrate_offline_queue(SId, DeadNode) of
-                                        {error, _} ->
-                                            ignore;
-                                        LocalNode when LocalNode == node() ->
-                                            {SubInfo, Msg} = binary_to_term(MsgBin),
-                                            vmq_reg:enqueue_msg({SId, SubInfo}, Msg);
-                                        RemoteNode ->
-                                            vmq_redis_queue:enqueue(RemoteNode, SubBin, MsgBin)
-                                    end;
-                                RandSubs when is_list(RandSubs) ->
-                                    vmq_shared_subscriptions:publish_to_group(
-                                        binary_to_term(MsgBin),
-                                        RandSubs,
-                                        {0, 0}
-                                    );
-                                UnknownMsg ->
-                                    lager:error("Unknown Msg in Redis Main Queue : ~p", [UnknownMsg])
-                            end
-                        end,
-                        Msgs
-                    ),
-                    reap_messages;
-                Res ->
-                    lager:warning("~p", [Res]),
-                    Acc
-            end
         end,
-        reap_subscribers,
-        ShardClients
-    ),
 
     erlang:send_after(Interval, self(), NextStep),
     {noreply, State};

@@ -25,7 +25,6 @@ encode(
     {on_register, Timestamp,
         {MP, ClientId, PPeer, Port, UserName, #{?P_USER_PROPERTY := Properties}, SessionId}}
 ) ->
-    lager:info("on_register session_id=~p", [SessionId]),
     encode_envelope(
         "OnRegister",
         on_register_pb:encode_msg(#'eventssidecar.v1.OnRegister'{
@@ -60,7 +59,6 @@ encode(
             },
             SessionId}}
 ) ->
-    lager:info("on_publish session_id=~p", [SessionId]),
     encode_envelope(
         "OnPublish",
         on_publish_pb:encode_msg(#'eventssidecar.v1.OnPublish'{
@@ -81,7 +79,6 @@ encode(
 encode(
     {on_subscribe, Timestamp, {MP, ClientId, UserName, Topics, SessionId}}
 ) ->
-    lager:info("on_subscribe session_id=~p", [SessionId]),
     encode_envelope(
         "OnSubscribe",
         on_subscribe_pb:encode_msg(#'eventssidecar.v1.OnSubscribe'{
@@ -117,7 +114,6 @@ encode(
         {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain,
             #matched_acl{name = Name, pattern = Pattern}, Persisted, SessionId}}
 ) ->
-    lager:info("on_deliver session_id=~p", [SessionId]),
     encode_envelope(
         "OnDeliver",
         on_deliver_pb:encode_msg(#'eventssidecar.v1.OnDeliver'{
@@ -141,7 +137,6 @@ encode(
         {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain,
             #matched_acl{name = Name, pattern = Pattern}, Persisted, SessionId}}
 ) ->
-    lager:info("on_delivery_complete session_id=~p", [SessionId]),
     encode_envelope(
         "OnDeliveryComplete",
         on_delivery_complete_pb:encode_msg(#'eventssidecar.v1.OnDeliveryComplete'{
@@ -182,7 +177,6 @@ encode(
             },
             SessionId}}
 ) ->
-    lager:info("on_message_drop session_id=~p", [SessionId]),
     encode_envelope(
         "OnMessageDrop",
         on_message_drop_pb:encode_msg(#'eventssidecar.v1.OnMessageDrop'{
@@ -246,10 +240,6 @@ encode({on_session_expired, Timestamp, {MP, ClientId, SessionId}}) ->
 encode(
     {on_register_failed, Timestamp, {MP, ClientId, PPeer, Port, UserName, CleanSession, Reason}}
 ) ->
-    lager:info(
-        "Encoding OnRegisterFailed event: MP=~p, ClientId=~p, Peer=~p, Port=~p, UserName=~p, CleanSession=~p, Reason=~p",
-        [MP, ClientId, PPeer, Port, UserName, CleanSession, Reason]
-    ),
     encode_envelope(
         "OnRegisterFailed",
         on_register_failed_pb:encode_msg(#'eventssidecar.v1.OnRegisterFailed'{
