@@ -58,15 +58,28 @@ publish_to_group(
                     case vmq_config:get_env(direct_message_passing, false) of
                         true ->
                             {QoS, Msg1} = maybe_add_sub_id(SubInfo, Msg),
+                            %% Prefer online subscribers: only fall back to [any] (offline
+                            %% queue) when this is the last candidate in the shuffled list.
+                            StateFilter =
+                                case Rest of
+                                    [] -> [any];
+                                    _ -> [online]
+                                end,
                             case
                                 vmq_cluster:remote_enqueue(
                                     Node,
-                                    {enqueue_many, SId, [{deliver, QoS, Msg1}], #{states => [any]}},
+                                    {enqueue_many, SId, [{deliver, QoS, Msg1}], #{
+                                        states => StateFilter
+                                    }},
                                     false
                                 )
                             of
-                                ok -> {ok, {Local, Remote + 1}};
-                                E -> E
+                                ok ->
+                                    {ok, {Local, Remote + 1}};
+                                {error, _} when Rest =/= [] ->
+                                    publish_to_group(Msg, Rest, Acc0);
+                                E ->
+                                    E
                             end;
                         false ->
                             case
