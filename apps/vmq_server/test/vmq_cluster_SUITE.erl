@@ -1072,7 +1072,7 @@ shared_subs_random_policy_dead_node_message_reaper_test(Config) ->
     ok = gen_tcp:send(S1Socket, Subscribe),
     ok = packet:expect_packet(S1Socket, "suback", Suback),
 
-    {_, RandomNode, RandomPort} = random_node(RestNodesWithPorts),
+    {_, _, RandomPort} = random_node(RestNodesWithPorts),
     {ok, S2Socket} = packet:do_client_connect(S2Connect, Connack, [{port, RandomPort}]),
     ok = gen_tcp:send(S2Socket, Subscribe),
     ok = packet:expect_packet(S2Socket, "suback", Suback),
@@ -1091,6 +1091,7 @@ shared_subs_random_policy_dead_node_message_reaper_test(Config) ->
     Key = "mainQueue::" ++ atom_to_list(DNode),
     {ok, Size} = eredis:q(RC, ["LLEN", Key]),
     true = binary_to_integer(Size) > 0,
+
 
     timer:sleep(2000),
 
