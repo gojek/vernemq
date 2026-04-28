@@ -259,7 +259,7 @@ stop_peer(Node, _) ->
 -endif.
 
 start_vmq_listener(Node) ->
-    {ok, TmpSocket} = rpc:call(Node, gen_tcp, listen, [0, [{ip, {127,0,0,1}}]]),
+    {ok, TmpSocket} = rpc:call(Node, gen_tcp, listen, [0, []]),
     {ok, VmqPort} = rpc:call(Node, inet, port, [TmpSocket]),
     ok = rpc:call(Node, gen_tcp, close, [TmpSocket]),
     ok = rpc:call(Node, vmq_ranch_config, start_listener,
