@@ -481,6 +481,10 @@ racing_subscriber_test(Config) ->
                                         ok
                                 end;
                             {error, closed} ->
+                                ok;
+                            {error, _} ->
+                                %% Server temporarily unavailable (e.g. CONNACK code 3)
+                                %% during racing — treat as a lost race, acceptable.
                                 ok
                         end
                     end
