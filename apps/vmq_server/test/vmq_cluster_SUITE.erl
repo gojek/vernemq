@@ -30,9 +30,9 @@
     shared_subs_local_only_policy_test_with_local_caching/1,
     shared_subs_random_policy_dead_node_message_reaper_test/1,
     cross_node_publish_subscribe/1,
-    routing_table_survives_node_restart/1,
     cross_node_queue_drain_test/1,
-    cross_node_shared_subscription_delivery_test/1
+    cross_node_shared_subscription_delivery_test/1,
+    routing_table_survives_node_restart/1
 ]).
 
 -export([
@@ -154,9 +154,9 @@ all() ->
         shared_subs_local_only_policy_test,
         shared_subs_local_only_policy_test_with_local_caching,
         cross_node_publish_subscribe,
-        routing_table_survives_node_restart,
         cross_node_queue_drain_test,
-        cross_node_shared_subscription_delivery_test
+        cross_node_shared_subscription_delivery_test,
+        routing_table_survives_node_restart
     ].
 
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -472,18 +472,15 @@ racing_subscriber_test(Config) ->
                                                     M ->
                                                         exit({unknown_message, M})
                                                 end;
-                                            {error, _} ->
-                                                %% kicked out before suback (racing subscriber)
+                                            {error, closed} ->
                                                 ok
                                         end;
-                                    {error, _} ->
+                                    {error, closed} ->
                                         %% it's possible that we can't even subscribe due to
                                         %% a racing subscriber
                                         ok
                                 end;
-                            {error, _} ->
-                                %% connection may be rejected for any reason during race
-                                %% (e.g. server temporarily unavailable due to Redis contention)
+                            {error, closed} ->
                                 ok
                         end
                     end

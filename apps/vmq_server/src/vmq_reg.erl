@@ -73,8 +73,6 @@
     subscriber_groups = undefined :: undefined | map(),
     local_matches = 0 :: non_neg_integer(),
     remote_matches = 0 :: non_neg_integer(),
-    %% TCP mode only: route_remote_msg delivers to ALL local subscribers on the
-    %% remote node, so we publish once per node — not once per subscriber.
     remote_nodes_published = #{} :: #{node() => true}
 }).
 

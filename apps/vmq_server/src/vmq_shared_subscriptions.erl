@@ -58,8 +58,6 @@ publish_to_group(
                     case vmq_config:get_env(direct_message_passing, false) of
                         true ->
                             {QoS, Msg1} = maybe_add_sub_id(SubInfo, Msg),
-                            %% Prefer online subscribers: only fall back to [any] (offline
-                            %% queue) when this is the last candidate in the shuffled list.
                             StateFilter =
                                 case Rest of
                                     [] -> [any];

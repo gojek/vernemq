@@ -161,12 +161,6 @@ start_node(Name, Config, Case) ->
                             end
                     end, 60, 500),
             ok = start_vmq_listener(Node),
-            %% Wait until all TCP cluster connections from this node to its peers
-            %% are up. vmq_cluster_node uses a 1-second reconnect timer, so after
-            %% erlang-distribution membership is formed the TCP links may not be
-            %% ready yet. remote_enqueue with BufferIfUnreachable=false returns
-            %% {error, not_reachable} if the TCP link is down, causing shared-sub
-            %% delivery to fail silently right after a node restart.
             ok = wait_until(fun() ->
                 case rpc:call(Node, vmq_cluster_mon, nodes, []) of
                     Peers when is_list(Peers) ->
@@ -277,18 +271,12 @@ stop_peer(Node, _) ->
 -endif.
 
 start_vmq_listener(Node) ->
-    %% Probe locally — all peer nodes share the same machine, so a port
-    %% free here is free on the remote node. Probing via RPC would close
-    %% the socket when the RPC handler process exits, making inet:port
-    %% return {error, einval} on the dead socket handle.
     {ok, TmpSocket} = gen_tcp:listen(0, []),
     {ok, VmqPort} = inet:port(TmpSocket),
     ok = gen_tcp:close(TmpSocket),
     ok = rpc:call(Node, vmq_ranch_config, start_listener,
                   [vmq, "127.0.0.1", VmqPort, []]),
     CurrentListeners = rpc:call(Node, vmq_config, get_env, [listeners]),
-    %% vmq_ranch_config:addr/1 converts "127.0.0.1" → {127,0,0,1}; listeners() folds over
-    %% ranch:info() which uses the tuple form, so get_listener_config must find a tuple key.
     NewListeners = [{vmq, [{{{127,0,0,1}, VmqPort}, []}]}
                     | proplists:delete(vmq, CurrentListeners)],
     ok = rpc:call(Node, vmq_config, set_env, [listeners, NewListeners, false]).
