@@ -161,6 +161,24 @@ start_node(Name, Config, Case) ->
                             end
                     end, 60, 500),
             ok = start_vmq_listener(Node),
+            %% Wait until all TCP cluster connections from this node to its peers
+            %% are up. vmq_cluster_node uses a 1-second reconnect timer, so after
+            %% erlang-distribution membership is formed the TCP links may not be
+            %% ready yet. remote_enqueue with BufferIfUnreachable=false returns
+            %% {error, not_reachable} if the TCP link is down, causing shared-sub
+            %% delivery to fail silently right after a node restart.
+            ok = wait_until(fun() ->
+                case rpc:call(Node, vmq_cluster_mon, nodes, []) of
+                    Peers when is_list(Peers) ->
+                        OtherPeers = Peers -- [Node],
+                        OtherPeers =/= [] andalso
+                        lists:all(fun(RemotePeer) ->
+                            up =:= rpc:call(Node, vmq_cluster_node_sup, node_status, [RemotePeer])
+                        end, OtherPeers);
+                    _ ->
+                        false
+                end
+            end, 60*2, 500),
             {ok, Peer, Node};
         Other ->
             Other
