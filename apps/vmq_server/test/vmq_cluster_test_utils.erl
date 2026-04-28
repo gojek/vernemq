@@ -269,7 +269,9 @@ start_vmq_listener(Node) ->
     ok = rpc:call(Node, vmq_ranch_config, start_listener,
                   [vmq, "127.0.0.1", VmqPort, []]),
     CurrentListeners = rpc:call(Node, vmq_config, get_env, [listeners]),
-    NewListeners = [{vmq, [{{"127.0.0.1", VmqPort}, []}]}
+    %% vmq_ranch_config:addr/1 converts "127.0.0.1" → {127,0,0,1}; listeners() folds over
+    %% ranch:info() which uses the tuple form, so get_listener_config must find a tuple key.
+    NewListeners = [{vmq, [{{{127,0,0,1}, VmqPort}, []}]}
                     | proplists:delete(vmq, CurrentListeners)],
     ok = rpc:call(Node, vmq_config, set_env, [listeners, NewListeners, false]).
 

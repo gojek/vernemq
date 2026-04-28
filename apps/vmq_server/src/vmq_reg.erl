@@ -72,7 +72,10 @@
     msg :: msg(),
     subscriber_groups = undefined :: undefined | map(),
     local_matches = 0 :: non_neg_integer(),
-    remote_matches = 0 :: non_neg_integer()
+    remote_matches = 0 :: non_neg_integer(),
+    %% TCP mode only: route_remote_msg delivers to ALL local subscribers on the
+    %% remote node, so we publish once per node — not once per subscriber.
+    remote_nodes_published = #{} :: #{node() => true}
 }).
 
 -define(NR_OF_REG_RETRIES, 10).
@@ -470,20 +473,32 @@ publish_fold_fun(
     FromClientId,
     #publish_fold_acc{
         remote_matches = RN,
+        remote_nodes_published = SentNodes,
         msg = Msg
     } = Acc
 ) ->
     case vmq_cluster_mon:is_node_alive(Node) of
         true ->
-            case vmq_config:get_env(direct_message_passing, false) of
-                true ->
-                    vmq_cluster:publish(Node, Msg);
-                false ->
-                    vmq_state_store_backend:enqueue(
-                        Node, term_to_binary(SubscriberId), term_to_binary({SubInfo, Msg})
-                    )
-            end,
-            Acc#publish_fold_acc{remote_matches = RN + 1};
+            NewSentNodes =
+                case vmq_config:get_env(direct_message_passing, false) of
+                    true ->
+                        %% route_remote_msg delivers to ALL local subscribers, so send
+                        %% once per node to avoid duplicates when multiple subscribers
+                        %% on the same remote node share this topic.
+                        case maps:is_key(Node, SentNodes) of
+                            false ->
+                                vmq_cluster:publish(Node, Msg),
+                                SentNodes#{Node => true};
+                            true ->
+                                SentNodes
+                        end;
+                    false ->
+                        vmq_state_store_backend:enqueue(
+                            Node, term_to_binary(SubscriberId), term_to_binary({SubInfo, Msg})
+                        ),
+                        SentNodes
+                end,
+            Acc#publish_fold_acc{remote_matches = RN + 1, remote_nodes_published = NewSentNodes};
         _ ->
             %% Transfer the client on local node if the remote node is not alive.
             %% It could happen that the client has reconnected to the cluster before we
