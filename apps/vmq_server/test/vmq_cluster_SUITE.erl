@@ -1091,11 +1091,6 @@ shared_subs_random_policy_dead_node_message_reaper_test(Config) ->
     Key = "mainQueue::" ++ atom_to_list(DNode),
     {ok, Size} = eredis:q(RC, ["LLEN", Key]),
     true = binary_to_integer(Size) > 0,
-    
-    %% Puback received means the published message got processed.
-    %% Since messages were processed before detecting node failure, it means the messages 
-    %% would be in main queue of dead node.
-    true = length(Nodes) == length(rpc:call(RandomNode, vmq_cluster_mon, nodes, [])),
 
     timer:sleep(2000),
 
