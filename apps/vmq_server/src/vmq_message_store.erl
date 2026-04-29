@@ -22,25 +22,16 @@
 
 -spec start() -> 'ignore' | {'error', _} | {'ok', pid()}.
 start() ->
-    Ret = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
-    load_redis_functions(),
-    Ret.
-
-% wait_for_redis_and_load(_Client, 0) ->
-%     vmq_state_store_backend:load_msg_store_functions();
-% wait_for_redis_and_load(Client, RetriesLeft) ->
-%     case application:get_env(vmq_server, redis_enabled, true) of
-%         false ->
-%             vmq_state_store_backend:load_msg_store_functions();
-%         true ->
-%             case eredis:q(whereis(Client), [<<"PING">>]) of
-%                 {ok, _} ->
-%                     vmq_state_store_backend:load_msg_store_functions();
-%                 _ ->
-%                     timer:sleep(100),
-%                     wait_for_redis_and_load(Client, RetriesLeft - 1)
-%             end
-%     end.
+    case supervisor:start_link({local, ?MODULE}, ?MODULE, []) of
+        {ok, _} = Ret ->
+            case application:get_env(vmq_server, redis_enabled, true) of
+                true -> load_redis_functions();
+                false -> ok
+            end,
+            Ret;
+        Error ->
+            Error
+    end.
 
 -spec write(subscriber_id(), msg()) -> 'true' | {'error', 'redis_error'}.
 write(SubscriberId, Msg) ->
