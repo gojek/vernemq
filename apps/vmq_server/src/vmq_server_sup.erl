@@ -16,7 +16,7 @@
 
 -behaviour(supervisor).
 %% API
--export([start_link/0]).
+-export([start_link/0, redis_queue_sup_child_spec/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -105,3 +105,6 @@ init([]) ->
                 ?CHILD(vmq_ranch_sup, supervisor, [])
             ]
     }}.
+
+redis_queue_sup_child_spec() ->
+    ?CHILD(vmq_redis_queue_sup, supervisor, []).
