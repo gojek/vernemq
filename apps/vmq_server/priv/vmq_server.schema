@@ -387,6 +387,21 @@
                                                                       {datatype, flag}
                                                                      ]}.
 
+%% @doc specifies how many size in bytes are buffered in case the remote node
+%% is not available.
+{mapping, "outgoing_clustering_buffer_size", "vmq_server.outgoing_clustering_buffer_size", [
+                                                                                            {default, 10000},
+                                                                                            {datatype, integer},
+                                                                                            hidden
+                                                                                           ]}.
+
+%% @doc specifies the timeout for enqueuing something in a queue on a remote node.
+{mapping, "remote_enqueue_timeout", "vmq_server.remote_enqueue_timeout", [
+                                                                          {default, 5000},
+                                                                          {datatype, [integer, {atom, infinity}]},
+                                                                          hidden
+                                                                         ]}.
+
 %% @doc specifies the connect timeout.
 {mapping, "mqtt_connect_timeout", "vmq_server.mqtt_connect_timeout", [
                                                             {default, 5000},
@@ -456,6 +471,35 @@
   hidden,
   {validators, ["buffer_size_validator"]}
  ]}.
+
+{mapping, "listener.vmq.$name.buffer_sizes", "vmq_server.listeners",
+ [{datatype, string},
+  hidden,
+  {validators, ["buffer_size_validator"]}
+ ]}.
+
+ %% @doc Set the watermark levels for the `vmq_cluster_mon` listener
+ %% That is, the listener receiving the MQTT messages from other nodes.
+{mapping, "listener.vmq.$name.high_watermark", "vmq_server.listeners", [
+                                                                  {default, 8192},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                ]}.
+{mapping, "listener.vmq.$name.low_watermark", "vmq_server.listeners", [
+                                                                  {default, 4096},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                ]}.
+{mapping, "listener.vmq.$name.high_msgq_watermark", "vmq_server.listeners", [
+                                                                  {default, 8192},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                ]}.
+{mapping, "listener.vmq.$name.low_msgq_watermark", "vmq_server.listeners", [
+                                                                  {default, 4096},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                ]}.
 
 
 {validator, "buffer_size_validator", "value must be three comma-separated, positive integers",
@@ -537,6 +581,18 @@
                                                                                   {datatype, [integer, {atom, infinity}]},
                                                                                   hidden
                                                                                  ]}.
+
+{mapping, "listener.vmq.max_connections", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, [integer, {atom, infinity}]},
+                                                                            hidden
+                                                                           ]}.
+{mapping, "listener.vmq.$name.max_connections", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                                  hidden
+                                                                                 ]}.
+
 {mapping, "listener.http.max_connections", "vmq_server.listeners", [
                                                                                   {default, -1},
                                                                                   {datatype, [integer, {atom, infinity}]},
@@ -629,6 +685,19 @@
                                                                                   {include_default, "default"},
                                                                                   hidden
                                                                                  ]}.
+
+{mapping, "listener.vmq.nr_of_acceptors", "vmq_server.listeners", [
+                                                                                  {default, 10},
+                                                                                  {datatype, integer},
+                                                                                  hidden
+                                                                                 ]}.
+{mapping, "listener.vmq.$name.nr_of_acceptors", "vmq_server.listeners", [
+                                                                                  {default, 10},
+                                                                                  {datatype, integer},
+                                                                                  {include_default, "default"},
+                                                                                  hidden
+                                                                                 ]}.
+
 {mapping, "listener.http.nr_of_acceptors", "vmq_server.listeners", [
                                                                                   {default, 10},
                                                                                   {datatype, integer},
@@ -877,6 +946,17 @@
                                                                      hidden
                                                                     ]}.
 
+%% @doc listener.vmq.clustering is the IP address and TCP port that
+%% the broker will bind to accept connections from other cluster
+%% nodes e.g:
+%% - listener.vmq.clustering = 0.0.0.0:18883
+%% This also works for SSL listeners:
+%% - listener.vmqs.clustering = 0.0.0.0:18884
+{mapping, "listener.vmq.$name", "vmq_server.listeners", [
+                                                           {default, { "{{cluster_default_ip}}", {{cluster_default_port}} }},
+                                                           {datatype, ip},
+                                                           {include_default, "clustering"}
+                                                          ]}.
 
 %% @doc Set the mountpoint on the protocol level or on the listener level
 %%
@@ -934,6 +1014,25 @@
                                                                     {datatype, string},
                                                                     hidden
                                                                 ]}.
+
+{mapping, "listener.vmq.mountpoint", "vmq_server.listeners", [
+                                                              {datatype, string},
+                                                              hidden
+                                                             ]}.
+
+{mapping, "listener.vmq.$name.mountpoint", "vmq_server.listeners", [
+                                                                    {datatype, string},
+                                                                    hidden
+                                                                   ]}.
+{mapping, "listener.vmqs.mountpoint", "vmq_server.listeners", [
+                                                               {datatype, string},
+                                                               hidden
+                                                              ]}.
+
+{mapping, "listener.vmqs.$name.mountpoint", "vmq_server.listeners", [
+                                                                     {datatype, string},
+                                                                     hidden
+                                                                    ]}.
 
 %% @doc The cafile is used to define the path to a file containing
 %% the PEM encoded CA certificates that are trusted. Set the cafile
@@ -1820,3 +1919,9 @@
 %% @doc This option specifies the password for redis as message store
 {mapping, "message_store.redis.password", "vmq_server.message_store.redis.password",
     [{datatype, atom}]}.
+
+%% @doc Enables direct message passing between nodes. Will be removed in a future release.
+{mapping, "direct_message_passing", "vmq_server.direct_message_passing", [
+    {default, off},
+    {datatype, flag}
+]}.

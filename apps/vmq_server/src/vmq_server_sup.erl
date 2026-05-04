@@ -16,7 +16,7 @@
 
 -behaviour(supervisor).
 %% API
--export([start_link/0]).
+-export([start_link/0, redis_queue_sup_child_spec/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -60,6 +60,7 @@ init([]) ->
     SentinelMaster = application:get_env(vmq_server, redis_sentinel_master, mymaster),
 
     RedisEnabled = application:get_env(vmq_server, redis_enabled, true),
+    DirectMessagePassing = application:get_env(vmq_server, direct_message_passing, false),
 
     RedisMainClient =
         case RedisEnabled of
@@ -82,7 +83,7 @@ init([]) ->
         end,
 
     RedisWorkersWithSup =
-        case RedisEnabled of
+        case RedisEnabled andalso not DirectMessagePassing of
             true -> [?CHILD(vmq_redis_queue_sup, supervisor, [])];
             false -> []
         end,
@@ -99,8 +100,11 @@ init([]) ->
             ] ++ RedisWorkersWithSup ++
             [
                 ?CHILD(vmq_redis_reaper_sup, supervisor, []),
-                ?CHILD(vmq_cluster_mon, worker, []),
+                ?CHILD(vmq_cluster_node_sup, supervisor, []),
                 ?CHILD(vmq_sysmon, worker, []),
                 ?CHILD(vmq_ranch_sup, supervisor, [])
             ]
     }}.
+
+redis_queue_sup_child_spec() ->
+    ?CHILD(vmq_redis_queue_sup, supervisor, []).

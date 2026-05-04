@@ -47,6 +47,9 @@
     migrate_offline_queue/2
 ]).
 
+%% called by vmq_cluster_com
+-export([route_remote_msg/4]).
+
 %% used from plugins
 -export([
     direct_plugin_exports/1,
@@ -69,7 +72,8 @@
     msg :: msg(),
     subscriber_groups = undefined :: undefined | map(),
     local_matches = 0 :: non_neg_integer(),
-    remote_matches = 0 :: non_neg_integer()
+    remote_matches = 0 :: non_neg_integer(),
+    remote_nodes_published = #{} :: #{node() => true}
 }).
 
 -define(NR_OF_REG_RETRIES, 10).
@@ -401,6 +405,22 @@ publish(
             publish_fold_wrapper(RegView, ClientId, Topic, Msg)
     end.
 
+% route_remote_msg/4 is called by the vmq_cluster_com
+-spec route_remote_msg(module(), mountpoint(), topic(), msg()) -> ok.
+route_remote_msg(RegView, MP, Topic, Msg) ->
+    SubscriberId = {MP, ?INTERNAL_CLIENT_ID},
+    Acc = #publish_fold_acc{msg = Msg},
+    _ = vmq_reg_view:fold(RegView, SubscriberId, Topic, fun route_remote_msg_fold_fun/3, Acc),
+    % don't increment the router_matches_[local|remote] here, as they're already counted
+    % at the origin node.
+    ok.
+route_remote_msg_fold_fun({Node, _, _} = SubscriberIdAndSubInfo, From, Acc) when Node =:= node() ->
+    publish_fold_fun(SubscriberIdAndSubInfo, From, Acc);
+route_remote_msg_fold_fun(_Node, _, Acc) ->
+    %% we ignore remote subscriptions, they are already covered
+    %% by original publisher
+    Acc.
+
 -spec publish_fold_wrapper(module(), client_id() | ?INTERNAL_CLIENT_ID, topic(), msg()) ->
     {ok, {integer(), integer()}} | {error, _}.
 publish_fold_wrapper(
@@ -451,15 +471,32 @@ publish_fold_fun(
     FromClientId,
     #publish_fold_acc{
         remote_matches = RN,
+        remote_nodes_published = SentNodes,
         msg = Msg
     } = Acc
 ) ->
     case vmq_cluster_mon:is_node_alive(Node) of
         true ->
-            vmq_state_store_backend:enqueue(
-                Node, term_to_binary(SubscriberId), term_to_binary({SubInfo, Msg})
-            ),
-            Acc#publish_fold_acc{remote_matches = RN + 1};
+            NewSentNodes =
+                case vmq_config:get_env(direct_message_passing, false) of
+                    true ->
+                        %% route_remote_msg delivers to ALL local subscribers, so send
+                        %% once per node to avoid duplicates when multiple subscribers
+                        %% on the same remote node share this topic.
+                        case maps:is_key(Node, SentNodes) of
+                            false ->
+                                vmq_cluster:publish(Node, Msg),
+                                SentNodes#{Node => true};
+                            true ->
+                                SentNodes
+                        end;
+                    false ->
+                        vmq_state_store_backend:enqueue(
+                            Node, term_to_binary(SubscriberId), term_to_binary({SubInfo, Msg})
+                        ),
+                        SentNodes
+                end,
+            Acc#publish_fold_acc{remote_matches = RN + 1, remote_nodes_published = NewSentNodes};
         _ ->
             %% Transfer the client on local node if the remote node is not alive.
             %% It could happen that the client has reconnected to the cluster before we

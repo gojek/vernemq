@@ -82,6 +82,9 @@
 
     incr_router_matches_local/1,
     incr_router_matches_remote/1,
+    incr_cluster_bytes_dropped/1,
+    incr_cluster_bytes_sent/1,
+    incr_cluster_bytes_received/1,
     pretimed_measurement/2,
 
     incr_redis_cmd/1,
@@ -172,6 +175,15 @@ incr_bytes_received(V) ->
 
 incr_bytes_sent(V) ->
     incr_item(?METRIC_BYTES_SENT, V).
+
+incr_cluster_bytes_dropped(V) ->
+    incr_item(?METRIC_CLUSTER_BYTES_DROPPED, V).
+
+incr_cluster_bytes_sent(V) ->
+    incr_item(?METRIC_CLUSTER_BYTES_SENT, V).
+
+incr_cluster_bytes_received(V) ->
+    incr_item(?METRIC_CLUSTER_BYTES_RECEIVED, V).
 
 incr_mqtt_connect_received() ->
     incr_item(?MQTT4_CONNECT_RECEIVED, 1).
@@ -1753,6 +1765,27 @@ counter_entries_def() ->
             ?METRIC_NOOP_ENQUEUE,
             noop_enqueue,
             <<"The number of times a message enqueue operation was triggered from noop operations.">>
+        ),
+        m(
+            counter,
+            [],
+            ?METRIC_CLUSTER_BYTES_DROPPED,
+            cluster_bytes_dropped,
+            <<"The number of bytes dropped when forwarding to a cluster node.">>
+        ),
+        m(
+            counter,
+            [],
+            ?METRIC_CLUSTER_BYTES_SENT,
+            cluster_bytes_sent,
+            <<"The number of bytes sent to other cluster nodes.">>
+        ),
+        m(
+            counter,
+            [],
+            ?METRIC_CLUSTER_BYTES_RECEIVED,
+            cluster_bytes_received,
+            <<"The number of bytes received from other cluster nodes.">>
         )
     ].
 
@@ -2841,7 +2874,10 @@ met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?DELETE_SUBS_OFFLINE_MESSAGES}) -> 374;
 met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?DELETE_SUBS_OFFLINE_MESSAGES}) -> 375;
 met2idx(?METRIC_NOOP_ENQUEUE) -> 376;
 met2idx({?SIDECAR_EVENTS, ?ON_REGISTER_FAILED}) -> 377;
-met2idx({?SIDECAR_EVENTS_ERROR, ?ON_REGISTER_FAILED}) -> 378.
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_REGISTER_FAILED}) -> 378;
+met2idx(?METRIC_CLUSTER_BYTES_DROPPED) -> 379;
+met2idx(?METRIC_CLUSTER_BYTES_SENT) -> 380;
+met2idx(?METRIC_CLUSTER_BYTES_RECEIVED) -> 381.
 
 -ifdef(TEST).
 clear_stored_rates() ->

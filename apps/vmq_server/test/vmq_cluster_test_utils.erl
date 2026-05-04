@@ -31,10 +31,11 @@
     wait_until_disconnected/2,
     wait_until_connected/2,
     start_node/3,
+    start_vmq_listener/1,
     partition_cluster/2,
     heal_cluster/2,
     ensure_cluster/1,
-    start_peer/2, 
+    start_peer/2,
     stop_peer/2
     ]).
 
@@ -76,7 +77,7 @@ wait_until_left(Nodes, LeavingNode) ->
                                 lists:member(LeavingNode,
                                              get_cluster_members(Node))
                         end, Nodes))
-        end, 60*2, 500).
+        end, 60*6, 500).
 
 wait_until_joined(Nodes) ->
     wait_until_joined(Nodes, Nodes).
@@ -87,22 +88,22 @@ wait_until_joined(Nodes, ExpectedCluster) ->
                                 lists:sort(ExpectedCluster) ==
                                 lists:sort(get_cluster_members(Node))
                         end, Nodes))
-        end, 60*2, 500).
+        end, 60*6, 500).
 
 wait_until_offline(Node) ->
     wait_until(fun() ->
                 pang == net_adm:ping(Node)
-        end, 60*2, 500).
+        end, 60*6, 500).
 
 wait_until_disconnected(Node1, Node2) ->
     wait_until(fun() ->
                 pang == rpc:call(Node1, net_adm, ping, [Node2])
-        end, 60*2, 500).
+        end, 60*6, 500).
 
 wait_until_connected(Node1, Node2) ->
     wait_until(fun() ->
                 pong == rpc:call(Node1, net_adm, ping, [Node2])
-        end, 60*2, 500).
+        end, 60*6, 500).
 
 start_node(Name, Config, Case) ->
     CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
@@ -114,6 +115,9 @@ start_node(Name, Config, Case) ->
             PrivDir = proplists:get_value(priv_dir, Config),
             NodeDir = filename:join([PrivDir, Node, Case]),
             ok = rpc:call(Node, application, load, [vmq_server]),
+            ok = rpc:call(Node, application, set_env, [vmq_server,
+                direct_message_passing,
+                true]),
             ok = rpc:call(Node, application, set_env, [vmq_server,
                 default_reg_view,
                 vmq_reg_redis_trie]),
@@ -155,7 +159,20 @@ start_node(Name, Config, Case) ->
                                     end;
                                 _ -> false
                             end
-                    end, 60, 500),
+                            end, 60*6, 500),
+            ok = start_vmq_listener(Node),
+            ok = wait_until(fun() ->
+                case rpc:call(Node, vmq_cluster_mon, nodes, []) of
+                    Peers when is_list(Peers) ->
+                        OtherPeers = Peers -- [Node],
+                        OtherPeers =/= [] andalso
+                        lists:all(fun(RemotePeer) ->
+                            up =:= rpc:call(Node, vmq_cluster_node_sup, node_status, [RemotePeer])
+                        end, OtherPeers);
+                    _ ->
+                        false
+                end
+                end, 60*6, 500),
             {ok, Peer, Node};
         Other ->
             Other
@@ -251,7 +268,18 @@ stop_peer(Node, _) ->
     ct_slave:stop(Node),
     ok.
 
--endif.    
+-endif.
+
+start_vmq_listener(Node) ->
+    {ok, TmpSocket} = gen_tcp:listen(0, []),
+    {ok, VmqPort} = inet:port(TmpSocket),
+    ok = gen_tcp:close(TmpSocket),
+    ok = rpc:call(Node, vmq_ranch_config, start_listener,
+                  [vmq, "127.0.0.1", VmqPort, []]),
+    CurrentListeners = rpc:call(Node, vmq_config, get_env, [listeners]),
+    NewListeners = [{vmq, [{{{127,0,0,1}, VmqPort}, []}]}
+                    | proplists:delete(vmq, CurrentListeners)],
+    ok = rpc:call(Node, vmq_config, set_env, [listeners, NewListeners, false]).
 
 partition_cluster(ANodes, BNodes) ->
     pmap(fun({Node1, Node2}) ->

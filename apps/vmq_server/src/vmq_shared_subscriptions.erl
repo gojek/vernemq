@@ -49,21 +49,47 @@ publish(Msg, Policy, [{Group, SubscriberGroup} | Rest], Acc0) ->
 publish_to_group(_Msg, [], _Acc0) ->
     {error, no_subscribers};
 publish_to_group(
-    Msg, [{Node, _SId, _SubInfo} = Subscriber | Rest] = RandSubs, {Local, Remote} = Acc0
+    Msg, [{Node, SId, SubInfo} = Subscriber | Rest] = RandSubs, {Local, Remote} = Acc0
 ) ->
     case publish_online(Msg, Subscriber, Acc0) of
         {error, different_node} ->
             case vmq_cluster_mon:is_node_alive(Node) of
                 true ->
-                    case
-                        vmq_state_store_backend:enqueue(
-                            Node, term_to_binary(RandSubs), term_to_binary(Msg)
-                        )
-                    of
-                        ok ->
-                            {ok, {Local, Remote + 1}};
-                        E ->
-                            E
+                    case vmq_config:get_env(direct_message_passing, false) of
+                        true ->
+                            {QoS, Msg1} = maybe_add_sub_id(SubInfo, Msg),
+                            StateFilter =
+                                case Rest of
+                                    [] -> [any];
+                                    _ -> [online]
+                                end,
+                            case
+                                vmq_cluster:remote_enqueue(
+                                    Node,
+                                    {enqueue_many, SId, [{deliver, QoS, Msg1}], #{
+                                        states => StateFilter
+                                    }},
+                                    false
+                                )
+                            of
+                                ok ->
+                                    {ok, {Local, Remote + 1}};
+                                {error, _} when Rest =/= [] ->
+                                    publish_to_group(Msg, Rest, Acc0);
+                                E ->
+                                    E
+                            end;
+                        false ->
+                            case
+                                vmq_state_store_backend:enqueue(
+                                    Node, term_to_binary(RandSubs), term_to_binary(Msg)
+                                )
+                            of
+                                ok ->
+                                    {ok, {Local, Remote + 1}};
+                                E ->
+                                    E
+                            end
                     end;
                 _ ->
                     publish_to_group(Msg, Rest, Acc0)
