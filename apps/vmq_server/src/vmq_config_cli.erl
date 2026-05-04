@@ -63,20 +63,41 @@ register_config_() ->
             "mqtt_connect_timeout",
             "queue_sup_sup_max_t",
             "queue_sup_sup_max_r",
-            "cache_shared_subscriptions_locally",
-            "direct_message_passing"
+            "cache_shared_subscriptions_locally"
         ],
     _ = [
         clique:register_config([Key], fun register_config_callback/2)
      || Key <- ConfigKeys
     ],
-    ok = clique:register_config_whitelist(ConfigKeys).
+    _ = clique:register_config(["direct_message_passing"], fun direct_message_passing_callback/2),
+    _ = clique:register_config_whitelist(["direct_message_passing" | ConfigKeys]).
 
 -spec register_cli_usage() -> true.
 register_cli_usage() ->
     clique:register_usage(["vmq-admin", "config"], config_usage()),
     clique:register_usage(["vmq-admin", "config", "show"], show_usage()),
     clique:register_usage(["vmq-admin", "config", "reset"], reset_usage()).
+
+-spec direct_message_passing_callback([string(), ...], string()) -> any().
+direct_message_passing_callback(["direct_message_passing"], _) ->
+    {ok, Val} = application:get_env(vmq_server, direct_message_passing),
+    vmq_config:set_env(vmq_server, direct_message_passing, Val, false),
+    case Val of
+        true ->
+            supervisor:terminate_child(vmq_server_sup, vmq_redis_queue_sup),
+            supervisor:delete_child(vmq_server_sup, vmq_redis_queue_sup);
+        false ->
+            Spec = vmq_server_sup:redis_queue_sup_child_spec(),
+            case supervisor:start_child(vmq_server_sup, Spec) of
+                {ok, _} ->
+                    ok;
+                {error, already_present} ->
+                    supervisor:restart_child(vmq_server_sup, vmq_redis_queue_sup);
+                _ ->
+                    ok
+            end
+    end,
+    vmq_config:configure_node().
 
 -spec register_config_callback([string(), ...], string()) -> any().
 register_config_callback([StrKey], _) ->
