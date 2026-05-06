@@ -60,7 +60,6 @@ init([]) ->
     SentinelMaster = application:get_env(vmq_server, redis_sentinel_master, mymaster),
 
     RedisEnabled = application:get_env(vmq_server, redis_enabled, true),
-    DirectMessagePassing = application:get_env(vmq_server, direct_message_passing, false),
 
     RedisMainClient =
         case RedisEnabled of
@@ -83,7 +82,7 @@ init([]) ->
         end,
 
     RedisWorkersWithSup =
-        case RedisEnabled andalso not DirectMessagePassing of
+        case RedisEnabled of
             true -> [?CHILD(vmq_redis_queue_sup, supervisor, [])];
             false -> []
         end,
