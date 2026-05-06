@@ -77,7 +77,7 @@ wait_until_left(Nodes, LeavingNode) ->
                                 lists:member(LeavingNode,
                                              get_cluster_members(Node))
                         end, Nodes))
-        end, 60*6, 500).
+        end, 60*2, 500).
 
 wait_until_joined(Nodes) ->
     wait_until_joined(Nodes, Nodes).
@@ -88,22 +88,22 @@ wait_until_joined(Nodes, ExpectedCluster) ->
                                 lists:sort(ExpectedCluster) ==
                                 lists:sort(get_cluster_members(Node))
                         end, Nodes))
-        end, 60*6, 500).
+        end, 60*2, 500).
 
 wait_until_offline(Node) ->
     wait_until(fun() ->
                 pang == net_adm:ping(Node)
-        end, 60*6, 500).
+        end, 60*2, 500).
 
 wait_until_disconnected(Node1, Node2) ->
     wait_until(fun() ->
                 pang == rpc:call(Node1, net_adm, ping, [Node2])
-        end, 60*6, 500).
+        end, 60*2, 500).
 
 wait_until_connected(Node1, Node2) ->
     wait_until(fun() ->
                 pong == rpc:call(Node1, net_adm, ping, [Node2])
-        end, 60*6, 500).
+        end, 60*2, 500).
 
 start_node(Name, Config, Case) ->
     CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
@@ -159,7 +159,7 @@ start_node(Name, Config, Case) ->
                                     end;
                                 _ -> false
                             end
-                            end, 60*6, 500),
+                            end, 60*2, 500),
             ok = start_vmq_listener(Node),
             ok = wait_until(fun() ->
                 case rpc:call(Node, vmq_cluster_mon, nodes, []) of
@@ -172,7 +172,7 @@ start_node(Name, Config, Case) ->
                     _ ->
                         false
                 end
-                end, 60*6, 500),
+                end, 60*2, 500),
             {ok, Peer, Node};
         Other ->
             Other

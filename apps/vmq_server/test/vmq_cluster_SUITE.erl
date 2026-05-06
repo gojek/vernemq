@@ -17,6 +17,7 @@
     aborted_queue_migration_test/1,
     cluster_self_leave_subscriber_reaper_test/1,
     cluster_dead_node_subscriber_reaper_test/1,
+    cluster_dead_node_message_reaper_test/1,
     shared_subs_random_policy_test/1,
     shared_subs_random_policy_test_with_local_caching/1,
     shared_subs_random_policy_online_first_test/1,
@@ -72,7 +73,6 @@ end_per_suite(_Config) ->
 init_per_testcase(convert_new_msgs_to_old_format, Config) ->
     %% no setup necessary,
     Config;
-
 init_per_testcase(Case, Config) ->
     {ok, RedisClient} = eredis:start_link([{host, "127.0.0.1"}, {reconnect_sleep, no_reconnect}]),
     eredis:q(RedisClient, ["FLUSHALL"]),
@@ -128,6 +128,7 @@ all() ->
         aborted_queue_migration_test,
         cluster_self_leave_subscriber_reaper_test,
         cluster_dead_node_subscriber_reaper_test,
+        cluster_dead_node_message_reaper_test,
         shared_subs_random_policy_test,
         shared_subs_random_policy_test_with_local_caching,
         shared_subs_random_policy_online_first_test,
@@ -667,6 +668,100 @@ cluster_dead_node_subscriber_reaper_test(Config) ->
            end,
            {0, 0},
            {ToMigrate, 0},
+           RestNodesWithPorts).
+
+cluster_dead_node_message_reaper_test(Config) ->
+    ok = ensure_cluster(Config),
+    {_, [{Peer, Node, Port} | RestNodesWithPorts] = Nodes} = lists:keyfind(nodes, 1, Config),
+    {_, RestNodes, _} = lists:unzip3(RestNodesWithPorts),
+    Topic = "cluster/dead/message/reaper/topic",
+    ToMigrate = 8,
+    %% create ToMigrate unclean sessions
+    _Sockets =
+        [
+            begin
+                Connect = packet:gen_connect(
+                    "connect-unclean-" ++ integer_to_list(I),
+                    [
+                        {clean_session, false},
+                        {keepalive, 60}
+                    ]
+                ),
+                Connack = packet:gen_connack(0),
+                Subscribe = packet:gen_subscribe(123, Topic, 1),
+                Suback = packet:gen_suback(123, 1),
+                {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
+                ok = gen_tcp:send(Socket, Subscribe),
+                ok = packet:expect_packet(Socket, "suback", Suback),
+                Socket
+            end
+         || I <- lists:seq(1, ToMigrate)
+        ],
+    _CleanSockets =
+        [
+            begin
+                Connect = packet:gen_connect(
+                    "connect-clean-" ++ integer_to_list(I),
+                    [
+                        {clean_session, true},
+                        {keepalive, 60}
+                    ]
+                ),
+                Connack = packet:gen_connack(0),
+                Subscribe = packet:gen_subscribe(123, Topic, 1),
+                Suback = packet:gen_suback(123, 1),
+                {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
+                ok = gen_tcp:send(Socket, Subscribe),
+                ok = packet:expect_packet(Socket, "suback", Suback),
+                Socket
+            end
+         || I <- lists:seq(1, ToMigrate)
+        ],
+    ok = vmq_cluster_test_utils:wait_until(
+        fun() ->
+            {ToMigrate * 2, 0, 0, 0, 0} == rpc:call(Node, vmq_queue_sup_sup, summary, [])
+        end,
+        60,
+        500
+    ),
+    {_, RandomNode, RandomPort} = random_node(RestNodesWithPorts),
+    Connect = packet:gen_connect(
+                    "connect-clean-publish",
+                    [
+                        {clean_session, true},
+                        {keepalive, 60}
+                    ]
+                ),
+    Connack = packet:gen_connack(0),
+    {ok, PubSocket} = packet:do_client_connect(Connect, Connack, [{port, RandomPort}]),
+    Publish = packet:gen_publish(Topic, 1, <<"test-message">>, [{mid, 1}]),
+    Puback = packet:gen_puback(1),
+    %% Ungracefully stop node
+    vmq_cluster_test_utils:stop_peer(Peer, Node),
+    %% publish a message for every session
+    ok = gen_tcp:send(PubSocket, Publish),
+    ok = packet:expect_packet(PubSocket, "puback", Puback),
+    %% ensure message is in redis queue by ensuring publisher node has not yet detected node failure
+    true = length(Nodes) == length(rpc:call(RandomNode, vmq_cluster_mon, nodes, [])),
+    %% check that the leave was propagated to the rest
+    ok = wait_until_converged(
+        RestNodesWithPorts,
+        fun(N) ->
+            lists:usort(rpc:call(N, vmq_cluster_mon, nodes, []))
+        end,
+        lists:usort(RestNodes)
+    ),
+    %% The disconnected sessions are migrated to the rest of the nodes 
+    %% with the help of reapers
+    %% As the clients don't reconnect (in this test), their sessions are offline
+    %% Due to ungraceful shutdown, online messages were lost
+    ok = wait_until_converged_fold(
+           fun(N, {AccQ, AccM}) ->
+                   {_,_,_,Queues, Messages} = rpc:call(N, vmq_queue_sup_sup, summary, []),
+                   {AccQ + Queues, AccM + Messages}
+           end,
+           {0, 0},
+           {ToMigrate, ToMigrate},
            RestNodesWithPorts).
 
 shared_subs_prefer_local_policy_test_with_local_caching(Config) ->

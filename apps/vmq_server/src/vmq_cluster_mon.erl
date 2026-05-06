@@ -21,8 +21,7 @@
     start_link/0,
     nodes/0,
     status/0,
-    is_node_alive/1,
-    redis_status/0
+    is_node_alive/1
 ]).
 
 %% gen_server callbacks
@@ -40,10 +39,7 @@
 -record(state, {
     fall = 3,
     timer = undefined,
-    recheck_interval = 500,
-    redis_down_since = undefined,
-    redis_down_status_threshold = 5,
-    redis_restart_threshold = 300
+    recheck_interval = 500
 }).
 -define(VMQ_CLUSTER_STATUS, vmq_status).
 
@@ -86,13 +82,6 @@ is_node_alive(Node) ->
             false
     end.
 
--spec redis_status() -> up | down.
-redis_status() ->
-    case whereis(?MODULE) of
-        undefined -> down;
-        Pid -> gen_server:call(Pid, redis_status)
-    end.
-
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -113,8 +102,6 @@ init([]) ->
 
     Fall = application:get_env(vmq_server, cluster_node_liveness_fall, 3),
     RecheckInterval = application:get_env(vmq_server, cluster_node_liveness_check_interval, 500),
-    RedisDownStatusThreshold = application:get_env(vmq_server, redis_down_status_threshold, 5),
-    RedisRestartThreshold = application:get_env(vmq_server, redis_restart_threshold, 300),
 
     ReadyResult =
         case vmq_config:get_env(direct_message_passing, false) of
@@ -130,9 +117,7 @@ init([]) ->
             {ok, #state{
                 fall = Fall,
                 timer = Tref,
-                recheck_interval = RecheckInterval,
-                redis_down_status_threshold = RedisDownStatusThreshold,
-                redis_restart_threshold = RedisRestartThreshold
+                recheck_interval = RecheckInterval
             }};
         {ok, _} ->
             {stop, reaping_in_progress};
@@ -155,20 +140,6 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 
-handle_call(redis_status, _From, State) ->
-    Status =
-        case State#state.redis_down_since of
-            undefined ->
-                up;
-            DownSince ->
-                Now = erlang:monotonic_time(second),
-                Threshold = State#state.redis_down_status_threshold,
-                case Now - DownSince >= Threshold of
-                    true -> down;
-                    false -> up
-                end
-        end,
-    {reply, Status, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -197,55 +168,19 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(recheck, State) ->
-    Now = erlang:monotonic_time(second),
     case vmq_state_store_backend:get_live_nodes() of
-        {error, Reason} ->
-            lager:error("cluster recheck failed due to redis error ~p~n", [Reason]),
-            NewDownSince =
-                case State#state.redis_down_since of
-                    undefined -> Now;
-                    TS -> TS
-                end,
-            RestartThreshold = State#state.redis_restart_threshold,
-            ShouldRestart =
-                case Reason of
-                    {noproc, _} ->
-                        true;
-                    _ ->
-                        (Now - NewDownSince) >= RestartThreshold
-                end,
-            NewState =
-                if
-                    ShouldRestart ->
-                        lager:error("[INFO] Restarting Redis client after ~p seconds of errors", [
-                            RestartThreshold
-                        ]),
-                        terminate_eredis(),
-                        start_eredis(),
-                        State#state{
-                            redis_down_since = Now
-                        };
-                    true ->
-                        State#state{
-                            redis_down_since = NewDownSince
-                        }
-                end;
         {ok, LiveNodes} when is_list(LiveNodes) ->
             LiveNodesAtom = update_cluster_status(LiveNodes, []),
-            filter_dead_nodes(LiveNodesAtom, State#state.fall),
-            NewState = State#state{
-                redis_down_since = undefined
-            };
+            filter_dead_nodes(LiveNodesAtom, State#state.fall);
         Res ->
-            lager:error("~p", [Res]),
-            NewState = State
+            lager:error("~p", [Res])
     end,
     NewTRef = erlang:send_after(
         State#state.recheck_interval,
         self(),
         recheck
     ),
-    {noreply, NewState#state{
+    {noreply, State#state{
         timer = NewTRef
     }};
 handle_info(Info, State) ->
@@ -318,23 +253,3 @@ filter_dead_nodes(Nodes, Fall) ->
         ?VMQ_CLUSTER_STATUS
     ),
     ok.
-
-terminate_eredis() ->
-    TermResult = supervisor:terminate_child(vmq_server_sup, eredis),
-    case TermResult of
-        {error, Err} ->
-            lager:error("Failed to terminate eredis child: ~p", [Err]);
-        _ ->
-            lager:error("[INFO] terminated eredis child successfully")
-    end.
-
-%% Helper: Start eredis child
-start_eredis() ->
-    Spec = vmq_server_sup:eredis_child_spec(),
-    StartResult = supervisor:start_child(vmq_server_sup, Spec),
-    case StartResult of
-        {error, Err} ->
-            lager:error("Failed to start eredis child: ~p", [Err]);
-        Result ->
-            lager:error("Start eredis child: ~p", [Result])
-    end.
