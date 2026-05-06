@@ -150,7 +150,6 @@ process_bytes(<<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, undefine
             monitor(process, ClusterNodePid),
             process_bytes(Rest, <<>>, St);
         {error, not_found} ->
-            lager:debug("connect request from unknown cluster node ~p", [NodeName]),
             {error, remote_node_not_available}
     end;
 process_bytes(Bytes, Buffer, St) ->
@@ -170,15 +169,11 @@ process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
         mountpoint = MP,
         routing_key = Topic
     } = Msg = to_vmq_msg(binary_to_term(Bin)),
-    lager:debug("[cluster-recv] msg received mountpoint=~p topic=~p", [MP, Topic]),
     _ = vmq_reg:route_remote_msg(St#st.reg_view, MP, Topic, Msg),
     process(Rest, St);
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
     case binary_to_term(Bin) of
         {CallerPid, Ref, {enqueue, QueuePid, Msgs}} ->
-            lager:debug("[cluster-recv] enqueue received caller=~p ref=~p queue=~p msg_count=~p", [
-                CallerPid, Ref, QueuePid, length(Msgs)
-            ]),
             %% enqueue in own process context
             %% to ensure that this won't block
             %% the cluster communication.
@@ -192,10 +187,6 @@ process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
                 end
             end);
         {CallerPid, Ref, {enqueue_many, SubscriberId, Msgs, Opts}} ->
-            lager:debug(
-                "[cluster-recv] enqueue_many received caller=~p ref=~p subscriber=~p msg_count=~p",
-                [CallerPid, Ref, SubscriberId, length(Msgs)]
-            ),
             %% enqueue in own process context
             %% to ensure that this won't block
             %% the cluster communication.
@@ -204,7 +195,9 @@ process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
                     case vmq_queue_sup_sup:get_queue_pid(SubscriberId) of
                         QueuePid when is_pid(QueuePid) ->
                             Reply = vmq_queue:enqueue_many(QueuePid, Msgs, Opts),
-                            CallerPid ! {Ref, Reply}
+                            CallerPid ! {Ref, Reply};
+                        not_found ->
+                            CallerPid ! {Ref, {error, subscriber_not_found}}
                     end
                 catch
                     _:_ ->

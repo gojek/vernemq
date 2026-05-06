@@ -119,7 +119,7 @@ nr_of_offline_messages() ->
 
 -spec init([]) ->
     {'ok',
-        {{one_for_one, 50000, 1}, [
+        {{one_for_one, 5, 10}, [
             {atom(), {atom(), atom(), list()}, permanent, pos_integer(), worker, [atom()]}
         ]}}.
 init([]) ->
