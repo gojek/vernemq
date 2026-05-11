@@ -76,6 +76,7 @@ handle_call({delete_rate, AclName}, _From, State) ->
             {reply, {error, not_found}, State};
         _ ->
             ets:delete(?RATE_CONFIG_TBL, AclName),
+            ets:match_delete(?RATE_LIMIT_METRICS_TBL, {{AclName, '_'}, '_'}),
             {reply, ok, State}
     end;
 handle_call(list_rates, _From, State) ->

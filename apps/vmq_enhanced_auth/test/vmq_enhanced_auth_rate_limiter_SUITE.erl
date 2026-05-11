@@ -26,7 +26,8 @@
     drop_metric_incremented_test/1,
     rate_limit_metrics_format_test/1,
     metrics_empty_when_no_drops_test/1,
-    config_loaded_on_start_test/1
+    config_loaded_on_start_test/1,
+    delete_rate_cleans_metrics_test/1
 ]).
 
 all() ->
@@ -46,7 +47,8 @@ all() ->
         drop_metric_incremented_test,
         rate_limit_metrics_format_test,
         metrics_empty_when_no_drops_test,
-        config_loaded_on_start_test
+        config_loaded_on_start_test,
+        delete_rate_cleans_metrics_test
     ].
 
 init_per_suite(Config) ->
@@ -174,3 +176,13 @@ config_loaded_on_start_test(_Config) ->
     Rates = vmq_enhanced_auth_rate_limiter:list_rates(),
     [{<<"configacl">>, 50}] = Rates,
     allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"configacl">>, 0).
+
+delete_rate_cleans_metrics_test(_Config) ->
+    ok = vmq_enhanced_auth_rate_limiter:set_rate(<<"acl1">>, 1),
+    allow = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 0),
+    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 0),
+    drop = vmq_enhanced_auth_rate_limiter:check_publish_rate(<<"acl1">>, 1),
+    2 = length(ets:tab2list(?RATE_LIMIT_METRICS_TBL)),
+    ok = vmq_enhanced_auth_rate_limiter:delete_rate(<<"acl1">>),
+    [] = ets:tab2list(?RATE_LIMIT_METRICS_TBL),
+    [] = vmq_enhanced_auth_metrics:rate_limit_metrics().
