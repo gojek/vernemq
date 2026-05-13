@@ -131,6 +131,7 @@ handle_info(
                                             {?MODULE, time_spent_in_main_queue},
                                             binary_to_integer(TimeInQueue)
                                         ),
+                                        vmq_metrics:incr_reap_messages(),
                                         case binary_to_term(SubBin) of
                                             {_, _CId} = SId ->
                                                 case vmq_reg:migrate_offline_queue(SId, DeadNode) of
