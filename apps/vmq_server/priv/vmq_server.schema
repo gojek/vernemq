@@ -1925,3 +1925,16 @@
     {default, off},
     {datatype, flag}
 ]}.
+
+%% @doc specifies the timeout for publishing messages to remote nodes.
+{mapping, "cluster_publish_timeout", "vmq_server.cluster_publish_timeout", [
+                                                                          {default, 5000},
+                                                                          {datatype, [integer, {atom, infinity}]},
+                                                                          hidden
+                                                                         ]}.
+%% @doc specifies the timeout for sending messages to remote nodes.
+{mapping, "cluster_send_timeout", "vmq_server.cluster_send_timeout", [
+                                                                          {default, 5000},
+                                                                          {datatype, [integer, {atom, infinity}]},
+                                                                          hidden
+                                                                         ]}.
