@@ -100,6 +100,7 @@
 
     incr_msg_enqueue_subscriber_not_found/0,
     incr_shared_subscription_group_publish_attempt_failed/0,
+    incr_reap_messages/0,
 
     incr_events_sampled/2,
     incr_events_dropped/2,
@@ -347,6 +348,9 @@ incr_msg_enqueue_subscriber_not_found() ->
 
 incr_shared_subscription_group_publish_attempt_failed() ->
     incr_item(shared_subscription_group_publish_attempt_failed, 1).
+
+incr_reap_messages() ->
+    incr_item(reap_messages, 1).
 
 -spec incr_events_sampled(hook_name(), Criterion :: binary() | undefined) -> ok.
 incr_events_sampled(_, undefined) -> ok;
@@ -1786,6 +1790,20 @@ counter_entries_def() ->
             ?METRIC_CLUSTER_BYTES_RECEIVED,
             cluster_bytes_received,
             <<"The number of bytes received from other cluster nodes.">>
+        ),
+        m(
+            counter,
+            [],
+            reap_messages,
+            reap_messages,
+            <<"The number of times reap_messages handler has been invoked.">>
+        ),
+        m(
+            counter,
+            [],
+            cluster_publish_timeout_drop,
+            cluster_publish_timeout_drop,
+            <<"The number of messages dropped due to cluster publish timeouts.">>
         )
     ].
 
@@ -2877,7 +2895,9 @@ met2idx({?SIDECAR_EVENTS, ?ON_REGISTER_FAILED}) -> 377;
 met2idx({?SIDECAR_EVENTS_ERROR, ?ON_REGISTER_FAILED}) -> 378;
 met2idx(?METRIC_CLUSTER_BYTES_DROPPED) -> 379;
 met2idx(?METRIC_CLUSTER_BYTES_SENT) -> 380;
-met2idx(?METRIC_CLUSTER_BYTES_RECEIVED) -> 381.
+met2idx(?METRIC_CLUSTER_BYTES_RECEIVED) -> 381;
+met2idx(reap_messages) -> 382;
+met2idx(cluster_publish_timeout_drop) -> 383.
 
 -ifdef(TEST).
 clear_stored_rates() ->

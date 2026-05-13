@@ -160,6 +160,7 @@ handle_info(
                                     end,
                                     Msgs
                                 ),
+                                vmq_metrics:incr_reap_messages(),
                                 reap_messages;
                             Res ->
                                 lager:warning("~p", [Res]),
