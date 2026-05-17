@@ -16,12 +16,16 @@
 -spec publish(_, _) -> any().
 publish(Node, Msg) ->
     case vmq_cluster_node_sup:get_cluster_node(Node) of
-        {error, not_found} ->
-            {error, not_found};
+        {error, not_found} = Err ->
+            vmq_metrics:incr_cluster_msg_drop_node_not_found(),
+            Err;
         {ok, Pid} ->
             case vmq_cluster_node:publish(Pid, Msg) of
                 {error, timeout} = Err ->
-                    on_message_drop_timeout(Msg),
+                    vmq_metrics:incr_cluster_publish_timeout_drop(),
+                    Err;
+                {error, msg_dropped} = Err ->
+                    vmq_metrics:incr_cluster_msg_drop_buffer_full(),
                     Err;
                 Reply ->
                     Reply
@@ -62,37 +66,3 @@ remote_enqueue_async(Node, Term, BufferIfUnreachable) ->
         {ok, Pid} ->
             vmq_cluster_node:enqueue_async(Pid, Term, BufferIfUnreachable)
     end.
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-
-on_message_drop_timeout(
-    #vmq_msg{
-        mountpoint = MP,
-        routing_key = Topic,
-        qos = QoS,
-        payload = Payload,
-        retain = IsRetain,
-        acl_name = AclName,
-        pub_pid = PubPid
-    }
-) ->
-    {SubscriberId, SessionId} =
-        case vmq_mqtt_fsm:info(PubPid, [subscriber_id, session_id]) of
-            {ok, Items} ->
-                SId = proplists:get_value(subscriber_id, Items, {MP, undefined}),
-                SessId = proplists:get_value(session_id, Items, undefined),
-                {SId, SessId};
-            _ ->
-                {{MP, undefined}, undefined}
-        end,
-    _ = vmq_plugin:all(on_message_drop, [
-        SubscriberId,
-        fun() -> {Topic, QoS, Payload, #{is_retain => IsRetain}, #matched_acl{name = AclName}} end,
-        cluster_publish_timeout,
-        SessionId
-    ]),
-    ok;
-on_message_drop_timeout(_) ->
-    ok.

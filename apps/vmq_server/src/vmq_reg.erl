@@ -525,11 +525,26 @@ publish_fold_fun(
             %% delete its entry and return nil. Otherwise change its node name and return true.
             %% 3. If the result was undefined then terminate the queue otherwise initialize offline queue
             %% and then enqueue.
-            case migrate_offline_queue(SubscriberId, Node) of
-                {error, _} ->
+            case vmq_config:get_env(direct_message_passing, false) of
+                true ->
+                    lager:warning(
+                        "[routing] direct_message_passing: node ~p appears dead, dropping msg for subscriber ~p (reaper will handle)",
+                        [Node, SubscriberId]
+                    ),
                     Acc;
-                NewNode ->
-                    publish_fold_fun({NewNode, SubscriberId, SubInfo}, FromClientId, Acc)
+                false ->
+                    lager:warning(
+                        "[routing] node ~p is dead, calling migrate_offline_queue for subscriber ~p",
+                        [
+                            Node, SubscriberId
+                        ]
+                    ),
+                    case migrate_offline_queue(SubscriberId, Node) of
+                        {error, _} ->
+                            Acc;
+                        NewNode ->
+                            publish_fold_fun({NewNode, SubscriberId, SubInfo}, FromClientId, Acc)
+                    end
             end
     end;
 publish_fold_fun({_Node, _Group, SubscriberId, {_, #{no_local := true}}}, SubscriberId, Acc) ->
