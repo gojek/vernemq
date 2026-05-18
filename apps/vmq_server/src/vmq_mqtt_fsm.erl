@@ -604,7 +604,7 @@ connected({Ref, ok}, State) when is_reference(Ref) ->
     %% TODO: this should be cleaned up for 2.0 as changing this is
     %% likely backwards incompatible.
     {State, []};
-connected({Ref, {error, cant_remote_enqueue}}, State) when is_reference(Ref) ->
+connected({Ref, {error, _}}, State) when is_reference(Ref) ->
     %% Late arrival of negative ack after enqueueing to a remote
     %% queue.
     %%
