@@ -95,12 +95,16 @@ status(Pid) ->
     Ref = make_ref(),
     MRef = monitor(process, Pid),
     Pid ! {status, self(), Ref},
+    Timeout = vmq_config:get_env(cluster_node_status_timeout, 1000),
     receive
         {Ref, Reply} ->
             demonitor(MRef, [flush]),
             Reply;
         {'DOWN', MRef, process, Pid, Reason} ->
             {error, Reason}
+    after Timeout ->
+        demonitor(MRef, [flush]),
+        down
     end.
 
 init([Parent, RemoteNode]) ->
@@ -168,8 +172,7 @@ handle_message(
 ->
     CallerPid ! {Ref, {error, not_reachable}},
     State;
-handle_message({enq, CallerPid, Ref, Term, _}, #state{node = RemoteNode} = State) ->
-    lager:debug("[cluster-send] enq to node ~p caller=~p ref=~p", [RemoteNode, CallerPid, Ref]),
+handle_message({enq, CallerPid, Ref, Term, _}, State) ->
     Bin = term_to_binary({CallerPid, Ref, Term}),
     L = byte_size(Bin),
     BinMsg = <<"enq", L:32, Bin/binary>>,
@@ -184,8 +187,7 @@ handle_message({enq, CallerPid, Ref, Term, _}, #state{node = RemoteNode} = State
             ignore
     end,
     NewState;
-handle_message({msg, CallerPid, Ref, Msg}, #state{node = RemoteNode} = State) ->
-    lager:debug("[cluster-send] msg to node ~p caller=~p ref=~p", [RemoteNode, CallerPid, Ref]),
+handle_message({msg, CallerPid, Ref, Msg}, State) ->
     Bin = term_to_binary(Msg),
     L = byte_size(Bin),
     BinMsg = <<"msg", L:32, Bin/binary>>,
@@ -290,7 +292,6 @@ internal_flush(
     } = State
 ) ->
     L = iolist_size(Pending),
-    lager:debug("[cluster-send] flushing ~p bytes to node ~p", [L, Node]),
     Msg = [<<"vmq-send", L:32>> | lists:reverse(Pending)],
     case send(Transport, Socket, Msg) of
         ok ->
