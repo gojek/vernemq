@@ -47,16 +47,12 @@ publish(Pid, Msg) ->
     Ref = make_ref(),
     MRef = monitor(process, Pid),
     Pid ! {msg, self(), Ref, Msg},
-    Timeout = vmq_config:get_env(cluster_publish_timeout, 5000),
     receive
         {Ref, Reply} ->
             demonitor(MRef, [flush]),
             Reply;
         {'DOWN', MRef, process, Pid, Reason} ->
             {error, Reason}
-    after Timeout ->
-        demonitor(MRef, [flush]),
-        {error, timeout}
     end.
 
 enqueue(Pid, Term, BufferIfUnreachable, Timeout) ->
@@ -343,8 +339,7 @@ connect_async(ParentPid, RemoteNode) ->
                         MaskedSocket = mask_socket(Transport, Socket),
                         {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
                         BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
-                        SendTimeout = vmq_config:get_env(cluster_send_timeout, 5000),
-                        setopts(MaskedSocket, [{buffer, BufSize}, {send_timeout, SendTimeout}]),
+                        setopts(MaskedSocket, [{buffer, BufSize}]),
                         case controlling_process(Transport, MaskedSocket, ParentPid) of
                             ok ->
                                 {ok, {Transport, MaskedSocket}};
