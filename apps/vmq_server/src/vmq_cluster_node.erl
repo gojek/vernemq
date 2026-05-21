@@ -47,12 +47,16 @@ publish(Pid, Msg) ->
     Ref = make_ref(),
     MRef = monitor(process, Pid),
     Pid ! {msg, self(), Ref, Msg},
+    Timeout = vmq_config:get_env(cluster_publish_timeout),
     receive
         {Ref, Reply} ->
             demonitor(MRef, [flush]),
             Reply;
         {'DOWN', MRef, process, Pid, Reason} ->
             {error, Reason}
+    after Timeout ->
+        demonitor(MRef, [flush]),
+        {error, timeout}
     end.
 
 enqueue(Pid, Term, BufferIfUnreachable, Timeout) ->
