@@ -17,13 +17,9 @@
 publish(Node, Msg) ->
     case vmq_cluster_node_sup:get_cluster_node(Node) of
         {error, not_found} = Err ->
-            vmq_metrics:incr_cluster_msg_drop_node_not_found(),
             Err;
         {ok, Pid} ->
             case vmq_cluster_node:publish(Pid, Msg) of
-                {error, timeout} = Err ->
-                    vmq_metrics:incr_cluster_publish_timeout_drop(),
-                    Err;
                 {error, msg_dropped} = Err ->
                     vmq_metrics:incr_cluster_msg_drop_buffer_full(),
                     Err;

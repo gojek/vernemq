@@ -15,12 +15,9 @@
 
 -record(st, {
     socket,
-    buffer = <<>>,
     parser_state,
     reg_view,
     proto_tag,
-    pending = [],
-    throttled = false,
     bytes_recv = {os:timestamp(), 0}
 }).
 

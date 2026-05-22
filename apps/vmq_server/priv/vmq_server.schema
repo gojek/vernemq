@@ -1943,9 +1943,8 @@
     {datatype, flag}
 ]}.
 
-%% @doc specifies the timeout for publishing messages to remote nodes.
-{mapping, "cluster_publish_timeout", "vmq_server.cluster_publish_timeout", [
-                                                                          {default, 5000},
-                                                                          {datatype, [integer, {atom, infinity}]},
-                                                                          hidden
-                                                                         ]}.
+%% @doc The timeout in milliseconds for cluster node liveness RPC calls.
+{mapping, "cluster_node_liveness_rpc_timeout", "vmq_server.cluster_node_liveness_rpc_timeout", [
+    {default, 1000},
+    {datatype, integer}
+]}.

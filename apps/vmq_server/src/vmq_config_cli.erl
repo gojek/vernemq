@@ -65,7 +65,7 @@ register_config_() ->
             "queue_sup_sup_max_r",
             "cache_shared_subscriptions_locally",
             "direct_message_passing",
-            "cluster_publish_timeout"
+            "cluster_node_liveness_rpc_timeout"
         ],
     _ = [
         clique:register_config([Key], fun register_config_callback/2)

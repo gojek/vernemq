@@ -82,8 +82,6 @@
     incr_cluster_bytes_dropped/1,
     incr_cluster_bytes_sent/1,
     incr_cluster_bytes_received/1,
-    incr_cluster_publish_timeout_drop/0,
-    incr_cluster_msg_drop_node_not_found/0,
     incr_cluster_msg_drop_buffer_full/0,
     pretimed_measurement/2,
 
@@ -100,7 +98,6 @@
 
     incr_msg_enqueue_subscriber_not_found/0,
     incr_shared_subscription_group_publish_attempt_failed/0,
-    incr_reap_messages/0,
     update_config_version_metric/2
 ]).
 
@@ -182,14 +179,8 @@ incr_cluster_bytes_sent(V) ->
 incr_cluster_bytes_received(V) ->
     incr_item(?METRIC_CLUSTER_BYTES_RECEIVED, V).
 
-incr_cluster_publish_timeout_drop() ->
-    incr_item(cluster_publish_timeout_drop, 1).
-
-incr_cluster_msg_drop_node_not_found() ->
-    incr_item(cluster_msg_drop_node_not_found, 1).
-
 incr_cluster_msg_drop_buffer_full() ->
-    incr_item(cluster_msg_drop_buffer_full, 1).
+    incr_item(?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL, 1).
 
 incr_mqtt_connect_received() ->
     incr_item(?MQTT4_CONNECT_RECEIVED, 1).
@@ -347,9 +338,6 @@ incr_msg_enqueue_subscriber_not_found() ->
 
 incr_shared_subscription_group_publish_attempt_failed() ->
     incr_item(shared_subscription_group_publish_attempt_failed, 1).
-
-incr_reap_messages() ->
-    incr_item(reap_messages, 1).
 
 incr(Entry) ->
     incr_item(Entry, 1).
@@ -1710,29 +1698,8 @@ counter_entries_def() ->
         m(
             counter,
             [],
-            reap_messages,
-            reap_messages,
-            <<"The number of times reap_messages handler has been invoked.">>
-        ),
-        m(
-            counter,
-            [],
-            cluster_publish_timeout_drop,
-            cluster_publish_timeout_drop,
-            <<"The number of messages dropped due to cluster publish timeouts.">>
-        ),
-        m(
-            counter,
-            [],
-            cluster_msg_drop_node_not_found,
-            cluster_msg_drop_node_not_found,
-            <<"The number of messages dropped because the cluster node process was not found (node down).">>
-        ),
-        m(
-            counter,
-            [],
-            cluster_msg_drop_buffer_full,
-            cluster_msg_drop_buffer_full,
+            ?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL,
+            ?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL,
             <<"The number of messages dropped because the outgoing cluster buffer was full.">>
         )
     ].
@@ -2826,10 +2793,7 @@ met2idx({?SIDECAR_EVENTS_ERROR, ?ON_REGISTER_FAILED}) -> 378;
 met2idx(?METRIC_CLUSTER_BYTES_DROPPED) -> 379;
 met2idx(?METRIC_CLUSTER_BYTES_SENT) -> 380;
 met2idx(?METRIC_CLUSTER_BYTES_RECEIVED) -> 381;
-met2idx(reap_messages) -> 382;
-met2idx(cluster_publish_timeout_drop) -> 383;
-met2idx(cluster_msg_drop_node_not_found) -> 384;
-met2idx(cluster_msg_drop_buffer_full) -> 385.
+met2idx(?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL) -> 382.
 
 -ifdef(TEST).
 clear_stored_rates() ->

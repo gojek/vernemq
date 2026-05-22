@@ -47,30 +47,13 @@ publish(Pid, Msg) ->
     Ref = make_ref(),
     MRef = monitor(process, Pid),
     Pid ! {msg, self(), Ref, Msg},
-    Start = erlang:monotonic_time(microsecond),
-    Reply =
-        receive
-            {Ref, R} ->
-                demonitor(MRef, [flush]),
-                R;
-            {'DOWN', MRef, process, Pid, Reason} ->
-                {error, Reason}
-        end,
-    %% Record what publish/2 actually returns, bucketed by reply category, so we
-    %% can verify a socket send_timeout never surfaces here -- it is handled
-    %% inside internal_flush (close_reconnect), so the caller only ever sees
-    %% ok / msg_dropped, not a timeout. The histogram _count gives the per-reason
-    %% frequency; the latency shows e.g. the ~send_timeout delay on a false 'ok'.
-    Dur = erlang:monotonic_time(microsecond) - Start,
-    vmq_metrics:pretimed_measurement({?MODULE, publish_reply_metric(Reply)}, Dur),
-    Reply.
-
-publish_reply_metric(ok) -> publish_reply_ok;
-publish_reply_metric({error, msg_dropped}) -> publish_reply_msg_dropped;
-publish_reply_metric({error, timeout}) -> publish_reply_timeout;
-publish_reply_metric({error, not_reachable}) -> publish_reply_not_reachable;
-publish_reply_metric({error, _}) -> publish_reply_error;
-publish_reply_metric(_) -> publish_reply_other.
+    receive
+        {Ref, R} ->
+            demonitor(MRef, [flush]),
+            R;
+        {'DOWN', MRef, process, Pid, Reason} ->
+            {error, Reason}
+    end.
 
 enqueue(Pid, Term, BufferIfUnreachable, Timeout) ->
     Ref = make_ref(),
