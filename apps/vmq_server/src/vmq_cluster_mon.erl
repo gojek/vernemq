@@ -266,8 +266,9 @@ update_cluster_status([BNode | Rest], Acc) ->
     %% Time each blocking call against a peer separately, so we can tell which
     %% one stalls the recheck loop (and for which peer). Both rpc:call and
     %% node_status (via get_cluster_node's restart-retry) are unbounded.
+    RpcTimeout = application:get_env(vmq_server, cluster_node_liveness_rpc_timeout, 1000),
     IsReady = timed_step(rpc_call, Node, fun() ->
-        case rpc:call(Node, erlang, whereis, [vmq_server_sup]) of
+        case rpc:call(Node, erlang, whereis, [vmq_server_sup], RpcTimeout) of
             Pid when is_pid(Pid) -> true;
             _ -> false
         end
