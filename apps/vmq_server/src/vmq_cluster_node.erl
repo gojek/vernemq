@@ -108,16 +108,12 @@ status(Pid) ->
     Ref = make_ref(),
     MRef = monitor(process, Pid),
     Pid ! {status, self(), Ref},
-    Timeout = vmq_config:get_env(cluster_node_status_timeout, 1000),
     receive
         {Ref, Reply} ->
             demonitor(MRef, [flush]),
             Reply;
         {'DOWN', MRef, process, Pid, Reason} ->
             {error, Reason}
-    after Timeout ->
-        demonitor(MRef, [flush]),
-        down
     end.
 
 init([Parent, RemoteNode]) ->
