@@ -106,7 +106,7 @@ init([]) ->
     ReadyResult =
         case vmq_config:get_env(direct_message_passing, false) of
             true ->
-                {ok, <<"0">>};
+                vmq_noop_store:ensure_no_local_client();
             false ->
                 vmq_state_store_backend:ensure_no_local_client()
         end,
@@ -139,7 +139,6 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -226,7 +225,6 @@ update_cluster_status([BNode | Rest], Acc) ->
             _ -> false
         end,
     vmq_state_store_backend:del_reaper(Node),
-    ets:insert(?VMQ_CLUSTER_STATUS, {Node, true, 0}),
     vmq_cluster_node_sup:ensure_cluster_node(Node),
     Status = vmq_cluster_node_sup:node_status(Node),
     IsReady1 = IsReady andalso lists:member(Status, [up, init]),
@@ -243,6 +241,7 @@ filter_dead_nodes(Nodes, Fall) ->
                     %% Node is not part of the cluster anymore
                     lager:warning("trigger reaper for node ~p", [Node]),
                     vmq_state_store_backend:ensure_reaper(Node),
+                    vmq_cluster_node_sup:del_cluster_node(Node),
                     ets:delete(?VMQ_CLUSTER_STATUS, Node);
                 false ->
                     ets:update_element(?VMQ_CLUSTER_STATUS, Node, [

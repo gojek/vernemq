@@ -299,7 +299,7 @@ internal_flush(
         {error, Reason} ->
             lager:warning(
                 "can't send ~p bytes to ~p due to ~p, reconnect!",
-                [iolist_size(Pending), Node, Reason]
+                [L, Node, Reason]
             ),
             close_reconnect(State)
     end.

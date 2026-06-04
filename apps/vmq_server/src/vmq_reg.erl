@@ -73,7 +73,8 @@
     subscriber_groups = undefined :: undefined | map(),
     local_matches = 0 :: non_neg_integer(),
     remote_matches = 0 :: non_neg_integer(),
-    remote_nodes_published = #{} :: #{node() => true}
+    remote_nodes_published = #{} :: #{node() => true},
+    direct_message_passing = false :: boolean()
 }).
 
 -define(NR_OF_REG_RETRIES, 10).
@@ -432,7 +433,10 @@ publish_fold_wrapper(
         mountpoint = MP
     } = Msg
 ) ->
-    Acc = #publish_fold_acc{msg = Msg},
+    Acc = #publish_fold_acc{
+        msg = Msg,
+        direct_message_passing = vmq_config:get_env(direct_message_passing, false)
+    },
     case vmq_reg_view:fold(RegView, {MP, ClientId}, Topic, fun publish_fold_fun/3, Acc) of
         #publish_fold_acc{
             msg = NewMsg,
@@ -472,20 +476,29 @@ publish_fold_fun(
     #publish_fold_acc{
         remote_matches = RN,
         remote_nodes_published = SentNodes,
-        msg = Msg
+        msg = Msg,
+        direct_message_passing = DirectMessagePassing
     } = Acc
 ) ->
     case vmq_cluster_mon:is_node_alive(Node) of
         true ->
             NewSentNodes =
-                case vmq_config:get_env(direct_message_passing, false) of
+                case DirectMessagePassing of
                     true ->
                         %% route_remote_msg delivers to ALL local subscribers, so send
                         %% once per node to avoid duplicates when multiple subscribers
                         %% on the same remote node share this topic.
                         case maps:is_key(Node, SentNodes) of
                             false ->
-                                vmq_cluster:publish(Node, Msg),
+                                case vmq_cluster:publish(Node, Msg) of
+                                    ok ->
+                                        ok;
+                                    {error, Reason} ->
+                                        lager:error(
+                                            "direct publish to node ~p failed: ~p",
+                                            [Node, Reason]
+                                        )
+                                end,
                                 SentNodes#{Node => true};
                             true ->
                                 SentNodes

@@ -20,12 +20,11 @@
 
 -define(OFFLINE_MESSAGES, offline_messages).
 
--spec start() -> 'ignore' | {'error', _} | {'ok', pid()}.
 start() ->
     case supervisor:start_link({local, ?MODULE}, ?MODULE, []) of
         {ok, _} = Ret ->
             case application:get_env(vmq_server, redis_enabled, true) of
-                true -> load_redis_functions();
+                true -> vmq_state_store_backend:load_msg_store_functions();
                 false -> ok
             end,
             Ret;
@@ -33,7 +32,6 @@ start() ->
             Error
     end.
 
--spec write(subscriber_id(), msg()) -> 'true' | {'error', 'redis_error'}.
 write(SubscriberId, Msg) ->
     case vmq_state_store_backend:msg_store_write(SubscriberId, Msg) of
         {ok, OfflineMsgCount} ->
@@ -42,53 +40,25 @@ write(SubscriberId, Msg) ->
             {error, not_supported}
     end.
 
--spec read(subscriber_id(), msg_ref()) -> {'error', 'not_supported'}.
 read(_SubscriberId, _MsgRef) ->
     {error, not_supported}.
 
--spec delete(_) -> 'true' | {'error', 'redis_error'}.
 delete(SubscriberId) ->
-    case
-        vmq_redis:query(
-            vmq_message_store_redis_client,
-            [
-                ?FCALL,
-                ?DELETE_SUBS_OFFLINE_MESSAGES,
-                1,
-                term_to_binary(SubscriberId)
-            ],
-            ?FCALL,
-            ?DELETE_SUBS_OFFLINE_MESSAGES
-        )
-    of
+    case vmq_state_store_backend:msg_store_delete(SubscriberId) of
         {ok, OfflineMsgCount} ->
             ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
         {error, _} ->
-            {error, redis_error}
+            {error, not_supported}
     end.
 
--spec delete(subscriber_id(), _) -> 'true' | {'error', 'redis_error'}.
-delete(SubscriberId, _MsgRef) ->
-    case
-        vmq_redis:query(
-            vmq_message_store_redis_client,
-            [
-                ?FCALL,
-                ?POP_OFFLINE_MESSAGE,
-                1,
-                term_to_binary(SubscriberId)
-            ],
-            ?FCALL,
-            ?POP_OFFLINE_MESSAGE
-        )
-    of
+delete(SubscriberId, MsgRef) ->
+    case vmq_state_store_backend:msg_store_pop(SubscriberId, MsgRef) of
         {ok, OfflineMsgCount} ->
             ets:insert(?OFFLINE_MESSAGES, {count, binary_to_integer(OfflineMsgCount)});
         {error, _} ->
-            {error, redis_error}
+            {error, not_supported}
     end.
 
--spec find(subscriber_id()) -> any().
 find(SubscriberId) ->
     case vmq_state_store_backend:msg_store_find(SubscriberId) of
         {ok, MsgsInB} ->
@@ -106,7 +76,6 @@ find(SubscriberId) ->
             Res
     end.
 
--spec nr_of_offline_messages() -> integer().
 nr_of_offline_messages() ->
     case ets:lookup(?OFFLINE_MESSAGES, count) of
         [] -> 0;
@@ -119,7 +88,7 @@ nr_of_offline_messages() ->
 
 -spec init([]) ->
     {'ok',
-        {{one_for_one, 5, 10}, [
+        {{'one_for_one', 5, 10}, [
             {atom(), {atom(), atom(), list()}, permanent, pos_integer(), worker, [atom()]}
         ]}}.
 init([]) ->
@@ -163,35 +132,3 @@ init_with_redis() ->
                 ]},
                 permanent, 5000, worker, [eredis]}
         ]}}.
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-
-load_redis_functions() ->
-    LuaDir = application:get_env(vmq_server, redis_lua_dir, "./etc/lua"),
-
-    {ok, PopOfflineMessageScript} = file:read_file(LuaDir ++ "/pop_offline_message.lua"),
-    {ok, WriteOfflineMessageScript} = file:read_file(LuaDir ++ "/write_offline_message.lua"),
-    {ok, DeleteSubsOfflineMessagesScript} = file:read_file(
-        LuaDir ++ "/delete_subs_offline_messages.lua"
-    ),
-
-    {ok, <<"pop_offline_message">>} = vmq_redis:query(
-        vmq_message_store_redis_client,
-        [?FUNCTION, "LOAD", "REPLACE", PopOfflineMessageScript],
-        ?FUNCTION_LOAD,
-        ?POP_OFFLINE_MESSAGE
-    ),
-    {ok, <<"write_offline_message">>} = vmq_redis:query(
-        vmq_message_store_redis_client,
-        [?FUNCTION, "LOAD", "REPLACE", WriteOfflineMessageScript],
-        ?FUNCTION_LOAD,
-        ?WRITE_OFFLINE_MESSAGE
-    ),
-    {ok, <<"delete_subs_offline_messages">>} = vmq_redis:query(
-        vmq_message_store_redis_client,
-        [?FUNCTION, "LOAD", "REPLACE", DeleteSubsOfflineMessagesScript],
-        ?FUNCTION_LOAD,
-        ?DELETE_SUBS_OFFLINE_MESSAGES
-    ).
