@@ -542,7 +542,7 @@ offline(
     vmq_message_store:delete(SId),
     cleanup_queue(SId, Q),
     _ = vmq_plugin:all(on_session_expired, [SId, SessionId]),
-    _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
+    handle_metric_queue_unhandled(SId, Q, session_expired, SessionId),
     State1 = publish_last_will(State),
     {stop, normal, State1};
 offline(publish_last_will, State) ->
@@ -565,10 +565,14 @@ offline({enqueue_many, Msgs}, _From, State) ->
     {reply, ok, offline, insert_many(Msgs, State)};
 offline({enqueue_many, Msgs, Opts}, _From, State) ->
     enqueue_many_(Msgs, offline, Opts, State);
-offline({cleanup, _Reason}, _From, #state{id = SId, offline = #queue{queue = Q}} = State) ->
+offline(
+    {cleanup, Reason},
+    _From,
+    #state{id = SId, offline = #queue{queue = Q}, session_id = SessionId} = State
+) ->
     cleanup_queue(SId, Q),
     vmq_message_store:delete(SId),
-    _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
+    handle_metric_queue_unhandled(SId, Q, Reason, SessionId),
     {stop, normal, ok, State};
 offline({update_session_expiry, ExpireAfter}, _From, State) ->
     S1 = unset_expiry_timer(State),
@@ -687,7 +691,9 @@ handle_sync_event(
     {force_disconnect, Reason, DoCleanup},
     _From,
     StateName,
-    #state{id = SId, sessions = Sessions, offline = #queue{queue = OfflineQ}} = State
+    #state{
+        id = SId, sessions = Sessions, offline = #queue{queue = OfflineQ}, session_id = SessionId
+    } = State
 ) ->
     %% Forcefully disconnect all sessions and cleanup all state
     case DoCleanup of
@@ -702,7 +708,7 @@ handle_sync_event(
             lists:foreach(
                 fun(Q) ->
                     cleanup_queue(SId, Q),
-                    _ = vmq_metrics:incr_queue_unhandled(queue:len(Q))
+                    handle_metric_queue_unhandled(SId, Q, Reason, SessionId)
                 end,
                 [OfflineQ | SessionQueues]
             ),
@@ -883,11 +889,11 @@ add_session_(
         }
     ).
 
-del_session(SessionPid, #state{id = SId, sessions = Sessions} = State) ->
+del_session(SessionPid, #state{id = SId, sessions = Sessions, session_id = SessionId} = State) ->
     NewSessions = maps:remove(SessionPid, Sessions),
     case maps:get(SessionPid, Sessions) of
         #session{cleanup_on_disconnect = true} = Session ->
-            cleanup_session(SId, Session),
+            cleanup_session(SId, Session, SessionId),
             {State#state{sessions = NewSessions}, Session};
         Session ->
             %% give queue content of this session to other alive sessions
@@ -944,13 +950,13 @@ handle_session_down(
             gen_fsm:send_event(self(), drain_start),
             _ = vmq_plugin:all(on_client_offline, [SId, Reason, UserName, SessionId]),
             {next_state, state_change({'DOWN', migrate}, wait_for_offline, drain), NewState};
-        {0, wait_for_offline, {{cleanup, _Reason}, From}} ->
+        {0, wait_for_offline, {{cleanup, CleanupReason}, From}} ->
             %% Forcefully cleaned up, we have to cleanup remaining offline messages
             %% we don't cleanup subscriptions!
             #state{offline = #queue{queue = Q}} = NewState,
             cleanup_queue(SId, Q),
             vmq_message_store:delete(SId),
-            _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
+            handle_metric_queue_unhandled(SId, Q, CleanupReason, SessionId),
             gen_fsm:reply(From, ok),
             _ = vmq_plugin:all(on_client_gone, [SId, Reason, UserName, SessionId]),
             {stop, normal, NewState};
@@ -1298,8 +1304,8 @@ send_notification(#session{pid = Pid} = Session) ->
     vmq_mqtt_fsm_util:send(Pid, {mail, self(), new_data}),
     Session#session{status = passive}.
 
-cleanup_session(SubscriberId, #session{queue = #queue{queue = Q, backup = BQ}}) ->
-    _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
+cleanup_session(SubscriberId, #session{queue = #queue{queue = Q, backup = BQ}}, SessionId) ->
+    handle_metric_queue_unhandled(SubscriberId, Q, cleanup_session, SessionId),
     %% it's possible that the backup queue isn't cleaned up yet.
     cleanup_queue(SubscriberId, queue:join(Q, BQ)).
 
@@ -1521,6 +1527,13 @@ on_message_drop_hook(SubscriberId, MsgRef, Reason, SessionId) when is_binary(Msg
         error
     end,
     vmq_plugin:all(on_message_drop, [SubscriberId, Promise, Reason, SessionId]).
+
+handle_metric_queue_unhandled(SId, Q, Reason, SessionId) ->
+    _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
+    lists:foreach(
+        fun(Item) -> on_message_drop_hook(SId, Item, Reason, SessionId) end,
+        queue:to_list(Q)
+    ).
 
 maybe_expire_msgs(SId, Msgs, SessionId) ->
     lists:filtermap(
