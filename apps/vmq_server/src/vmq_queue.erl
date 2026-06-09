@@ -539,10 +539,10 @@ offline(
     %% session has expired cleanup and go down
     vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
     vmq_reg:delete_subscriptions(SId),
+    handle_metric_queue_unhandled(SId, Q, session_expired, SessionId),
     vmq_message_store:delete(SId),
     cleanup_queue(SId, Q),
     _ = vmq_plugin:all(on_session_expired, [SId, SessionId]),
-    handle_metric_queue_unhandled(SId, Q, session_expired, SessionId),
     State1 = publish_last_will(State),
     {stop, normal, State1};
 offline(publish_last_will, State) ->
@@ -570,9 +570,9 @@ offline(
     _From,
     #state{id = SId, offline = #queue{queue = Q}, session_id = SessionId} = State
 ) ->
+    handle_metric_queue_unhandled(SId, Q, Reason, SessionId),
     cleanup_queue(SId, Q),
     vmq_message_store:delete(SId),
-    handle_metric_queue_unhandled(SId, Q, Reason, SessionId),
     {stop, normal, ok, State};
 offline({update_session_expiry, ExpireAfter}, _From, State) ->
     S1 = unset_expiry_timer(State),
@@ -954,9 +954,9 @@ handle_session_down(
             %% Forcefully cleaned up, we have to cleanup remaining offline messages
             %% we don't cleanup subscriptions!
             #state{offline = #queue{queue = Q}} = NewState,
+            handle_metric_queue_unhandled(SId, Q, Reason, SessionId),
             cleanup_queue(SId, Q),
             vmq_message_store:delete(SId),
-            handle_metric_queue_unhandled(SId, Q, Reason, SessionId),
             gen_fsm:reply(From, ok),
             _ = vmq_plugin:all(on_client_gone, [SId, Reason, UserName, SessionId]),
             {stop, normal, NewState};
@@ -1522,13 +1522,18 @@ on_message_drop_hook(
         SessionId
     ]);
 on_message_drop_hook(SubscriberId, MsgRef, Reason, SessionId) when is_binary(MsgRef) ->
-    Promise = fun() ->
-        {error, _} = vmq_message_store:read(SubscriberId, MsgRef),
-        error
-    end,
-    vmq_plugin:all(on_message_drop, [SubscriberId, Promise, Reason, SessionId]).
+    case vmq_message_store:read(SubscriberId, MsgRef) of
+        {ok, #vmq_msg{} = Msg} ->
+            on_message_drop_hook(SubscriberId, #deliver{msg = Msg}, Reason, SessionId);
+        {error, _} ->
+            ok
+    end.
 
 handle_metric_queue_unhandled(SId, Q, Reason, SessionId) ->
+    lager:warning(
+        "queue for subscriber ~p has ~p unhandled messages due to ~p",
+        [SId, queue:len(Q), Reason]
+    ),
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
     lists:foreach(
         fun(Item) -> on_message_drop_hook(SId, Item, Reason, SessionId) end,
