@@ -31,8 +31,6 @@
 -define(EXPIRY_INT_MAX, 16#FFFFFFFF).
 -define(MAX_PACKET_SIZE, 16#FFFFFFF).
 
--type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
-
 -type topic_aliases_in() :: map().
 -type topic_aliases_out() :: map().
 
@@ -65,8 +63,7 @@
     proto_ver :: undefined | pos_integer(),
     queue_pid :: pid() | undefined,
 
-    last_time_active = os:timestamp() :: timestamp(),
-    last_trigger = os:timestamp() :: timestamp(),
+    last_time_active = erlang:monotonic_time(microsecond) :: integer(),
 
     %% Data used for enhanced authentication and
     %% re-authentication. TODOv5: move this to pdict?
@@ -120,7 +117,7 @@ init(
         proto_ver = ProtoVer
     } = ConnectFrame
 ) ->
-    rand:seed(exsplus, os:timestamp()),
+    rand:seed(exsplus),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
     AllowedProtocolVersions = proplists:get_value(
@@ -191,7 +188,7 @@ init(
         trace_fun = TraceFun,
         fc_receive_max_client = FcReceiveMaxClient,
         fc_receive_max_broker = FcReceiveMaxBroker,
-        last_time_active = os:timestamp()
+        last_time_active = erlang:monotonic_time(microsecond)
     },
 
     case lists:member(ProtoVer, AllowedProtocolVersions) of
@@ -656,11 +653,17 @@ connected(#mqtt5_subscribe{message_id = MessageId, topics = Topics, properties =
             Frame = #mqtt5_suback{message_id = MessageId, reason_codes = QoSs, properties = #{}},
             _ = vmq_metrics:incr(?MQTT5_SUBSCRIBE_AUTH_ERROR),
             {State, [serialise_frame(Frame)]};
-        {error, _Reason} ->
-            %% cant subscribe due to overload or netsplit,
-            %% Subscribe uses QoS 1 so the client will retry
+        {error, Reason} ->
+            %% cant subscribe due to overload or netsplit, or no plugin available
+            %% we still want to send out a generic not_authorized SUBACK
+            QoSs = [rcn2rc(?NOT_AUTHORIZED) || _ <- Topics],
+            Frame = #mqtt5_suback{message_id = MessageId, reason_codes = QoSs, properties = #{}},
+            lager:error(
+                "can't authorize SUBSCRIBE from v5 client ~p from ~s due to ~p",
+                [SubscriberId, peertoa(State#state.peer), Reason]
+            ),
             _ = vmq_metrics:incr(?MQTT5_SUBSCRIBE_ERROR),
-            {State, []}
+            {State, [serialise_frame(Frame)]}
     end;
 connected(#mqtt5_unsubscribe{message_id = MessageId, topics = Topics, properties = Props0}, State) ->
     #state{
@@ -780,12 +783,19 @@ connected(
         username = UserName
     } = State
 ) ->
-    Now = os:timestamp(),
-    case timer:now_diff(Now, Last) > (1500000 * KeepAlive) of
+    Now = erlang:monotonic_time(microsecond),
+    case (Now - Last) > (1500000 * KeepAlive) of
         true ->
-            lager:warning("client ~p with username ~p stopped due to keepalive expired", [
-                SubscriberId, UserName
-            ]),
+            case proplists:get_value(keepalive_as_warning, vmq_config:get_env(logging, []), true) of
+                false ->
+                    lager:info("client ~p with username ~p stopped due to keepalive expired", [
+                        SubscriberId, UserName
+                    ]);
+                _ ->
+                    lager:warning("client ~p with username ~p stopped due to keepalive expired", [
+                        SubscriberId, UserName
+                    ])
+            end,
             _ = vmq_metrics:incr(?MQTT5_CLIENT_KEEPALIVE_EXPIRED),
             terminate(?KEEP_ALIVE_TIMEOUT, State);
         false ->
@@ -816,7 +826,9 @@ connected(close_timeout, State) ->
     %% As we're in the connected state, it's ok to ignore this timeout
     {State, []};
 connected(Unexpected, State) ->
-    lager:warning("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
+    lager:warning("stopped connected session for client ~p, due to unexpected frame type ~p", [
+        State#state.subscriber_id, Unexpected
+    ]),
     terminate({error, {unexpected_message, Unexpected}}, State).
 
 -spec connack_terminate(reason_code_name(), state()) -> any().
@@ -1068,18 +1080,18 @@ check_user(
                     connack_terminate(?BAD_USERNAME_OR_PASSWORD, State)
             end;
         true ->
-            QueueOpts = queue_opts([], Props),
+            QueueOpts = queue_opts([], Props, State),
             SessionExpiryInterval = maps:get(session_expiry_interval, QueueOpts, 0),
             register_subscriber(
                 F,
                 OutProps,
                 QueueOpts,
-                State#state{session_expiry_interval = SessionExpiryInterval}
+                State#state{session_expiry_interval = SessionExpiryInterval, username = User}
             )
     end.
 
 register_subscriber(
-    #mqtt5_connect{} = F,
+    #mqtt5_connect{username = ConnectUser} = F,
     OutProps0,
     QueueOpts,
     #state{
@@ -1087,10 +1099,15 @@ register_subscriber(
         subscriber_id = SubscriberId,
         clean_start = CleanStart,
         fc_receive_max_broker = ReceiveMax,
-        username = User,
+        username = StateUser,
         def_opts = DOpts
     } = State
 ) ->
+    User =
+        case StateUser of
+            undefined -> ConnectUser;
+            U -> U
+        end,
     CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
     case
         vmq_reg:register_subscriber(
@@ -1117,7 +1134,7 @@ register_subscriber(
                 F,
                 SessionPresent,
                 OutProps1,
-                State#state{queue_pid = QPid, username = User, next_msg_id = MsgId}
+                State#state{queue_pid = QPid, next_msg_id = MsgId}
             );
         {error, Reason} ->
             lager:warning(
@@ -1303,7 +1320,7 @@ auth_on_register(Password, Props, State) ->
     HookArgs = [Peer, SubscriberId, User, Password, CleanStart, Props],
     case vmq_plugin:all_till_ok(auth_on_register_m5, HookArgs) of
         ok ->
-            {ok, queue_opts([], Props), #{}, State};
+            {ok, queue_opts([], Props, State), #{}, State};
         {ok, Args0} ->
             Args = maps:to_list(Args0),
             set_sock_opts(prop_val(tcp_opts, Args, [])),
@@ -1314,7 +1331,8 @@ auth_on_register(Password, Props, State) ->
                     ?P_RETAIN_AVAILABLE,
                     ?P_WILDCARD_SUBS_AVAILABLE,
                     ?P_SUB_IDS_AVAILABLE,
-                    ?P_SHARED_SUBS_AVAILABLE
+                    ?P_SHARED_SUBS_AVAILABLE,
+                    ?P_RESPONSE_INFO
                 ],
                 maps:get(properties, Args0, #{})
             ),
@@ -1344,7 +1362,8 @@ auth_on_register(Password, Props, State) ->
                 topic_alias_max = ?state_val(topic_alias_max, Args, State),
                 topic_aliases_in = ?state_val(topic_aliases_in, Args, State)
             },
-            {ok, queue_opts(Args, maps:merge(Props, ChangedProps)), ChangedProps, ChangedState};
+            {ok, queue_opts(Args, maps:merge(Props, ChangedProps), ChangedState), ChangedProps,
+                ChangedState};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -1741,15 +1760,27 @@ handle_waiting_msgs(#state{waiting_msgs = Msgs, queue_pid = QPid} = State) ->
 
 handle_messages([#deliver{qos = 0} = D | Rest], Frames, PubCnt, State, Waiting) ->
     {Frame, NewState} = prepare_frame(D, State),
-    handle_messages(Rest, [Frame | Frames], PubCnt, NewState, Waiting);
-handle_messages([#deliver{} = Obj | Rest], Frames, PubCnt, State, Waiting) ->
-    case fc_incr_cnt(State#state.fc_send_cnt, State#state.fc_receive_max_client, handle_messages) of
-        error ->
-            % reached outgoing flow control max, queue up rest of messages
-            handle_messages(Rest, Frames, PubCnt, State, [Obj | Waiting]);
-        Cnt ->
-            {Frame, NewState} = prepare_frame(Obj, State#state{fc_send_cnt = Cnt}),
-            handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting)
+    handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting);
+handle_messages([#deliver{qos = QoS, msg = Msg} = Obj | Rest], Frames, PubCnt, State, Waiting) ->
+    NewQoS = maybe_upgrade_qos(QoS, Msg#vmq_msg.qos, State),
+    case NewQoS of
+        0 ->
+            {Frame, NewState} = prepare_frame(Obj, State),
+            handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting);
+        % only QoS1 / QoS2 count towards the receive_max_client
+        _ ->
+            case
+                fc_incr_cnt(
+                    State#state.fc_send_cnt, State#state.fc_receive_max_client, handle_messages
+                )
+            of
+                error ->
+                    % reached outgoing flow control max, queue up rest of messages
+                    handle_messages(Rest, Frames, PubCnt, State, [Obj | Waiting]);
+                Cnt ->
+                    {Frame, NewState} = prepare_frame(Obj, State#state{fc_send_cnt = Cnt}),
+                    handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting)
+            end
     end;
 handle_messages(
     [{deliver_pubrel, {MsgId, #mqtt5_pubrel{} = Frame}} | Rest], Frames, PubCnt, State0, Waiting
@@ -1949,7 +1980,7 @@ do_throttle(_, #state{max_message_rate = Rate}) ->
     end.
 
 set_last_time_active(true, State) ->
-    Now = os:timestamp(),
+    Now = erlang:monotonic_time(microsecond),
     State#state{last_time_active = Now};
 set_last_time_active(false, State) ->
     State.
@@ -1995,9 +2026,9 @@ queue_opts_from_properties(Properties) ->
         Properties
     ).
 
-queue_opts(Args, Properties) ->
+queue_opts(Args, Properties, State) ->
     PropertiesOpts = queue_opts_from_properties(Properties),
-    Opts = maps:from_list(Args),
+    Opts = maps:from_list([{upgrade_qos, State#state.upgrade_qos} | Args]),
     Opts1 = maps:merge(PropertiesOpts, Opts),
     maps:merge(vmq_queue:default_opts(), Opts1).
 

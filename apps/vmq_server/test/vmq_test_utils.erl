@@ -21,7 +21,7 @@ setup() ->
     PrivDir = code:priv_dir(vmq_server),
     application:set_env(vmq_server, default_reg_view, vmq_reg_redis_trie),
     application:set_env(vmq_server, systree_reg_view, vmq_reg_redis_trie),
-    application:set_env(vmq_server, redis_sentinel_endpoints, "[{\"localhost\", 26379}]"),
+    application:set_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]"),
     application:set_env(vmq_server, redis_lua_dir, PrivDir ++ "/lua_scripts"),
     application:set_env(vmq_server, complex_trie_file, PrivDir ++ "/vmq.trie"),
     application:set_env(vmq_server, ignore_db_config, true),
@@ -54,7 +54,7 @@ teardown(ClearRedis) ->
     end,
     disable_all_plugins(),
     vmq_metrics:reset_counters(),
-    vmq_server:stop(),
+    vmq_server:stop(no_wait),
     application:unload(vmq_server),
     Datadir = "/tmp/vernemq-test/data/" ++ atom_to_list(node()),
     _ = [eleveldb:destroy(Datadir ++ "/meta/" ++ integer_to_list(I), [])

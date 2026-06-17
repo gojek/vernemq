@@ -97,7 +97,7 @@ init([]) ->
 init_with_redis() ->
     StoreCfgs = application:get_env(vmq_server, message_store, [
         {redis, [
-            {connect_options, "[{sentinel, [{endpoints, [{\"localhost\", 26379}]}]},{database,2}]"}
+            {connect_options, "[{sentinel, [{endpoints, [{\"127.0.0.1\", 26379}]}]},{database,2}]"}
         ]}
     ]),
     Redis = proplists:get_value(redis, StoreCfgs),

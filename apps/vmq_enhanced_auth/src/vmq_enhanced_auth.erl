@@ -16,6 +16,7 @@
 -behaviour(auth_on_register_hook).
 -behaviour(auth_on_subscribe_hook).
 -behaviour(auth_on_publish_hook).
+-behaviour(auth_on_register_m5_hook).
 -behaviour(auth_on_subscribe_m5_hook).
 -behaviour(auth_on_publish_m5_hook).
 -behaviour(on_config_change_hook).
@@ -36,6 +37,7 @@
     auth_on_subscribe_m5/4,
     auth_on_publish_m5/7,
     auth_on_register/6,
+    auth_on_register_m5/6,
     change_config/1
 ]).
 
@@ -200,6 +202,12 @@ auth_on_register(
                     {error, ?INVALID_SIGNATURE}
             end
     end.
+
+auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, _Properties) ->
+    %% MQTT v5 CONNECTs dispatch through the auth_on_register_m5 hook chain.
+    %% JWT validation is identical to v3/v4, so delegate to auth_on_register/6.
+    %% The v5 FSM maps a bare {error, Reason} to a BAD_USERNAME_OR_PASSWORD CONNACK.
+    auth_on_register(Peer, SubscriberId, UserName, Password, CleanStart, undefined).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal+

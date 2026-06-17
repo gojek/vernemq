@@ -56,6 +56,8 @@ parse(Data) ->
     parse(Data, ?MAX_PACKET_SIZE).
 
 -spec parse(binary(), non_neg_integer()) -> {mqtt_frame(), binary()} | {error, atom()} | more.
+parse(Data, MaxSize) when MaxSize > ?MAX_PACKET_SIZE ->
+    parse(Data, ?MAX_PACKET_SIZE);
 parse(<<Fixed:1/binary, 0:1, DataSize:7, Data/binary>>, MaxSize) ->
     parse(DataSize, MaxSize, Fixed, Data);
 parse(<<Fixed:1/binary, 1:1, L1:7, 0:1, L2:7, Data/binary>>, MaxSize) ->
@@ -69,20 +71,19 @@ parse(<<_:8/binary, _/binary>>, _) ->
 parse(_, _) ->
     more.
 
-parse(DataSize, 0, Fixed, Data) when byte_size(Data) >= DataSize ->
-    %% no max size limit
-    <<Var:DataSize/binary, Rest/binary>> = Data,
-    {variable(Fixed, Var), Rest};
-parse(DataSize, 0, _Fixed, Data) when byte_size(Data) < DataSize ->
-    more;
+parse(DataSize, 0, Fixed, Data) ->
+    parse(DataSize, ?MAX_PACKET_SIZE, Fixed, Data);
 parse(DataSize, MaxSize, Fixed, Data) when
     byte_size(Data) >= DataSize,
-    byte_size(Data) =< MaxSize
+    byte_size(Data) =< MaxSize,
+    MaxSize =< ?MAX_PACKET_SIZE
 ->
     <<Var:DataSize/binary, Rest/binary>> = Data,
     {variable(Fixed, Var), Rest};
-parse(DataSize, MaxSize, _, _) when
-    DataSize > MaxSize
+parse(DataSize, MaxSize, _, Data) when
+    DataSize > MaxSize;
+    MaxSize > ?MAX_PACKET_SIZE;
+    byte_size(Data) > ?MAX_PACKET_SIZE
 ->
     {error, packet_exceeds_max_size};
 parse(_, _, _, _) ->
@@ -170,32 +171,41 @@ variable(
         % reserved
         0:1, KeepAlive:16/big, ClientIdLen:16/big, ClientId:ClientIdLen/binary, Rest0/binary>>
 ) ->
-    Conn0 = #mqtt_connect{
-        proto_ver = ProtoVersion,
-        clean_session = CleanSession,
-        keep_alive = KeepAlive,
-        client_id = ClientId
-    },
+    case ensure_utf8(ClientId) of
+        {ok, ClientId0} ->
+            Conn0 = #mqtt_connect{
+                proto_ver = ProtoVersion,
+                clean_session = CleanSession,
+                keep_alive = KeepAlive,
+                client_id = ClientId0
+            },
 
-    case parse_last_will_topic(Rest0, WillFlag, WillRetain, WillQos, Conn0) of
-        {ok, Rest1, Conn1} ->
-            case parse_username(Rest1, UserNameFlag, Conn1) of
-                {ok, Rest2, Conn2} ->
-                    case parse_password(Rest2, UserNameFlag, PasswordFlag, Conn2) of
-                        {ok, <<>>, Conn3} ->
-                            Conn3;
-                        {ok, Rest3, Conn3} ->
-                            case vmq_parser_mqtt5:parse_properties(Rest3, #{}) of
-                                #{p_user_property := UserProps} = Props ->
-                                    %% Make sure to preserve order of the user properties
-                                    Conn3#mqtt_connect{
-                                        properties = Props#{
-                                            p_user_property => lists:reverse(UserProps)
-                                        }
-                                    };
-                                Properties when is_map(Properties) ->
-                                    Conn3#mqtt_connect{properties = Properties};
-                                {error, _} = E ->
+            case parse_last_will_topic(Rest0, WillFlag, WillRetain, WillQos, Conn0) of
+                {ok, Rest1, Conn1} ->
+                    case parse_username(Rest1, UserNameFlag, Conn1) of
+                        {ok, Rest2, Conn2} ->
+                            case parse_password(Rest2, UserNameFlag, PasswordFlag, Conn2) of
+                                {ok, <<>>, Conn3} ->
+                                    Conn3;
+                                {ok, Rest3, Conn3} ->
+                                    case
+                                        vmq_parser_mqtt5:parse_properties(
+                                            Rest3, #{}, vmq_parser_mqtt5:connect_allowed_props()
+                                        )
+                                    of
+                                        #{p_user_property := UserProps} = Props ->
+                                            %% Make sure to preserve order of the user properties
+                                            Conn3#mqtt_connect{
+                                                properties = Props#{
+                                                    p_user_property => lists:reverse(UserProps)
+                                                }
+                                            };
+                                        Properties when is_map(Properties) ->
+                                            Conn3#mqtt_connect{properties = Properties};
+                                        {error, _} = E ->
+                                            E
+                                    end;
+                                E ->
                                     E
                             end;
                         E ->
@@ -245,7 +255,12 @@ parse_last_will_topic(_, _, _, _, _) ->
 parse_username(Rest, 0, Conn) ->
     {ok, Rest, Conn};
 parse_username(<<Len:16/big, UserName:Len/binary, Rest/binary>>, 1, Conn) ->
-    {ok, Rest, Conn#mqtt_connect{username = UserName}};
+    case ensure_utf8(UserName) of
+        {ok, UserName0} ->
+            {ok, Rest, Conn#mqtt_connect{username = UserName0}};
+        E ->
+            E
+    end;
 parse_username(_, 1, _) ->
     {error, cant_parse_username}.
 
@@ -269,22 +284,32 @@ parse_topics(
 ) when
     (QoS >= 0) and (QoS < 3)
 ->
-    case vmq_topic:validate_topic(subscribe, Topic) of
-        {ok, ParsedTopic} ->
-            T = #mqtt_subscribe_topic{
-                topic = ParsedTopic,
-                qos = QoS,
-                non_retry = to_bool(NonRetry),
-                non_persistence = to_bool(NonPersistence)
-            },
-            parse_topics(Rest, Sub, [T | Acc]);
+    case ensure_utf8(Topic) of
+        {ok, Topic0} ->
+            case vmq_topic:validate_topic(subscribe, Topic0) of
+                {ok, ParsedTopic} ->
+                    T = #mqtt_subscribe_topic{
+                        topic = ParsedTopic,
+                        qos = QoS,
+                        non_retry = to_bool(NonRetry),
+                        non_persistence = to_bool(NonPersistence)
+                    },
+                    parse_topics(Rest, Sub, [T | Acc]);
+                E ->
+                    E
+            end;
         E ->
             E
     end;
 parse_topics(<<L:16/big, Topic:L/binary, Rest/binary>>, ?UNSUBSCRIBE = Sub, Acc) ->
-    case vmq_topic:validate_topic(subscribe, Topic) of
-        {ok, ParsedTopic} ->
-            parse_topics(Rest, Sub, [ParsedTopic | Acc]);
+    case ensure_utf8(Topic) of
+        {ok, Topic0} ->
+            case vmq_topic:validate_topic(subscribe, Topic0) of
+                {ok, ParsedTopic} ->
+                    parse_topics(Rest, Sub, [ParsedTopic | Acc]);
+                E ->
+                    E
+            end;
         E ->
             E
     end;
@@ -462,6 +487,13 @@ utf8(IoList) when is_list(IoList) ->
     [<<(iolist_size(IoList)):16/big>>, IoList];
 utf8(Bin) when is_binary(Bin) ->
     <<(byte_size(Bin)):16/big, Bin/binary>>.
+
+ensure_utf8(Bin) when is_binary(Bin) ->
+    case {unicode:characters_to_binary(Bin, utf8, utf8), binary:match(Bin, <<0>>)} of
+        {{error, _, _}, _} -> {error, invalid_utf8_string};
+        {_, {_, _}} -> {error, invalid_utf8_string};
+        {X, nomatch} -> {ok, X}
+    end.
 
 ensure_binary(L) when is_list(L) -> list_to_binary(L);
 ensure_binary(B) when is_binary(B) -> B;

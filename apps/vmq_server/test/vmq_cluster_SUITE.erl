@@ -466,7 +466,14 @@ racing_subscriber_test(Config) ->
                                         ok
                                 end;
                             {error, closed} ->
-                                ok
+                                ok;
+                            {error, Diff} when is_list(Diff) ->
+                                case lists:keyfind(return_code, 1, Diff) of
+                                    {return_code, _, 3} ->
+                                        ok;
+                                    _ ->
+                                        exit({unexpected_connack, Diff})
+                                end
                         end
                     end
                 )

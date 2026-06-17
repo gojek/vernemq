@@ -1123,8 +1123,22 @@ counter_entries_def() ->
         ),
         m(
             counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_CONNECT_RECEIVED,
+            mqtt_connect_received,
+            <<"The number of CONNECT packets received.">>
+        ),
+        m(
+            counter,
             [{mqtt_version, "4"}],
             mqtt_publish_received,
+            mqtt_publish_received,
+            <<"The number of PUBLISH packets received.">>
+        ),
+        m(
+            counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_PUBLISH_RECEIVED,
             mqtt_publish_received,
             <<"The number of PUBLISH packets received.">>
         ),
@@ -1165,6 +1179,13 @@ counter_entries_def() ->
         ),
         m(
             counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_SUBSCRIBE_RECEIVED,
+            mqtt_subscribe_received,
+            <<"The number of SUBSCRIBE packets received.">>
+        ),
+        m(
+            counter,
             [{mqtt_version, "4"}],
             mqtt_unsubscribe_received,
             mqtt_unsubscribe_received,
@@ -1172,8 +1193,22 @@ counter_entries_def() ->
         ),
         m(
             counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_UNSUBSCRIBE_RECEIVED,
+            mqtt_unsubscribe_received,
+            <<"The number of UNSUBSCRIBE packets received.">>
+        ),
+        m(
+            counter,
             [{mqtt_version, "4"}],
             mqtt_pingreq_received,
+            mqtt_pingreq_received,
+            <<"The number of PINGREQ packets received.">>
+        ),
+        m(
+            counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_PINGREQ_RECEIVED,
             mqtt_pingreq_received,
             <<"The number of PINGREQ packets received.">>
         ),
@@ -1235,6 +1270,13 @@ counter_entries_def() ->
         ),
         m(
             counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_PUBLISH_SENT,
+            mqtt_publish_sent,
+            <<"The number of PUBLISH packets sent.">>
+        ),
+        m(
+            counter,
             [{mqtt_version, "4"}],
             mqtt_puback_sent,
             mqtt_puback_sent,
@@ -1270,8 +1312,22 @@ counter_entries_def() ->
         ),
         m(
             counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_SUBACK_SENT,
+            mqtt_suback_sent,
+            <<"The number of SUBACK packets sent.">>
+        ),
+        m(
+            counter,
             [{mqtt_version, "4"}],
             mqtt_unsuback_sent,
+            mqtt_unsuback_sent,
+            <<"The number of UNSUBACK packets sent.">>
+        ),
+        m(
+            counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_UNSUBACK_SENT,
             mqtt_unsuback_sent,
             <<"The number of UNSUBACK packets sent.">>
         ),
@@ -1284,8 +1340,22 @@ counter_entries_def() ->
         ),
         m(
             counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_PINGRESP_SENT,
+            mqtt_pingresp_sent,
+            <<"The number of PINGRESP packets sent.">>
+        ),
+        m(
+            counter,
             [{mqtt_version, "4"}],
             mqtt_publish_auth_error,
+            mqtt_publish_auth_error,
+            <<"The number of unauthorized publish attempts.">>
+        ),
+        m(
+            counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_PUBLISH_AUTH_ERROR,
             mqtt_publish_auth_error,
             <<"The number of unauthorized publish attempts.">>
         ),
@@ -1298,6 +1368,13 @@ counter_entries_def() ->
         ),
         m(
             counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_SUBSCRIBE_AUTH_ERROR,
+            mqtt_subscribe_auth_error,
+            <<"The number of unauthorized subscription attempts.">>
+        ),
+        m(
+            counter,
             [{mqtt_version, "4"}],
             mqtt_invalid_msg_size_error,
             mqtt_invalid_msg_size_error,
@@ -1305,8 +1382,22 @@ counter_entries_def() ->
         ),
         m(
             counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_INVALID_MSG_SIZE_ERROR,
+            mqtt_invalid_msg_size_error,
+            <<"The number of packages exceeding the maximum allowed size.">>
+        ),
+        m(
+            counter,
             [{mqtt_version, "4"}],
             mqtt_puback_invalid_error,
+            mqtt_puback_invalid_error,
+            <<"The number of unexpected PUBACK messages received.">>
+        ),
+        m(
+            counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_PUBACK_INVALID_ERROR,
             mqtt_puback_invalid_error,
             <<"The number of unexpected PUBACK messages received.">>
         ),
@@ -1326,8 +1417,22 @@ counter_entries_def() ->
         ),
         m(
             counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_PUBCOMP_INVALID_ERROR,
+            mqtt_pubcomp_invalid_error,
+            <<"The number of unexpected PUBCOMP messages received.">>
+        ),
+        m(
+            counter,
             [{mqtt_version, "4"}],
             mqtt_publish_error,
+            mqtt_publish_error,
+            <<"The number of times a PUBLISH operation failed due to a netsplit.">>
+        ),
+        m(
+            counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_PUBLISH_ERROR,
             mqtt_publish_error,
             <<"The number of times a PUBLISH operation failed due to a netsplit.">>
         ),
@@ -1340,6 +1445,13 @@ counter_entries_def() ->
         ),
         m(
             counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_SUBSCRIBE_ERROR,
+            mqtt_subscribe_error,
+            <<"The number of times a SUBSCRIBE operation failed due to a netsplit.">>
+        ),
+        m(
+            counter,
             [{mqtt_version, "4"}],
             mqtt_unsubscribe_error,
             mqtt_unsubscribe_error,
@@ -1347,8 +1459,22 @@ counter_entries_def() ->
         ),
         m(
             counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_UNSUBSCRIBE_ERROR,
+            mqtt_unsubscribe_error,
+            <<"The number of times an UNSUBSCRIBE operation failed due to a netsplit.">>
+        ),
+        m(
+            counter,
             [{mqtt_version, "4"}],
             ?MQTT4_CLIENT_KEEPALIVE_EXPIRED,
+            client_keepalive_expired,
+            <<"The number of clients which failed to communicate within the keepalive time period.">>
+        ),
+        m(
+            counter,
+            [{mqtt_version, "5"}],
+            ?MQTT5_CLIENT_KEEPALIVE_EXPIRED,
             client_keepalive_expired,
             <<"The number of clients which failed to communicate within the keepalive time period.">>
         ),
@@ -1413,133 +1539,6 @@ counter_entries_def() ->
 
         m(
             counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_CONNECT_RECEIVED,
-            mqtt_connect_received,
-            <<"The number of CONNECT packets received.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_INVALID_MSG_SIZE_ERROR,
-            mqtt_invalid_msg_size_error,
-            <<"The number of packages exceeding the maximum allowed size.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_PINGREQ_RECEIVED,
-            mqtt_pingreq_received,
-            <<"The number of PINGREQ packets received.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_PINGRESP_SENT,
-            mqtt_pingresp_sent,
-            <<"The number of PINGRESP packets sent.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_PUBACK_INVALID_ERROR,
-            mqtt_puback_invalid_error,
-            <<"The number of unexpected PUBACK messages received.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_PUBCOMP_INVALID_ERROR,
-            mqtt_pubcomp_invalid_error,
-            <<"The number of unexpected PUBCOMP messages received.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_PUBLISH_AUTH_ERROR,
-            mqtt_publish_auth_error,
-            <<"The number of unauthorized publish attempts.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_PUBLISH_ERROR,
-            mqtt_publish_error,
-            <<"The number of times a PUBLISH operation failed due to a netsplit.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_PUBLISH_RECEIVED,
-            mqtt_publish_received,
-            <<"The number of PUBLISH packets received.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_PUBLISH_SENT,
-            mqtt_publish_sent,
-            <<"The number of PUBLISH packets sent.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_SUBACK_SENT,
-            mqtt_suback_sent,
-            <<"The number of SUBACK packets sent.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_SUBSCRIBE_AUTH_ERROR,
-            mqtt_subscribe_auth_error,
-            <<"The number of unauthorized subscription attempts.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_SUBSCRIBE_ERROR,
-            mqtt_subscribe_error,
-            <<"The number of times a SUBSCRIBE operation failed due to a netsplit.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_SUBSCRIBE_RECEIVED,
-            mqtt_subscribe_received,
-            <<"The number of SUBSCRIBE packets received.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_UNSUBACK_SENT,
-            mqtt_unsuback_sent,
-            <<"The number of UNSUBACK packets sent.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_UNSUBSCRIBE_ERROR,
-            mqtt_unsubscribe_error,
-            <<"The number of times an UNSUBSCRIBE operation failed due to a netsplit.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_UNSUBSCRIBE_RECEIVED,
-            mqtt_unsubscribe_received,
-            <<"The number of UNSUBSCRIBE packets received.">>
-        ),
-        m(
-            counter,
-            [{mqtt_version, "5"}],
-            ?MQTT5_CLIENT_KEEPALIVE_EXPIRED,
-            client_keepalive_expired,
-            <<"The number of clients which failed to communicate within the keepalive time period.">>
-        ),
-
-        m(
-            counter,
             [],
             queue_setup,
             queue_setup,
@@ -1578,7 +1577,7 @@ counter_entries_def() ->
             [],
             queue_message_unhandled,
             queue_message_unhandled,
-            <<"The number of unhandled messages when connecting with clean session=true.">>
+            <<"The number of unhandled messages when connecting with clean session=true or QoS0 for offline sessions.">>
         ),
         m(
             counter,

@@ -131,6 +131,19 @@
  [{default, on},
   {datatype, flag}]}.
 
+%% @doc Client disconnect due to keepalive is by default a warning. In unstable networks
+%% it might be "expected" behaviour to have a lot of those warnings. This allows to
+%% downgrade the warning to an info message.
+{mapping, "logging.keepalive_as_warning", "vmq_server.logging", [
+                                                            {datatype, flag},
+                                                            {default, on}
+                                                           ]}.
+
+{translation, "vmq_server.logging",
+ fun(Conf) ->
+    [{keep_alive_as_warning, cuttlefish:conf_get("logging.keepalive_as_warning", Conf, true)}]
+ end}.
+
 %% @doc If allow_multiple_sessions is enabled 'queue_deliver_mode' will specify
 %% how the messages are delivered to multiple sessions. Default is 'fanout' which
 %% specifies to deliver every message to all connected sessions. 'balance' specifies
@@ -328,6 +341,13 @@
                                                     {default, 1000},
                                                     {datatype, integer}
                                                  ]}.
+
+%% @doc Allows a session that changes from offline to online to override the maximum
+%% online message count (max_online_messages). All offline messages will be added
+%% to the online queue.
+{mapping, "override_max_online_messages", "vmq_server.override_max_online_messages", [{default, off},
+                                                  {datatype, flag}
+                                                  ]}.
 
 %% @doc specify in case multiple sessions are allowed how the queue should
 %% deliver the messages. In case of 'fanout' all the attached sessions
@@ -663,7 +683,7 @@
 %% - listener.wss.default = 127.0.0.1:880
 {mapping, "listener.tcp.$name", "vmq_server.listeners", [
                                                             {default, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
-                                                            {datatype, ip},
+                                                            {datatype, [ip, domain_socket]},
                                                             {include_default, "default"}
                                                            ]}.
 
@@ -680,7 +700,7 @@
                                                                  ]}.
 
 {mapping, "listener.ssl.$name", "vmq_server.listeners", [
-                                                            {default, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
+                                                            {default, { "{{mqtts_default_ip}}", {{mqtts_default_port}} }},
                                                             {datatype, ip},
                                                             hidden
                                                            ]}.
@@ -786,9 +806,9 @@
 %% (MQTT 3.1 bridge), 132 (MQTT 3.1.1 bridge).
 {mapping, "listener.tcp.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "3,4,131"},
+  {default, "3,4,5,131"},
   {datatype, string},
-  {commented, "3,4"}
+  {commented, "3,4,5"}
  ]}.
 
 {mapping, "listener.tcp.$name.allowed_protocol_versions", "vmq_server.listeners",
@@ -799,7 +819,7 @@
 
 {mapping, "listener.ws.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "3,4,131"},
+  {default, "3,4,5,131"},
   {datatype, string},
   hidden
  ]}.
@@ -812,7 +832,7 @@
 
 {mapping, "listener.wss.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "3,4,131"},
+  {default, "3,4,5,131"},
   {datatype, string},
   hidden
  ]}.
@@ -825,7 +845,7 @@
 
 {mapping, "listener.ssl.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "3,4,131"},
+  {default, "3,4,5,131"},
   {datatype, string},
   hidden
  ]}.
@@ -860,7 +880,7 @@
                                                                     ]}.
 
 {mapping, "listener.https.$name", "vmq_server.listeners", [
-                                                          {default, { "{{http_default_ip}}", {{http_default_port}} }},
+                                                          {default, { "{{https_default_ip}}", {{https_default_port}} }},
                                                           {datatype, ip},
                                                           hidden
                                                          ]}.
@@ -874,6 +894,50 @@
 {mapping, "listener.https.$name.config_fun", "vmq_server.listeners", [
                                                                      {default, config},
                                                                      {datatype, atom},
+                                                                     hidden
+                                                                    ]}.
+
+%% @doc The maximum length of the HTTP request in bytes (Cowboy's max_request_line_length)
+{mapping, "listener.http.$name.max_request_line_length", "vmq_server.listeners", [
+                                                                     {default, 8000},
+                                                                     {datatype, integer},
+                                                                     hidden
+                                                                    ]}.
+{mapping, "listener.https.$name.max_request_line_length", "vmq_server.listeners", [
+                                                                     {default, 8000},
+                                                                     {datatype, integer},
+                                                                     hidden
+                                                                    ]}.
+{mapping, "listener.ws.$name.max_request_line_length", "vmq_server.listeners", [
+                                                                     {default, 8000},
+                                                                     {datatype, integer},
+                                                                     hidden
+                                                                    ]}.
+{mapping, "listener.wss.$name.max_request_line_length", "vmq_server.listeners", [
+                                                                     {default, 8000},
+                                                                     {datatype, integer},
+                                                                     hidden
+                                                                    ]}.
+
+%% @doc The maximum length of the HTTP header in bytes (Cowboy's max_header_value_length)
+{mapping, "listener.http.$name.max_header_value_length", "vmq_server.listeners", [
+                                                                     {default, 4096},
+                                                                     {datatype, integer},
+                                                                     hidden
+                                                                    ]}.
+{mapping, "listener.https.$name.max_header_value_length", "vmq_server.listeners", [
+                                                                     {default, 4096},
+                                                                     {datatype, integer},
+                                                                     hidden
+                                                                    ]}.
+{mapping, "listener.ws.$name.max_header_value_length", "vmq_server.listeners", [
+                                                                     {default, 4096},
+                                                                     {datatype, integer},
+                                                                     hidden
+                                                                    ]}.
+{mapping, "listener.wss.$name.max_header_value_length", "vmq_server.listeners", [
+                                                                     {default, 4096},
+                                                                     {datatype, integer},
                                                                      hidden
                                                                     ]}.
 
@@ -1152,6 +1216,52 @@
 {mapping, "listener.https.$name.keyfile", "vmq_server.listeners", [
                                                                    {datatype, file},
                                                                    {validators, ["file-exists", "file-is-readable"]},
+                                                                   hidden
+                                                                  ]}.
+%% @doc Set the password for the PEM encoded key file on the protocol
+%% level or on the listener level:
+%%
+%%     - listener.ssl.keypasswd
+%%     - listener.wss.keypasswd
+%%
+%% or on the listener level:
+%%
+%%     - listener.ssl.my_ssl_listener.keypasswd
+%%     - listener.wss.my_wss_listener.keypasswd
+{mapping, "listener.ssl.keypasswd", "vmq_server.listeners", [
+                                                           {default, ""},
+                                                           {datatype, string},
+                                                           hidden
+                                                          ]}.
+{mapping, "listener.ssl.$name.keypasswd", "vmq_server.listeners", [
+                                                             {datatype, string},
+                                                             hidden
+                                                                ]}.
+{mapping, "listener.wss.keypasswd", "vmq_server.listeners", [
+                                                           {default, ""},
+                                                           {datatype, string},
+                                                           hidden
+                                                          ]}.
+{mapping, "listener.wss.$name.keypasswd", "vmq_server.listeners", [
+                                                             {datatype, string},
+                                                              hidden
+                                                              ]}.
+{mapping, "listener.vmqs.keypasswd", "vmq_server.listeners", [
+                                                            {default, ""},
+                                                            {datatype, string},
+                                                             hidden
+                                                      ]}.
+{mapping, "listener.vmqs.$name.keypasswd", "vmq_server.listeners", [
+                                                                  {datatype, string},
+                                                                   hidden
+                                                                ]}.
+{mapping, "listener.https.keypasswd", "vmq_server.listeners", [
+                                                             {default, ""},
+                                                             {datatype, string},
+                                                              hidden
+                                                            ]}.
+{mapping, "listener.https.$name.keypasswd", "vmq_server.listeners", [
+                                                                   {datatype, string},
                                                                    hidden
                                                                   ]}.
 %% @doc Set the list of allowed ciphers (each separated with a colon,
@@ -1820,3 +1930,10 @@
 %% @doc This option specifies the password for redis as message store
 {mapping, "message_store.redis.password", "vmq_server.message_store.redis.password",
     [{datatype, atom}]}.
+
+%% @doc Disconnect v3.1 clients in case they are not authorized to publish. This breaks the MQTT 3.1 specification
+%% and is intended for old unpatchable MQTT 3.1 client devices.
+{mapping, "disconnect_on_unauthorized_publish_v3", "vmq_server.disconnect_on_unauthorized_publish_v3", [{default, off},
+                                                                                                        {datatype, flag},
+                                                                                                        hidden
+                                                                                                       ]}.

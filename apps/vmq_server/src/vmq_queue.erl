@@ -84,6 +84,7 @@
     backup = queue:new(),
     type = fifo,
     max,
+    ignore_max = false,
     size = 0,
     drop = 0
 }).
@@ -276,7 +277,7 @@ online({set_opts, SessionPid, Opts}, _From, #state{opts = OldOpts} = State) ->
 online({add_session, SessionPid, #{allow_multiple_sessions := true} = Opts}, _From, State0) ->
     %% allow multiple sessions per queue
     RetOpts = #{initial_msg_id => State0#state.initial_msg_id},
-    State1 = unset_timers(add_session_(SessionPid, Opts, State0)),
+    State1 = unset_timers(add_session_(SessionPid, Opts, State0, false)),
     {reply, {ok, RetOpts}, online, State1};
 online({add_session, SessionPid, #{allow_multiple_sessions := false} = Opts}, From, State) when
     State#state.waiting_call == undefined
@@ -554,7 +555,7 @@ offline(Event, State) ->
 offline({add_session, SessionPid, Opts}, _From, State) ->
     ReturnOpts = #{initial_msg_id => State#state.initial_msg_id},
     {reply, {ok, ReturnOpts}, state_change(add_session, offline, online),
-        unset_timers(add_session_(SessionPid, Opts, State))};
+        unset_timers(add_session_(SessionPid, Opts, State, true))};
 offline({migrate, OtherQueue}, From, State) ->
     gen_fsm:send_event(self(), drain_start),
     {next_state, state_change(migrate, offline, drain), State#state{
@@ -835,7 +836,8 @@ add_session_(
         offline = Offline,
         sessions = Sessions,
         opts = OldOpts
-    } = State
+    } = State,
+    AllowExtendedQueueSize
 ) ->
     #{
         max_online_messages := MaxOnlineMessages,
@@ -846,6 +848,9 @@ add_session_(
     } = Opts,
     BatchSize = maps:get(queue_to_session_batch_size, Opts, 100),
     NewSessionId = maps:get(session_id, Opts, undefined),
+    AllowExtendedQueueSize0 =
+        AllowExtendedQueueSize andalso
+            application:get_env(vmq_server, override_max_online_messages, false),
     NewSessions =
         case maps:get(SessionPid, Sessions, not_found) of
             not_found ->
@@ -856,7 +861,9 @@ add_session_(
                     #session{
                         pid = SessionPid,
                         cleanup_on_disconnect = Clean,
-                        queue = #queue{max = MaxOnlineMessages},
+                        queue = #queue{
+                            max = MaxOnlineMessages, ignore_max = AllowExtendedQueueSize0
+                        },
                         started_at = vmq_time:timestamp(millisecond),
                         queue_to_session_batch_size = BatchSize
                     },
@@ -925,7 +932,7 @@ handle_session_down(
                     ])
             end,
             {next_state, state_change({'DOWN', add_session}, wait_for_offline, online),
-                add_session_(NewSessionPid, Opts, NewState#state{waiting_call = undefined})};
+                add_session_(NewSessionPid, Opts, NewState#state{waiting_call = undefined}, false)};
         {0, wait_for_offline, {migrate, _, From}} when
             DeletedSession#session.cleanup_on_disconnect
         ->
@@ -1109,7 +1116,24 @@ insert_from_queue(F, {{value, Msg}, Q}, State) when is_tuple(Msg) ->
     insert_from_queue(F, F(Q), insert(Msg, State));
 insert_from_queue(F, {{value, MsgRef}, Q}, State) when is_binary(MsgRef) ->
     insert_from_queue(F, F(Q), insert(MsgRef, State));
-insert_from_queue(_F, {empty, _}, State) ->
+insert_from_queue(_F, {empty, _}, #state{sessions = #{}} = State) ->
+    State;
+insert_from_queue(_F, {empty, _}, #state{sessions = Sessions} = State) ->
+    reset_ignore_max(maps:keys(Sessions), State).
+
+reset_ignore_max([SessionPid | Rest], #state{sessions = Sessions} = State) ->
+    #session{queue = Queue} = Session = maps:get(SessionPid, Sessions),
+    NewSessions = maps:update(
+        SessionPid,
+        Session#session{
+            queue = Queue#queue{
+                ignore_max = false
+            }
+        },
+        Sessions
+    ),
+    reset_ignore_max(Rest, State#state{sessions = NewSessions});
+reset_ignore_max([], State) ->
     State.
 
 insert_many(MsgsOrRefs, State) ->
@@ -1129,6 +1153,7 @@ insert(
     Sessions == #{}
 ->
     %% no session online, skip message for QoS0 Subscription
+    _ = vmq_metrics:incr_queue_unhandled(1),
     on_message_drop_hook(SId, D, ?USER_OFFLINE, SessionId),
     State;
 insert(#deliver{msg = #vmq_msg{non_persistence = true}}, #state{sessions = Sessions} = State) when
@@ -1139,11 +1164,13 @@ insert(#deliver{msg = #vmq_msg{non_persistence = true}}, #state{sessions = Sessi
     State;
 insert(
     #deliver{msg = #vmq_msg{qos = 0}} = D,
-    #state{id = SId, sessions = Sessions, session_id = SessionId} = State
+    #state{id = SId, sessions = Sessions, session_id = SessionId, opts = #{upgrade_qos := false}} =
+        State
 ) when
     Sessions == #{}
 ->
-    %% no session online, skip QoS0 message for QoS1 or QoS2 Subscription
+    %% no session online, skip QoS0 message for QoS1 or QoS2 Subscription (without QoS upgrade)
+    _ = vmq_metrics:incr_queue_unhandled(1),
     on_message_drop_hook(SId, D, ?USER_OFFLINE, SessionId),
     State;
 insert(
@@ -1201,6 +1228,10 @@ session_insert(SId, #session{status = notify, queue = Q} = Session, MsgOrRef, Se
 
 %% unlimited messages accepted
 queue_insert(Offline, MsgOrRef, #queue{max = -1, size = Size, queue = Queue} = Q, SId, _SessionId) ->
+    Q#queue{queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size = Size + 1};
+queue_insert(
+    Offline, MsgOrRef, #queue{ignore_max = true, size = Size, queue = Queue} = Q, SId, _SessionId
+) ->
     Q#queue{queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size = Size + 1};
 %% tail drop in case of fifo
 queue_insert(
@@ -1364,6 +1395,9 @@ publish_last_will(#state{delayed_will = {_, Fun}} = State) ->
     Fun(),
     unset_will_timer(State#state{delayed_will = undefined}).
 
+maybe_offline_store(_, _, #deliver{msg = #vmq_msg{qos = 0, persisted = false} = _Msg} = D) ->
+    % Don't store QoS 0 messages in the message store
+    D;
 maybe_offline_store(
     true,
     SubscriberId,
@@ -1371,7 +1405,7 @@ maybe_offline_store(
 ) when QoS > 0 ->
     %% this function writes the message to the message store, in case the queue
     %% has no online session attached anymore (Offline = true)
-    PMsg = Msg#vmq_msg{persisted = true, qos = QoS},
+    PMsg = Msg#vmq_msg{persisted = true},
     vmq_message_store:write(SubscriberId, PMsg),
     D#deliver{msg = PMsg};
 maybe_offline_store(true, _, #deliver{msg = #vmq_msg{persisted = true, dup = true}} = D) ->

@@ -746,6 +746,9 @@ direct_plugin_exports(LogName, Opts) ->
             ([W | _] = Topic) when is_binary(W) ->
                 CallingPid = self(),
                 subscribe({Mountpoint, ClientId}, [{Topic, 0}]);
+            ({[W | _] = Topic, SubInfo}) when is_binary(W) ->
+                CallingPid = self(),
+                subscribe({Mountpoint, ClientId}, [{Topic, {0, SubInfo}}]);
             (_) ->
                 {error, invalid_topic}
         end,
@@ -771,10 +774,10 @@ subscribe_subscriber_changes() ->
 
 fold_subscriptions(FoldFun, Acc) ->
     fold_subscribers(
-        fun({MP, _} = SubscriberId, Subs, AAcc) ->
+        fun({MP, _} = SubscriberId, [{_, CleanSession, _}] = Subs, AAcc) ->
             vmq_subscriber:fold(
                 fun({Topic, QoS, Node}, AAAcc) ->
-                    FoldFun({MP, Topic, {SubscriberId, QoS, Node}}, AAAcc)
+                    FoldFun({MP, Topic, {SubscriberId, QoS, Node, CleanSession}}, AAAcc)
                 end,
                 AAcc,
                 Subs
