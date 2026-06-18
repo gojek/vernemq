@@ -1530,10 +1530,6 @@ on_message_drop_hook(SubscriberId, MsgRef, Reason, SessionId) when is_binary(Msg
     end.
 
 handle_metric_queue_unhandled(SId, Q, Reason, SessionId) ->
-    lager:warning(
-        "queue for subscriber ~p has ~p unhandled messages due to ~p",
-        [SId, queue:len(Q), Reason]
-    ),
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
     lists:foreach(
         fun(Item) -> on_message_drop_hook(SId, Item, Reason, SessionId) end,
