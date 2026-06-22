@@ -31,8 +31,6 @@
 -define(EXPIRY_INT_MAX, 16#FFFFFFFF).
 -define(MAX_PACKET_SIZE, 16#FFFFFFF).
 
--type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
-
 -type topic_aliases_in() :: map().
 -type topic_aliases_out() :: map().
 
@@ -65,8 +63,7 @@
     proto_ver :: undefined | pos_integer(),
     queue_pid :: pid() | undefined,
 
-    last_time_active = os:timestamp() :: timestamp(),
-    last_trigger = os:timestamp() :: timestamp(),
+    last_time_active = erlang:monotonic_time(microsecond) :: integer(),
 
     %% Data used for enhanced authentication and
     %% re-authentication. TODOv5: move this to pdict?
@@ -120,7 +117,7 @@ init(
         proto_ver = ProtoVer
     } = ConnectFrame
 ) ->
-    rand:seed(exsplus, os:timestamp()),
+    rand:seed(exsplus),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
     AllowedProtocolVersions = proplists:get_value(
@@ -191,7 +188,7 @@ init(
         trace_fun = TraceFun,
         fc_receive_max_client = FcReceiveMaxClient,
         fc_receive_max_broker = FcReceiveMaxBroker,
-        last_time_active = os:timestamp()
+        last_time_active = erlang:monotonic_time(microsecond)
     },
 
     case lists:member(ProtoVer, AllowedProtocolVersions) of
@@ -780,8 +777,8 @@ connected(
         username = UserName
     } = State
 ) ->
-    Now = os:timestamp(),
-    case timer:now_diff(Now, Last) > (1500000 * KeepAlive) of
+    Now = erlang:monotonic_time(microsecond),
+    case (Now - Last) > (1500000 * KeepAlive) of
         true ->
             lager:warning("client ~p with username ~p stopped due to keepalive expired", [
                 SubscriberId, UserName
@@ -1949,7 +1946,7 @@ do_throttle(_, #state{max_message_rate = Rate}) ->
     end.
 
 set_last_time_active(true, State) ->
-    Now = os:timestamp(),
+    Now = erlang:monotonic_time(microsecond),
     State#state{last_time_active = Now};
 set_last_time_active(false, State) ->
     State.
