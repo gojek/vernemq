@@ -173,6 +173,10 @@ teardown(#st{socket = Socket}, Reason) ->
             lager:debug("session normally stopped", []);
         shutdown ->
             lager:debug("session stopped due to shutdown", []);
+        keep_alive_timeout ->
+            lager:debug("session stopped due to keep_alive_timeout", []);
+        disconnect_keep_alive ->
+            lager:debug("session stopped due to disconnect_keep_alive", []);
         _ ->
             lager:warning("session stopped abnormally due to '~p'", [Reason])
     end,
