@@ -131,6 +131,19 @@
  [{default, on},
   {datatype, flag}]}.
 
+%% @doc Client disconnect due to keepalive is by default a warning. In unstable networks
+%% it might be "expected" behaviour to have a lot of those warnings. This allows to
+%% downgrade the warning to an info message.
+{mapping, "logging.keepalive_as_warning", "vmq_server.logging", [
+                                                            {datatype, flag},
+                                                            {default, on}
+                                                           ]}.
+
+{translation, "vmq_server.logging",
+ fun(Conf) ->
+    [{keep_alive_as_warning, cuttlefish:conf_get("logging.keepalive_as_warning", Conf, true)}]
+ end}.
+
 %% @doc If allow_multiple_sessions is enabled 'queue_deliver_mode' will specify
 %% how the messages are delivered to multiple sessions. Default is 'fanout' which
 %% specifies to deliver every message to all connected sessions. 'balance' specifies
