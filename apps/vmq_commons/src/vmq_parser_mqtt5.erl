@@ -696,6 +696,13 @@ utf8(IoList) when is_list(IoList) ->
 utf8(Bin) when is_binary(Bin) ->
     <<(byte_size(Bin)):16/big, Bin/binary>>.
 
+ensure_utf8(Bin) when is_binary(Bin) ->
+    case {unicode:characters_to_binary(Bin, utf8, utf8), binary:match(Bin, <<0>>)} of
+        {{error, _, _}, _} -> {error, invalid_utf8_string};
+        {_, {_, _}} -> {error, invalid_utf8_string};
+        {X, nomatch} -> {ok, X}
+    end.
+
 binary(X) ->
     %% We encode MQTT binaries the same as utf8, but use this function
     %% to document the difference.

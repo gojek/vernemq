@@ -463,6 +463,13 @@ utf8(IoList) when is_list(IoList) ->
 utf8(Bin) when is_binary(Bin) ->
     <<(byte_size(Bin)):16/big, Bin/binary>>.
 
+ensure_utf8(Bin) when is_binary(Bin) ->
+    case {unicode:characters_to_binary(Bin, utf8, utf8), binary:match(Bin, <<0>>)} of
+        {{error, _, _}, _} -> {error, invalid_utf8_string};
+        {_, {_, _}} -> {error, invalid_utf8_string};
+        {X, nomatch} -> {ok, X}
+    end.
+
 ensure_binary(L) when is_list(L) -> list_to_binary(L);
 ensure_binary(B) when is_binary(B) -> B;
 ensure_binary(undefined) -> undefined;
