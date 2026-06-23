@@ -132,7 +132,7 @@
 
 -define(TIMER_TABLE, vmq_metrics_timers).
 -define(CONFIG_VERION_TABLE, config_version_table).
--define(ACL_RETRY_TABLE, mqtt_acl_retry_metrics).
+-define(PUBLISH_RETRY_TABLE, mqtt_publish_retry_metrics).
 
 -record(state, {
     info = #{}
@@ -355,9 +355,9 @@ incr_shared_subscription_group_publish_attempt_failed() ->
 
 incr_publish_retry(undefined) ->
     Key = <<>>,
-    ets:update_counter(?ACL_RETRY_TABLE, Key, 1, {Key, 0});
+    ets:update_counter(?PUBLISH_RETRY_TABLE, Key, 1, {Key, 0});
 incr_publish_retry(AclName) when is_binary(AclName) ->
-    ets:update_counter(?ACL_RETRY_TABLE, AclName, 1, {AclName, 0}).
+    ets:update_counter(?PUBLISH_RETRY_TABLE, AclName, 1, {AclName, 0}).
 
 incr(Entry) ->
     incr_item(Entry, 1).
@@ -651,7 +651,7 @@ publish_retry_metrics() ->
                 {[Def | DefsAcc], [{UniqueId, Count} | ValsAcc]}
             end,
             {[], []},
-            ?ACL_RETRY_TABLE
+            ?PUBLISH_RETRY_TABLE
         )
     catch
         _:_ -> {[], []}
@@ -734,7 +734,7 @@ init([]) ->
 
     ets:new(?TIMER_TABLE, [named_table, public, {write_concurrency, true}]),
     ets:new(?CONFIG_VERION_TABLE, [named_table, public, {write_concurrency, true}]),
-    ets:new(?ACL_RETRY_TABLE, [named_table, public, {write_concurrency, true}]),
+    ets:new(?PUBLISH_RETRY_TABLE, [named_table, public, {write_concurrency, true}]),
 
     %% only alloc a new atomics array if one doesn't already exist!
     case catch persistent_term:get(?MODULE) of
