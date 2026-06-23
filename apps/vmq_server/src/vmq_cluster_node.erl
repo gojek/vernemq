@@ -431,10 +431,19 @@ controlling_process(gen_tcp, Socket, Pid) ->
 controlling_process(ssl, {'ssl', Socket}, Pid) ->
     ssl:controlling_process(Socket, Pid).
 
-teardown(#state{socket = Socket, transport = Transport, async_connect_pid = AsyncPid}, Reason) ->
+teardown(
+    #state{socket = Socket, transport = Transport, async_connect_pid = AsyncPid, pending = Pending},
+    Reason
+) ->
     case AsyncPid of
         undefined -> ignore;
         Pid -> exit(Pid, normal)
+    end,
+    case length(Pending) of
+        0 ->
+            ok;
+        Dropped ->
+            _ = vmq_metrics:incr_cluster_msg_drop_node_down(Dropped)
     end,
     case Reason of
         normal ->
