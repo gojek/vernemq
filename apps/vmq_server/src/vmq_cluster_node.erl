@@ -450,9 +450,10 @@ teardown(
     end,
     case length(Pending) of
         0 ->
-            lager:info("no pending messages to count, teardown complete"),
+            lager:error("no pending messages to count, teardown complete"),
             ok;
         Dropped ->
+            lager:error("teardown with ~p pending messages, dropping them", [Dropped]),
             _ = vmq_metrics:incr_cluster_msg_drop_node_down(Dropped)
     end,
     case Reason of
