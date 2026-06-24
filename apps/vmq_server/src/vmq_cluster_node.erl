@@ -100,6 +100,7 @@ status(Pid) ->
     end.
 
 init([Parent, RemoteNode]) ->
+    process_flag(trap_exit, true),
     MaxQueueSize = vmq_config:get_env(outgoing_clustering_buffer_size),
     proc_lib:init_ack(Parent, {ok, self()}),
     % Delay the initial connect attempt, this is useful when automating
@@ -253,6 +254,14 @@ handle_message(
         [RemoteNode, Reason, ?RECONNECT]
     ),
     close_reconnect(State);
+handle_message(
+    {'EXIT', Parent, Reason},
+    #state{parent = Parent} = State
+) ->
+    teardown(State, Reason),
+    exit(Reason);
+handle_message({'EXIT', _LinkedPid, _Reason}, State) ->
+    State;
 handle_message(Msg, #state{node = Node, reachable = Reachable} = State) ->
     lager:warning(
         "got unknown message ~p for node ~p (reachable ~p)",
@@ -431,18 +440,28 @@ controlling_process(gen_tcp, Socket, Pid) ->
 controlling_process(ssl, {'ssl', Socket}, Pid) ->
     ssl:controlling_process(Socket, Pid).
 
-teardown(#state{socket = Socket, transport = Transport, async_connect_pid = AsyncPid}, Reason) ->
+teardown(
+    #state{socket = Socket, transport = Transport, async_connect_pid = AsyncPid, pending = Pending},
+    Reason
+) ->
     case AsyncPid of
         undefined -> ignore;
         Pid -> exit(Pid, normal)
     end,
+    case length(Pending) of
+        0 ->
+            lager:info("no pending messages to count, teardown complete"),
+            ok;
+        Dropped ->
+            _ = vmq_metrics:incr_cluster_msg_drop_node_down(Dropped)
+    end,
     case Reason of
         normal ->
-            lager:debug("normally stopped", []);
+            lager:error("normally stopped", []);
         shutdown ->
-            lager:debug("stopped due to shutdown", []);
+            lager:error("stopped due to shutdown", []);
         _ ->
-            lager:warning("stopped abnormally due to '~p'", [Reason])
+            lager:error("stopped abnormally due to '~p'", [Reason])
     end,
     close(Transport, Socket),
     ok.

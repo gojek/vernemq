@@ -83,6 +83,7 @@
     incr_cluster_bytes_sent/1,
     incr_cluster_bytes_received/1,
     incr_cluster_msg_drop_buffer_full/0,
+    incr_cluster_msg_drop_node_down/1,
     pretimed_measurement/2,
 
     incr_redis_cmd/1,
@@ -181,6 +182,9 @@ incr_cluster_bytes_received(V) ->
 
 incr_cluster_msg_drop_buffer_full() ->
     incr_item(?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL, 1).
+
+incr_cluster_msg_drop_node_down(V) ->
+    incr_item(?METRIC_CLUSTER_MSG_DROP_NODE_DOWN, V).
 
 incr_mqtt_connect_received() ->
     incr_item(?MQTT4_CONNECT_RECEIVED, 1).
@@ -1701,6 +1705,13 @@ counter_entries_def() ->
             ?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL,
             ?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL,
             <<"The number of messages dropped because the outgoing cluster buffer was full.">>
+        ),
+        m(
+            counter,
+            [],
+            ?METRIC_CLUSTER_MSG_DROP_NODE_DOWN,
+            ?METRIC_CLUSTER_MSG_DROP_NODE_DOWN,
+            <<"The number of buffered messages dropped because the remote cluster node was removed while messages were still queued.">>
         )
     ].
 
@@ -2793,7 +2804,8 @@ met2idx({?SIDECAR_EVENTS_ERROR, ?ON_REGISTER_FAILED}) -> 378;
 met2idx(?METRIC_CLUSTER_BYTES_DROPPED) -> 379;
 met2idx(?METRIC_CLUSTER_BYTES_SENT) -> 380;
 met2idx(?METRIC_CLUSTER_BYTES_RECEIVED) -> 381;
-met2idx(?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL) -> 382.
+met2idx(?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL) -> 382;
+met2idx(?METRIC_CLUSTER_MSG_DROP_NODE_DOWN) -> 383.
 
 -ifdef(TEST).
 clear_stored_rates() ->
