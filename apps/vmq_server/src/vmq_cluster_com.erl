@@ -264,5 +264,7 @@ to_vmq_msg(InMsg) when
         expiry_ts = element(12, InMsg),
         non_retry = element(13, InMsg),
         non_persistence = element(14, InMsg),
-        acl_name = element(15, InMsg)
+        acl_name = element(15, InMsg),
+        pub_msg_id = element(16, InMsg),
+        pub_pid = element(17, InMsg)
     }.
