@@ -28,7 +28,7 @@ start(_StartType, _StartArgs) ->
 
 stop(State) ->
     %% Catch and log the termination event using VerneMQ's native Lager logger
-    lager:info(
+    lager:error(
         "--- [LIFECYCLE HOOK] Catching application stop or scale-down signal. State: ~p ---", [
             State
         ]
