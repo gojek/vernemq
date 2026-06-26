@@ -26,5 +26,11 @@
 start(_StartType, _StartArgs) ->
     vmq_enhanced_auth_sup:start_link().
 
-stop(_State) ->
+stop(State) ->
+    %% Catch and log the termination event using VerneMQ's native Lager logger
+    lager:info(
+        "--- [LIFECYCLE HOOK] Catching application stop or scale-down signal. State: ~p ---", [
+            State
+        ]
+    ),
     ok.
