@@ -84,6 +84,7 @@
     incr_cluster_bytes_received/1,
     incr_cluster_msg_drop_buffer_full/0,
     incr_cluster_msg_drop_node_down/1,
+    incr_cluster_msg_drop_reaper_unmigratable/0,
     pretimed_measurement/2,
 
     incr_redis_cmd/1,
@@ -185,6 +186,9 @@ incr_cluster_msg_drop_buffer_full() ->
 
 incr_cluster_msg_drop_node_down(V) ->
     incr_item(?METRIC_CLUSTER_MSG_DROP_NODE_DOWN, V).
+
+incr_cluster_msg_drop_reaper_unmigratable() ->
+    incr_item(?METRIC_CLUSTER_MSG_DROP_REAPER_UNMIGRATABLE, 1).
 
 incr_mqtt_connect_received() ->
     incr_item(?MQTT4_CONNECT_RECEIVED, 1).
@@ -1712,6 +1716,13 @@ counter_entries_def() ->
             ?METRIC_CLUSTER_MSG_DROP_NODE_DOWN,
             ?METRIC_CLUSTER_MSG_DROP_NODE_DOWN,
             <<"The number of buffered messages dropped because the remote cluster node was removed while messages were still queued.">>
+        ),
+        m(
+            counter,
+            [],
+            ?METRIC_CLUSTER_MSG_DROP_REAPER_UNMIGRATABLE,
+            ?METRIC_CLUSTER_MSG_DROP_REAPER_UNMIGRATABLE,
+            <<"The number of queued messages dropped by the reaper because the subscriber on a dead node could not be migrated (direct_message_passing off).">>
         )
     ].
 
@@ -2805,7 +2816,8 @@ met2idx(?METRIC_CLUSTER_BYTES_DROPPED) -> 379;
 met2idx(?METRIC_CLUSTER_BYTES_SENT) -> 380;
 met2idx(?METRIC_CLUSTER_BYTES_RECEIVED) -> 381;
 met2idx(?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL) -> 382;
-met2idx(?METRIC_CLUSTER_MSG_DROP_NODE_DOWN) -> 383.
+met2idx(?METRIC_CLUSTER_MSG_DROP_NODE_DOWN) -> 383;
+met2idx(?METRIC_CLUSTER_MSG_DROP_REAPER_UNMIGRATABLE) -> 384.
 
 -ifdef(TEST).
 clear_stored_rates() ->

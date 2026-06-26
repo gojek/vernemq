@@ -485,9 +485,6 @@ publish_fold_fun(
             NewSentNodes =
                 case DirectMessagePassing of
                     true ->
-                        %% route_remote_msg delivers to ALL local subscribers, so send
-                        %% once per node to avoid duplicates when multiple subscribers
-                        %% on the same remote node share this topic.
                         case maps:is_key(Node, SentNodes) of
                             false ->
                                 case vmq_cluster:publish(Node, Msg) of

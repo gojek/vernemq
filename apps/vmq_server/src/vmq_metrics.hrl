@@ -170,3 +170,4 @@
 -define(METRIC_CLUSTER_BYTES_RECEIVED, cluster_bytes_received).
 -define(METRIC_CLUSTER_MSG_DROP_BUFFER_FULL, cluster_msg_drop_buffer_full).
 -define(METRIC_CLUSTER_MSG_DROP_NODE_DOWN, cluster_msg_drop_node_down).
+-define(METRIC_CLUSTER_MSG_DROP_REAPER_UNMIGRATABLE, cluster_msg_drop_reaper_unmigratable).
