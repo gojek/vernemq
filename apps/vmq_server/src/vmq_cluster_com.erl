@@ -99,6 +99,19 @@ setopts({ssl, Socket}, Opts) ->
 setopts(Socket, Opts) ->
     inet:setopts(Socket, Opts).
 
+shutdown(Socket) ->
+    gen_tcp:shutdown(Socket, write).
+
+close({ssl, Socket}) ->
+    ssl:close(Socket);
+close(Socket) ->
+    gen_tcp:close(Socket).
+
+recv({ssl, Socket}, Length, Timeout) ->
+    ssl:recv(Socket, Length, Timeout);
+recv(Socket, Length, Timeout) ->
+    gen_tcp:recv(Socket, Length, Timeout).
+
 handle_message(
     {Proto, _, Data},
     #st{
@@ -109,7 +122,7 @@ handle_message(
     } = State
 ) ->
     case process_bytes(Data, ParserState, State) of
-        {ok, NewParserState} ->
+        {ok, NewParserState, _Count} ->
             case active_once(Socket) of
                 ok ->
                     L = byte_size(Data),
@@ -138,7 +151,64 @@ handle_message({ProtoClosed, _}, #st{proto_tag = {_, ProtoClosed, _}} = State) -
 handle_message({ProtoErr, _, Error}, #st{proto_tag = {_, _, ProtoErr}} = State) ->
     {exit, Error, State};
 handle_message({'DOWN', _, process, _ClusterNodePid, Reason}, State) ->
+    lager:error("cluster com process ~p received DOWN from cluster node due to ~p", [
+        self(),
+        Reason
+    ]),
+    close_connection(State),
+    {exit, Reason, State};
+handle_message({'EXIT', _Parent, Reason}, State) ->
+    lager:error("cluster com process ~p received exit from parent ~p due to ~p", [
+        self(),
+        _Parent,
+        Reason
+    ]),
     {exit, Reason, State}.
+
+close_connection(#st{socket = Socket} = State) ->
+    _ = shutdown(Socket),
+    _ = drain(State),
+    _ = close(Socket),
+    ok.
+
+-define(DRAIN_DEADLINE_MS, 2000).
+-define(DRAIN_RECV_TIMEOUT_MS, 200).
+
+drain(#st{socket = Socket, parser_state = ParserState} = State) ->
+    _ = setopts(Socket, [{active, false}]),
+    Deadline = erlang:monotonic_time(millisecond) + ?DRAIN_DEADLINE_MS,
+    lager:error("draining cluster com socket"),
+    {Bytes, Msgs} = drain_loop(State, ParserState, Deadline, {0, 0}),
+    _ = vmq_metrics:incr_cluster_drain_bytes(Bytes),
+    _ = vmq_metrics:incr_cluster_drain_messages(Msgs),
+    {Bytes, Msgs}.
+
+drain_loop(#st{socket = Socket} = State, ParserState, Deadline, {Bytes, Msgs} = Acc) ->
+    Now = erlang:monotonic_time(millisecond),
+    case Deadline - Now of
+        Remaining when Remaining =< 0 ->
+            Acc;
+        Remaining ->
+            Timeout = min(?DRAIN_RECV_TIMEOUT_MS, Remaining),
+            case recv(Socket, 0, Timeout) of
+                {ok, Data} ->
+                    case process_bytes(Data, ParserState, State) of
+                        {ok, NewParserState, N} ->
+                            NewAcc = {Bytes + byte_size(Data), Msgs + N},
+                            drain_loop(State, NewParserState, Deadline, NewAcc);
+                        {error, Reason} ->
+                            lager:error(
+                                "drain stopped after ~p msgs, can't process in-flight data: ~p",
+                                [Msgs, Reason]
+                            ),
+                            Acc
+                    end;
+                {error, closed} ->
+                    Acc;
+                {error, _} ->
+                    Acc
+            end
+    end.
 
 process_bytes(<<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, undefined, St) ->
     NodeName = binary_to_term(BNodeName),
@@ -150,25 +220,31 @@ process_bytes(<<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, undefine
             {error, remote_node_not_available}
     end;
 process_bytes(Bytes, Buffer, St) ->
+    process_bytes(Bytes, Buffer, St, 0).
+
+process_bytes(Bytes, Buffer, St, Acc) ->
     NewBuffer = <<Buffer/binary, Bytes/binary>>,
     case NewBuffer of
         <<"vmq-send", L:32, BFrames:L/binary, Rest/binary>> ->
-            process(BFrames, St),
-            process_bytes(Rest, <<>>, St);
+            N = process(BFrames, St),
+            process_bytes(Rest, <<>>, St, Acc + N);
         _ ->
             %% if we have received something else than "vmq-send" we
             %% will buffer everything unbounded forever and ever!
-            {ok, NewBuffer}
+            {ok, NewBuffer, Acc}
     end.
 
-process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
+process(Bin, St) ->
+    process(Bin, St, 0).
+
+process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St, N) ->
     #vmq_msg{
         mountpoint = MP,
         routing_key = Topic
     } = Msg = to_vmq_msg(binary_to_term(Bin)),
     _ = vmq_reg:route_remote_msg(St#st.reg_view, MP, Topic, Msg),
-    process(Rest, St);
-process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
+    process(Rest, St, N + 1);
+process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St, N) ->
     case binary_to_term(Bin) of
         {CallerPid, Ref, {enqueue, QueuePid, Msgs}} ->
             %% enqueue in own process context
@@ -204,12 +280,12 @@ process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
         Unknown ->
             lager:warning("unknown enqueue message: ~p", [Unknown])
     end,
-    process(Rest, St);
-process(<<>>, _) ->
-    ok;
-process(<<Cmd:3/binary, L:32, _:L/binary, Rest/binary>>, St) ->
+    process(Rest, St, N + 1);
+process(<<>>, _, N) ->
+    N;
+process(<<Cmd:3/binary, L:32, _:L/binary, Rest/binary>>, St, N) ->
     lager:warning("unknown message: ~p", [Cmd]),
-    process(Rest, St).
+    process(Rest, St, N).
 
 to_vmq_msgs(Msgs) ->
     lists:map(
