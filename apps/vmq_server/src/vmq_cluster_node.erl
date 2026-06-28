@@ -100,7 +100,6 @@ status(Pid) ->
     end.
 
 init([Parent, RemoteNode]) ->
-    process_flag(trap_exit, true),
     MaxQueueSize = vmq_config:get_env(outgoing_clustering_buffer_size),
     proc_lib:init_ack(Parent, {ok, self()}),
     % Delay the initial connect attempt, this is useful when automating
@@ -254,14 +253,6 @@ handle_message(
         [RemoteNode, Reason, ?RECONNECT]
     ),
     close_reconnect(State);
-handle_message(
-    {'EXIT', Parent, Reason},
-    #state{parent = Parent} = State
-) ->
-    teardown(State, Reason),
-    exit(Reason);
-handle_message({'EXIT', _LinkedPid, _Reason}, State) ->
-    State;
 handle_message(Msg, #state{node = Node, reachable = Reachable} = State) ->
     lager:warning(
         "got unknown message ~p for node ~p (reachable ~p)",

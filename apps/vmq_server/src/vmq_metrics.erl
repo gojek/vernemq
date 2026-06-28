@@ -85,6 +85,8 @@
     incr_cluster_msg_drop_buffer_full/0,
     incr_cluster_msg_drop_node_down/1,
     incr_cluster_msg_drop_reaper_unmigratable/0,
+    incr_cluster_drain_bytes/1,
+    incr_cluster_drain_messages/1,
     pretimed_measurement/2,
 
     incr_redis_cmd/1,
@@ -189,6 +191,12 @@ incr_cluster_msg_drop_node_down(V) ->
 
 incr_cluster_msg_drop_reaper_unmigratable() ->
     incr_item(?METRIC_CLUSTER_MSG_DROP_REAPER_UNMIGRATABLE, 1).
+
+incr_cluster_drain_bytes(V) ->
+    incr_item(?METRIC_CLUSTER_DRAIN_BYTES, V).
+
+incr_cluster_drain_messages(V) ->
+    incr_item(?METRIC_CLUSTER_DRAIN_MESSAGES, V).
 
 incr_mqtt_connect_received() ->
     incr_item(?MQTT4_CONNECT_RECEIVED, 1).
@@ -1723,6 +1731,20 @@ counter_entries_def() ->
             ?METRIC_CLUSTER_MSG_DROP_REAPER_UNMIGRATABLE,
             ?METRIC_CLUSTER_MSG_DROP_REAPER_UNMIGRATABLE,
             <<"The number of queued messages dropped by the reaper because the subscriber on a dead node could not be migrated (direct_message_passing off).">>
+        ),
+        m(
+            counter,
+            [],
+            ?METRIC_CLUSTER_DRAIN_BYTES,
+            ?METRIC_CLUSTER_DRAIN_BYTES,
+            <<"The number of in-flight bytes drained from inbound cluster connections during connection close.">>
+        ),
+        m(
+            counter,
+            [],
+            ?METRIC_CLUSTER_DRAIN_MESSAGES,
+            ?METRIC_CLUSTER_DRAIN_MESSAGES,
+            <<"The number of in-flight messages routed (instead of dropped) while draining inbound cluster connections during connection close.">>
         )
     ].
 
