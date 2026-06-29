@@ -499,9 +499,12 @@ publish_fold_fun(
                                         "direct publish to node ~p failed: ~p, re-homing subscriber",
                                         [Node, msg_dropped]
                                     ),
-                                    recover_remote_publish(
-                                        SubscriberId, SubInfo, Node, FromClientId, Acc
-                                    );
+                                    case migrate_offline_queue(SubscriberId, Node) of
+                                        {error, _} ->
+                                            Acc;
+                                        NewNode ->
+                                            publish_fold_fun({NewNode, SubscriberId, SubInfo}, FromClientId, Acc)
+                                    end;
                                 {error, Reason} ->
                                     lager:error(
                                         "direct publish to node ~p failed: ~p",
@@ -547,7 +550,12 @@ publish_fold_fun(
             %% delete its entry and return nil. Otherwise change its node name and return true.
             %% 3. If the result was undefined then terminate the queue otherwise initialize offline queue
             %% and then enqueue.
-            recover_remote_publish(SubscriberId, SubInfo, Node, FromClientId, Acc)
+            case migrate_offline_queue(SubscriberId, Node) of
+                {error, _} ->
+                    Acc;
+                NewNode ->
+                    publish_fold_fun({NewNode, SubscriberId, SubInfo}, FromClientId, Acc)
+            end
     end;
 publish_fold_fun({_Node, _Group, SubscriberId, {_, #{no_local := true}}}, SubscriberId, Acc) ->
     %% Publisher is the same as subscriber, discard.
@@ -564,14 +572,6 @@ publish_fold_fun(
     Acc#publish_fold_acc{
         subscriber_groups = add_to_subscriber_group(Sub, SubscriberGroups, SGPolicy)
     }.
-
-recover_remote_publish(SubscriberId, SubInfo, Node, FromClientId, Acc) ->
-    case migrate_offline_queue(SubscriberId, Node) of
-        {error, _} ->
-            Acc;
-        NewNode ->
-            publish_fold_fun({NewNode, SubscriberId, SubInfo}, FromClientId, Acc)
-    end.
 
 -spec enqueue_msg({subscriber_id(), subinfo()}, msg()) -> ok.
 enqueue_msg({{_, _} = SubscriberId, SubInfo}, Msg0) ->
