@@ -1522,12 +1522,11 @@ on_message_drop_hook(
         SessionId
     ]);
 on_message_drop_hook(SubscriberId, MsgRef, Reason, SessionId) when is_binary(MsgRef) ->
-    case vmq_message_store:read(SubscriberId, MsgRef) of
-        {ok, #vmq_msg{} = Msg} ->
-            on_message_drop_hook(SubscriberId, #deliver{msg = Msg}, Reason, SessionId);
-        {error, _} ->
-            ok
-    end.
+    Promise = fun() ->
+        {error, _} = vmq_message_store:read(SubscriberId, MsgRef),
+        error
+    end,
+    vmq_plugin:all(on_message_drop, [SubscriberId, Promise, Reason, SessionId]).
 
 handle_metric_queue_unhandled(SId, Q, Reason, SessionId) ->
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
