@@ -21,7 +21,8 @@
     start_link/0,
     nodes/0,
     status/0,
-    is_node_alive/1
+    is_node_alive/1,
+    prepare_shutdown/0
 ]).
 
 %% gen_server callbacks
@@ -39,7 +40,8 @@
 -record(state, {
     fall = 3,
     timer = undefined,
-    recheck_interval = 500
+    recheck_interval = 500,
+    shutting_down = false
 }).
 -define(VMQ_CLUSTER_STATUS, vmq_status).
 
@@ -73,14 +75,22 @@ status() ->
             ets:match(?VMQ_CLUSTER_STATUS, '$1')
     ].
 
--spec is_node_alive(atom()) -> boolean().
+-spec is_node_alive(atom()) -> true | rpc_failed | false.
 is_node_alive(Node) ->
     try
-        ets:lookup_element(?VMQ_CLUSTER_STATUS, Node, 2)
+        case ets:lookup(?VMQ_CLUSTER_STATUS, Node) of
+            [{_Node, true, _}] -> true;
+            [{_Node, false, 0}] -> rpc_failed;
+            _ -> false
+        end
     catch
         _:_ ->
             false
     end.
+
+-spec prepare_shutdown() -> ok.
+prepare_shutdown() ->
+    gen_server:call(?MODULE, prepare_shutdown, 5000).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -139,6 +149,11 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(prepare_shutdown, _From, #state{timer = Tref} = State) ->
+    _ = (catch erlang:cancel_timer(Tref)),
+    Res = vmq_state_store_backend:deregister_node(),
+    lager:info("cluster_mon preparing for shutdown, node deregister result: ~p", [Res]),
+    {reply, ok, State#state{shutting_down = true, timer = undefined}};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -166,10 +181,12 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info(recheck, #state{shutting_down = true} = State) ->
+    {noreply, State};
 handle_info(recheck, State) ->
     case vmq_state_store_backend:get_live_nodes() of
         {ok, LiveNodes} when is_list(LiveNodes) ->
-            LiveNodesAtom = update_cluster_status(LiveNodes, []),
+            LiveNodesAtom = update_cluster_status(LiveNodes),
             filter_dead_nodes(LiveNodesAtom, State#state.fall);
         Res ->
             lager:error("~p", [Res])
@@ -214,26 +231,30 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-update_cluster_status([], Acc) ->
-    Acc;
-update_cluster_status([BNode | Rest], Acc) ->
-    Node = binary_to_atom(BNode),
+update_cluster_status(BNodes) ->
+    Nodes = [binary_to_atom(BNode) || BNode <- BNodes],
     RpcTimeout = application:get_env(vmq_server, cluster_node_liveness_rpc_timeout, 1000),
-    IsReady =
-        case rpc:call(Node, erlang, whereis, [vmq_server_sup], RpcTimeout) of
-            Pid when is_pid(Pid) -> true;
-            _ -> false
+    Results = erpc:multicall(Nodes, erlang, whereis, [vmq_server_sup], RpcTimeout),
+    lists:foreach(
+        fun({Node, Res}) ->
+            IsReady =
+                case Res of
+                    {ok, Pid} when is_pid(Pid) -> true;
+                    _ -> false
+                end,
+            vmq_state_store_backend:del_reaper(Node),
+            vmq_cluster_node_sup:ensure_cluster_node(Node),
+            Status = vmq_cluster_node_sup:node_status(Node),
+            IsReady1 = IsReady andalso lists:member(Status, [up, init]),
+            ets:insert(?VMQ_CLUSTER_STATUS, {Node, IsReady1, 0})
         end,
-    vmq_state_store_backend:del_reaper(Node),
-    vmq_cluster_node_sup:ensure_cluster_node(Node),
-    Status = vmq_cluster_node_sup:node_status(Node),
-    IsReady1 = IsReady andalso lists:member(Status, [up, init]),
-    ets:insert(?VMQ_CLUSTER_STATUS, {Node, IsReady1, 0}),
-    update_cluster_status(Rest, [Node | Acc]).
+        lists:zip(Nodes, Results)
+    ),
+    Nodes.
 
 filter_dead_nodes(Nodes, Fall) ->
     ets:foldl(
-        fun({Node, _IsReady, FailedAttempts}, _) ->
+        fun({Node, IsReady, FailedAttempts}, _) ->
             case lists:member(Node, Nodes) of
                 true ->
                     ok;
@@ -243,10 +264,8 @@ filter_dead_nodes(Nodes, Fall) ->
                     vmq_state_store_backend:ensure_reaper(Node),
                     vmq_cluster_node_sup:del_cluster_node(Node),
                     ets:delete(?VMQ_CLUSTER_STATUS, Node);
-                false ->
-                    ets:update_element(?VMQ_CLUSTER_STATUS, Node, [
-                        {2, false}, {3, FailedAttempts + 1}
-                    ])
+                false when IsReady == false ->
+                    ets:update_element(?VMQ_CLUSTER_STATUS, Node, [{3, FailedAttempts + 1}])
             end
         end,
         ok,

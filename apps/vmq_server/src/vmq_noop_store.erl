@@ -13,6 +13,7 @@
     fetch_subscriber/2,
     fetch_matched_topic_subscribers/2,
     get_live_nodes/0,
+    deregister_node/0,
     ensure_no_local_client/0,
     msg_store_write/2,
     msg_store_read/2,
@@ -41,6 +42,7 @@ fetch_subscriber(_MP, _ClientId) -> {ok, []}.
 fetch_matched_topic_subscribers(_MP, _Topics) -> {ok, []}.
 
 get_live_nodes() -> {ok, [atom_to_binary(node())]}.
+deregister_node() -> {ok, <<"0">>}.
 ensure_no_local_client() -> {ok, <<"0">>}.
 
 msg_store_write(_SubscriberId, _Msg) -> {ok, <<"0">>}.

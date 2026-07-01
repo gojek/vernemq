@@ -10,6 +10,7 @@
     fetch_subscriber/2,
     fetch_matched_topic_subscribers/2,
     get_live_nodes/0,
+    deregister_node/0,
     ensure_no_local_client/0,
     msg_store_write/2,
     msg_store_read/2,
@@ -35,6 +36,7 @@
 -callback fetch_subscriber(term(), term()) -> {ok, term()} | {error, term()}.
 -callback fetch_matched_topic_subscribers(term(), list()) -> {ok, term()} | {error, term()}.
 -callback get_live_nodes() -> {ok, term()} | {error, term()}.
+-callback deregister_node() -> {ok, term()} | {error, term()}.
 -callback ensure_no_local_client() -> {ok, binary()} | {error, term()}.
 -callback msg_store_write(term(), term()) -> {ok, term()} | {error, term()}.
 -callback msg_store_read(term(), term()) -> {ok, term()} | {error, term()}.
@@ -84,6 +86,9 @@ fetch_matched_topic_subscribers(MP, Topics) ->
 
 get_live_nodes() ->
     (backend()):get_live_nodes().
+
+deregister_node() ->
+    (backend()):deregister_node().
 
 ensure_no_local_client() ->
     (backend()):ensure_no_local_client().

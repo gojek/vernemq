@@ -74,7 +74,9 @@
     local_matches = 0 :: non_neg_integer(),
     remote_matches = 0 :: non_neg_integer(),
     remote_nodes_published = #{} :: #{node() => true},
-    direct_message_passing = false :: boolean()
+    failed_nodes = #{} :: #{node() => true},
+    direct_message_passing = false :: boolean(),
+    remote_failed = false :: boolean()
 }).
 
 -define(NR_OF_REG_RETRIES, 10).
@@ -442,14 +444,20 @@ publish_fold_wrapper(
             msg = NewMsg,
             subscriber_groups = SubscriberGroups,
             local_matches = LocalMatches0,
-            remote_matches = RemoteMatches0
+            remote_matches = RemoteMatches0,
+            remote_failed = RemoteFailed
         } ->
             {LocalMatches1, RemoteMatches1} = vmq_shared_subscriptions:publish(
                 NewMsg, SGPolicy, SubscriberGroups, LocalMatches0, RemoteMatches0
             ),
-            vmq_metrics:incr_router_matches_local(LocalMatches1),
-            vmq_metrics:incr_router_matches_remote(RemoteMatches1),
-            {ok, {LocalMatches1, RemoteMatches1}};
+            case RemoteFailed of
+                true ->
+                    {error, remote_publish_failed};
+                false ->
+                    vmq_metrics:incr_router_matches_local(LocalMatches1),
+                    vmq_metrics:incr_router_matches_remote(RemoteMatches1),
+                    {ok, {LocalMatches1, RemoteMatches1}}
+            end;
         {error, _} = Err ->
             Err
     end.
@@ -476,10 +484,15 @@ publish_fold_fun(
     #publish_fold_acc{
         remote_matches = RN,
         remote_nodes_published = SentNodes,
+        failed_nodes = FailedNodes,
         msg = Msg,
         direct_message_passing = DirectMessagePassing
     } = Acc
 ) ->
+    % 1. In case RPC is ok irrespective of redis status we will send the message
+    %   (What will happen if redis is DOWN and client is offline on the remote node?)
+    % 2. If RPC is failed and redis false then we migrate and we won't wait Fall signal
+    % 3. RPC failed and redis true, drop message instrument and emit message drop event
     case vmq_cluster_mon:is_node_alive(Node) of
         true ->
             case DirectMessagePassing of
@@ -488,29 +501,31 @@ publish_fold_fun(
                         true ->
                             Acc#publish_fold_acc{remote_matches = RN + 1};
                         false ->
-                            case vmq_cluster:publish(Node, Msg) of
-                                ok ->
-                                    Acc#publish_fold_acc{
-                                        remote_matches = RN + 1,
-                                        remote_nodes_published = SentNodes#{Node => true}
-                                    };
-                                {error, msg_dropped} ->
-                                    lager:error(
-                                        "direct publish to node ~p failed: ~p, re-homing subscriber",
-                                        [Node, msg_dropped]
+                            case maps:is_key(Node, FailedNodes) of
+                                true ->
+                                    on_message_drop_hook(
+                                        SubscriberId, Msg, remote_node_rpc_failed
                                     ),
-                                    case migrate_offline_queue(SubscriberId, Node) of
-                                        {error, _} ->
-                                            Acc;
-                                        NewNode ->
-                                            publish_fold_fun({NewNode, SubscriberId, SubInfo}, FromClientId, Acc)
-                                    end;
-                                {error, Reason} ->
-                                    lager:error(
-                                        "direct publish to node ~p failed: ~p",
-                                        [Node, Reason]
-                                    ),
-                                    Acc#publish_fold_acc{remote_matches = RN + 1}
+                                    Acc#publish_fold_acc{remote_failed = true};
+                                false ->
+                                    case vmq_cluster:publish(Node, Msg) of
+                                        ok ->
+                                            Acc#publish_fold_acc{
+                                                remote_matches = RN + 1,
+                                                remote_nodes_published =
+                                                    SentNodes#{Node => true}
+                                            };
+                                        {error, Reason} ->
+                                            lager:error(
+                                                "direct publish to node ~p failed: ~p",
+                                                [Node, Reason]
+                                            ),
+                                            on_message_drop_hook(SubscriberId, Msg, Reason),
+                                            Acc#publish_fold_acc{
+                                                remote_failed = true,
+                                                failed_nodes = FailedNodes#{Node => true}
+                                            }
+                                    end
                             end
                     end;
                 false ->
@@ -522,34 +537,11 @@ publish_fold_fun(
                         remote_nodes_published = SentNodes
                     }
             end;
-        _ ->
-            %% Transfer the client on local node if the remote node is not alive.
-            %% It could happen that the client has reconnected to the cluster before we
-            %% can transfer it here. In that case, we should enqueue the msg there without local Xfer.
-            %% In case the client has not yet reconnected, then remap(Xfer) it here and enqueue.
-            %%
-            %% The question is how do we know whether the client reconnected or not in this case?
-            %% The source of truth is redis and this operation must be atomic on redis. When we
-            %% attempt to Xfer the client here, checking on redis for old node comparsion is a must
-            %% before redis remap operations are performed. In case the node value is unaffected node
-            %% then continue with remap otherwise return and initiate the enqueue op on the new
-            %% node's mainQueue.
-            %%
-            %% What is the time period in which this specific case is true?
-            %% It is when node is down, publish happened, subscriber info was fetched from redis
-            %% and before we Xfer it here, the client reconnects/Xfered elsewhere.
-            %% Probability of such msgs will be --
-            %% Until the complete Xfer happens - msg rate * vulnerable clients / total clients
-            %% And the above figure is upper bound
-            %%
-            %%
-            %%
-            %% Now to migrate the client from remote node, the following operations need to be performed.
-            %% 1. Start the queue with clean session false
-            %% 2. Migrate client on Redis - If the client had connected with clean session true, then
-            %% delete its entry and return nil. Otherwise change its node name and return true.
-            %% 3. If the result was undefined then terminate the queue otherwise initialize offline queue
-            %% and then enqueue.
+        rpc_failed ->
+            on_message_drop_hook(SubscriberId, Msg, remote_node_rpc_failed),
+            Acc#publish_fold_acc{remote_failed = true};
+        false ->
+            %% Node not in cluster status — migrate the offline queue to this node.
             case migrate_offline_queue(SubscriberId, Node) of
                 {error, _} ->
                     Acc;
@@ -586,6 +578,24 @@ enqueue_msg({{_, _} = SubscriberId, SubInfo}, Msg0) ->
             QoS = qos(SubInfo),
             ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg4})
     end.
+
+on_message_drop_hook(
+    SubscriberId,
+    #vmq_msg{
+        routing_key = RoutingKey,
+        qos = QoS,
+        payload = Payload,
+        properties = Props,
+        acl_name = AclName
+    },
+    Reason
+) ->
+    vmq_plugin:all(on_message_drop, [
+        SubscriberId,
+        fun() -> {RoutingKey, QoS, Payload, Props, #matched_acl{name = AclName}} end,
+        Reason,
+        undefined
+    ]).
 
 maybe_set_expiry_ts(#{p_message_expiry_interval := ExpireAfter}) ->
     {vmq_time:timestamp(second) + ExpireAfter, ExpireAfter};
