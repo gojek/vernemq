@@ -254,7 +254,7 @@ update_cluster_status(BNodes) ->
 
 filter_dead_nodes(Nodes, Fall) ->
     ets:foldl(
-        fun({Node, IsReady, FailedAttempts}, _) ->
+        fun({Node, _IsReady, FailedAttempts}, _) ->
             case lists:member(Node, Nodes) of
                 true ->
                     ok;
@@ -264,8 +264,10 @@ filter_dead_nodes(Nodes, Fall) ->
                     vmq_state_store_backend:ensure_reaper(Node),
                     vmq_cluster_node_sup:del_cluster_node(Node),
                     ets:delete(?VMQ_CLUSTER_STATUS, Node);
-                false when IsReady == false ->
-                    ets:update_element(?VMQ_CLUSTER_STATUS, Node, [{3, FailedAttempts + 1}])
+                false ->
+                    ets:update_element(?VMQ_CLUSTER_STATUS, Node, [
+                        {2, false}, {3, FailedAttempts + 1}
+                    ])
             end
         end,
         ok,
