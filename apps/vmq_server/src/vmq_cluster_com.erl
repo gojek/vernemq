@@ -238,11 +238,9 @@ process(Bin, St) ->
     process(Bin, St, 0).
 
 process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St, N) ->
-    #vmq_msg{
-        mountpoint = MP,
-        routing_key = Topic
-    } = Msg = to_vmq_msg(binary_to_term(Bin)),
-    _ = vmq_reg:route_remote_msg(St#st.reg_view, MP, Topic, Msg),
+    {InMsg, Subs} = binary_to_term(Bin),
+    Msg = to_vmq_msg(InMsg),
+    _ = vmq_reg:enq_to_local_subs(Subs, Msg),
     process(Rest, St, N + 1);
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St, N) ->
     case binary_to_term(Bin) of
