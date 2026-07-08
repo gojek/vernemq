@@ -174,14 +174,33 @@ close_connection(#st{socket = Socket} = State) ->
 -define(DRAIN_DEADLINE_MS, 2000).
 -define(DRAIN_RECV_TIMEOUT_MS, 200).
 
-drain(#st{socket = Socket, parser_state = ParserState} = State) ->
+drain(#st{socket = Socket, proto_tag = {Proto, _, _}} = State0) ->
     _ = setopts(Socket, [{active, false}]),
     Deadline = erlang:monotonic_time(millisecond) + ?DRAIN_DEADLINE_MS,
     lager:error("draining cluster com socket"),
-    {Bytes, Msgs} = drain_loop(State, ParserState, Deadline, {0, 0}),
+    {State, Acc0} = drain_mailbox(Proto, State0, {0, 0}),
+    {Bytes, Msgs} = drain_loop(State, State#st.parser_state, Deadline, Acc0),
     _ = vmq_metrics:incr_cluster_drain_bytes(Bytes),
     _ = vmq_metrics:incr_cluster_drain_messages(Msgs),
     {Bytes, Msgs}.
+
+drain_mailbox(Proto, #st{parser_state = ParserState} = State, {Bytes, Msgs} = Acc) ->
+    receive
+        {Proto, _, Data} ->
+            case process_bytes(Data, ParserState, State) of
+                {ok, NewParserState, N} ->
+                    NewAcc = {Bytes + byte_size(Data), Msgs + N},
+                    drain_mailbox(Proto, State#st{parser_state = NewParserState}, NewAcc);
+                {error, Reason} ->
+                    lager:error(
+                        "drain stopped after ~p msgs, can't process mailbox data: ~p",
+                        [Msgs, Reason]
+                    ),
+                    {State, Acc}
+            end
+    after 0 ->
+        {State, Acc}
+    end.
 
 drain_loop(#st{socket = Socket} = State, ParserState, Deadline, {Bytes, Msgs} = Acc) ->
     Now = erlang:monotonic_time(millisecond),
