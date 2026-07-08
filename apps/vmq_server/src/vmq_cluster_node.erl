@@ -88,6 +88,7 @@ enqueue_async(Pid, Term, BufferIfUnreachable) ->
     {MRef, Ref}.
 
 status(Pid) ->
+    Timeout = application:get_env(vmq_server, cluster_node_status_timeout, 500),
     Ref = make_ref(),
     MRef = monitor(process, Pid),
     Pid ! {status, self(), Ref},
@@ -97,6 +98,10 @@ status(Pid) ->
             Reply;
         {'DOWN', MRef, process, Pid, Reason} ->
             {error, Reason}
+    after Timeout ->
+        lager:error("Timeout while trying to check cluster_node status"),
+        demonitor(MRef, [flush]),
+        {error, timeout}
     end.
 
 init([Parent, RemoteNode]) ->
