@@ -182,6 +182,7 @@ drain(#st{socket = Socket, proto_tag = {Proto, _, _}} = State0) ->
     {Bytes, Msgs} = drain_loop(State, State#st.parser_state, Deadline, Acc0),
     _ = vmq_metrics:incr_cluster_drain_bytes(Bytes),
     _ = vmq_metrics:incr_cluster_drain_messages(Msgs),
+    lager:info("drained cluster com socket: ~p bytes, ~p msgs", [Bytes, Msgs]),
     {Bytes, Msgs}.
 
 drain_mailbox(Proto, #st{parser_state = ParserState} = State, {Bytes, Msgs} = Acc) ->
