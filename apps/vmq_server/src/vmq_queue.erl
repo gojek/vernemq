@@ -905,11 +905,16 @@ handle_session_down(
     #state{
         id = SId,
         waiting_call = WaitingCall,
-        last_disconnect_reason = Reason,
+        last_disconnect_reason = Reason0,
         username = UserName,
         session_id = SessionId
     } = State
 ) ->
+    Reason =
+        case Reason0 of
+            undefined -> 'REASON_UNSPECIFIED';
+            _ -> Reason0
+        end,
     {NewState, DeletedSession} = del_session(SessionPid, State),
     case {maps:size(NewState#state.sessions), StateName, WaitingCall} of
         {0, wait_for_offline, {add_session, NewSessionPid, Opts, From}} ->
