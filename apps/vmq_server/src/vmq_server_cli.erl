@@ -136,6 +136,8 @@ vmq_server_stop_cmd() ->
         %% checked at least once if queue migration is complete.
         Iterations = max(Timeout div Interval, 1),
 
+        _ = (catch vmq_cluster_mon:prepare_shutdown()),
+
         %% stop all MQTT sessions on Node
         %% Note: ensure loadbalancing will put them on other nodes
         vmq_ranch_config:stop_all_mqtt_listeners(true),
