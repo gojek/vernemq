@@ -449,12 +449,12 @@ publish_fold_wrapper(
             remote_subs = RemoteSubs,
             remote_failed = RemoteFailed
         } ->
-            {RemoteMatches1, RemoteFailed} =
+            {RemoteMatches1, RemoteFailed1} =
                 publish_remote_subs(RemoteSubs, NewMsg, RemoteMatches0, RemoteFailed),
             {LocalMatches1, RemoteMatches2} = vmq_shared_subscriptions:publish(
                 NewMsg, SGPolicy, SubscriberGroups, LocalMatches0, RemoteMatches1
             ),
-            case RemoteFailed of
+            case RemoteFailed1 of
                 true ->
                     {error, remote_publish_failed};
                 false ->
