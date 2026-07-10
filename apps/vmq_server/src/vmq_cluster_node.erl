@@ -105,6 +105,7 @@ status(Pid) ->
     end.
 
 init([Parent, RemoteNode]) ->
+    process_flag(trap_exit, true),
     MaxQueueSize = vmq_config:get_env(outgoing_clustering_buffer_size),
     proc_lib:init_ack(Parent, {ok, self()}),
     % Delay the initial connect attempt, this is useful when automating
@@ -258,6 +259,20 @@ handle_message(
         [RemoteNode, Reason, ?RECONNECT]
     ),
     close_reconnect(State);
+handle_message({'EXIT', Parent, Reason}, #state{parent = Parent} = State) ->
+    State0 = flush_pending_on_shutdown(State),
+    teardown(State0, Reason),
+    exit(Reason);
+handle_message({'EXIT', AsyncPid, Reason}, #state{async_connect_pid = AsyncPid} = State) ->
+    case Reason of
+        normal ->
+            State;
+        _ ->
+            lager:warning("async connect to ~p died: ~p", [State#state.node, Reason]),
+            close_reconnect(State)
+    end;
+handle_message({'EXIT', _Pid, _Reason}, State) ->
+    State;
 handle_message(Msg, #state{node = Node, reachable = Reachable} = State) ->
     lager:warning(
         "got unknown message ~p for node ~p (reachable ~p)",
@@ -309,6 +324,31 @@ internal_flush(
             ),
             _ = vmq_metrics:incr_cluster_msg_drop_node_down(Dropped),
             close_reconnect(State#state{pending = []})
+    end.
+
+flush_pending_on_shutdown(#state{reachable = false} = State) ->
+    State;
+flush_pending_on_shutdown(#state{socket = undefined} = State) ->
+    State;
+flush_pending_on_shutdown(#state{pending = []} = State) ->
+    _ = (catch shutdown_write(State#state.transport, State#state.socket)),
+    State;
+flush_pending_on_shutdown(
+    #state{pending = Pending, transport = Transport, socket = Socket, node = Node} = State
+) ->
+    L = iolist_size(Pending),
+    Msg = [<<"vmq-send", L:32>> | lists:reverse(Pending)],
+    case send(Transport, Socket, Msg) of
+        ok ->
+            lager:info("flushed ~p pending bytes to ~p on shutdown", [L, Node]),
+            _ = (catch shutdown_write(Transport, Socket)),
+            State#state{pending = []};
+        {error, Reason} ->
+            lager:error(
+                "failed to flush ~p pending bytes to ~p on shutdown: ~p",
+                [L, Node, Reason]
+            ),
+            State
     end.
 
 connect(#state{node = RemoteNode, reachable = false} = State) ->
@@ -427,6 +467,9 @@ send(ssl, {'ssl', Socket}, Msg) ->
 close(_, undefined) -> ok;
 close(gen_tcp, Socket) -> gen_tcp:close(Socket);
 close(ssl, {'ssl', Socket}) -> ssl:close(Socket).
+
+shutdown_write(gen_tcp, Socket) -> gen_tcp:shutdown(Socket, write);
+shutdown_write(ssl, {'ssl', Socket}) -> ssl:shutdown(Socket, write).
 
 connect(gen_tcp, Host, Port, Opts, Timeout) ->
     gen_tcp:connect(Host, Port, Opts, Timeout);
