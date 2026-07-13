@@ -317,13 +317,11 @@ internal_flush(
                 end,
             State#state{pending = [], bytes_send = NewBytesSend};
         {error, Reason} ->
-            Dropped = length(Pending),
-            lager:error(
-                "can't send ~p bytes (~p msgs) to ~p due to ~p, dropping them and reconnect!",
-                [L, Dropped, Node, Reason]
+            lager:warning(
+                "can't send ~p bytes to ~p due to ~p, reconnect!",
+                [L, Node, Reason]
             ),
-            _ = vmq_metrics:incr_cluster_msg_drop_node_down(Dropped),
-            close_reconnect(State#state{pending = []})
+            close_reconnect(State)
     end.
 
 flush_pending_on_shutdown(#state{reachable = false} = State) ->
