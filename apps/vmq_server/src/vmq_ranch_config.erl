@@ -135,6 +135,18 @@ start_listener(Type, Addr, Port, {TransportOpts, Opts}) ->
     end.
 
 listeners() ->
+    try
+        listeners_info()
+    catch
+        Class:Reason ->
+            lager:warning(
+                "vmq_ranch_config:listeners/0 raced a listener change (~p:~p), returning []",
+                [Class, Reason]
+            ),
+            []
+    end.
+
+listeners_info() ->
     maps:fold(
         fun({Ip, Port}, ConfigMap, Acc) ->
             {ok, {Type, Opts}} = get_listener_config(Ip, Port),
