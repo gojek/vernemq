@@ -179,7 +179,7 @@ handle_message({enq, CallerPid, Ref, Term, _}, State) ->
     {Dropped, NewState} = buffer_message(BinMsg, State),
     case Dropped > 0 of
         true ->
-            CallerPid ! {Ref, {error, msg_dropped}};
+            CallerPid ! {Ref, {error, buffer_full}};
         false ->
             %% reply directly from other node
             ignore
@@ -192,7 +192,7 @@ handle_message({msg, CallerPid, Ref, Msg}, State) ->
     {Dropped, NewState} = buffer_message(BinMsg, State),
     case Dropped > 0 of
         true ->
-            CallerPid ! {Ref, {error, msg_dropped}};
+            CallerPid ! {Ref, {error, buffer_full}};
         false ->
             CallerPid ! {Ref, ok}
     end,
