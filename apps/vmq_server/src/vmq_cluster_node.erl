@@ -493,7 +493,8 @@ teardown(
             ok;
         Dropped ->
             lager:error("teardown with ~p pending messages, dropping them", [Dropped]),
-            _ = vmq_metrics:incr_cluster_msg_drop_node_down(Dropped)
+            _ = vmq_metrics:incr_cluster_msg_drop_node_down(Dropped),
+            _ = vmq_statsd:counter("cluster_node.msg_drop_node_down", Dropped)
     end,
     case Reason of
         normal ->

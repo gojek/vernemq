@@ -182,6 +182,8 @@ drain(#st{socket = Socket, proto_tag = {Proto, _, _}} = State0) ->
     {Bytes, Msgs} = drain_loop(State, State#st.parser_state, Deadline, Acc0),
     _ = vmq_metrics:incr_cluster_drain_bytes(Bytes),
     _ = vmq_metrics:incr_cluster_drain_messages(Msgs),
+    _ = vmq_statsd:counter("cluster_com.drain.bytes", Bytes),
+    _ = vmq_statsd:counter("cluster_com.drain.messages", Msgs),
     lager:info("drained cluster com socket: ~p bytes, ~p msgs", [Bytes, Msgs]),
     {Bytes, Msgs}.
 
