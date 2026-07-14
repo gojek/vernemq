@@ -48,7 +48,7 @@
 ]).
 
 %% called by vmq_cluster_com
--export([route_remote_msg/4, enq_to_local_subs/2]).
+-export([route_remote_msg/4, enq_to_local_subs/2, on_message_drop_hook/3]).
 
 %% used from plugins
 -export([

@@ -493,7 +493,8 @@ teardown(
             ok;
         Dropped ->
             lager:error("teardown with ~p pending messages, dropping them", [Dropped]),
-            _ = vmq_metrics:incr_cluster_msg_drop_node_down(Dropped)
+            _ = vmq_metrics:incr_cluster_msg_drop_node_down(Dropped),
+            _ = report_dropped_frames(Pending)
     end,
     case Reason of
         normal ->
@@ -505,6 +506,28 @@ teardown(
     end,
     close(Transport, Socket),
     ok.
+
+report_dropped_frames(Pending) ->
+    lists:foreach(fun report_dropped_frame/1, Pending).
+
+report_dropped_frame(<<"msg", L:32, Bin:L/binary>>) ->
+    try binary_to_term(Bin) of
+        {Msg, Subs} when is_list(Subs) ->
+            lists:foreach(
+                fun({SubscriberId, _SubInfo}) ->
+                    catch vmq_reg:on_message_drop_hook(SubscriberId, Msg, cluster_node_down)
+                end,
+                Subs
+            );
+        _ ->
+            ignore
+    catch
+        Class:Reason ->
+            lager:warning("failed to decode dropped cluster frame: ~p:~p", [Class, Reason]),
+            ignore
+    end;
+report_dropped_frame(_Frame) ->
+    ignore.
 
 system_continue(_, _, State) ->
     loop(State).
