@@ -547,7 +547,7 @@ enqueue_msg({{_, _} = SubscriberId, SubInfo}, Msg0) ->
     case get_queue_pid(SubscriberId) of
         not_found ->
             vmq_metrics:incr_msg_enqueue_subscriber_not_found(),
-            _ = on_message_drop_hook(SubscriberId, Msg0, subscriber_not_found),
+            _ = on_message_drop_hook(SubscriberId, Msg0, subscriber_not_found_on_enqueue),
             ok;
         QPid ->
             Msg1 = handle_rap_flag(SubInfo, Msg0),
