@@ -135,7 +135,6 @@ handle_info(
                                             {_, _CId} = SId ->
                                                 case vmq_reg:migrate_offline_queue(SId, DeadNode) of
                                                     {error, _} ->
-                                                        _ = vmq_metrics:incr_cluster_msg_drop_reaper_unmigratable(),
                                                         ignore;
                                                     LocalNode when LocalNode == node() ->
                                                         {SubInfo, Msg} = binary_to_term(MsgBin),

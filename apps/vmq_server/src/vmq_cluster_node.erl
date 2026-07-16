@@ -99,7 +99,7 @@ status(Pid) ->
         {'DOWN', MRef, process, Pid, Reason} ->
             {error, Reason}
     after Timeout ->
-        lager:error("Timeout while trying to check cluster_node status"),
+        lager:warning("Timeout while trying to check cluster_node status"),
         demonitor(MRef, [flush]),
         {error, timeout}
     end.
@@ -489,33 +489,32 @@ teardown(
     end,
     case length(Pending) of
         0 ->
-            lager:error("no pending messages to count, teardown complete"),
+            lager:debug("no pending messages to count, teardown complete"),
             ok;
         Dropped ->
-            lager:error("teardown with ~p pending messages, dropping them", [Dropped]),
-            _ = vmq_metrics:incr_cluster_msg_drop_node_down(Dropped),
-            _ = report_dropped_frames(Pending)
+            lager:warning("teardown with ~p pending messages, dropping them", [Dropped]),
+            _ = vmq_metrics:incr_cluster_msg_drop_on_teardown(Dropped),
+            _ = lists:foreach(fun report_dropped_frame/1, Pending)
     end,
     case Reason of
         normal ->
-            lager:error("normally stopped", []);
+            lager:debug("normally stopped", []);
         shutdown ->
-            lager:error("stopped due to shutdown", []);
+            lager:info("stopped due to shutdown", []);
         _ ->
             lager:error("stopped abnormally due to '~p'", [Reason])
     end,
     close(Transport, Socket),
     ok.
 
-report_dropped_frames(Pending) ->
-    lists:foreach(fun report_dropped_frame/1, Pending).
-
 report_dropped_frame(<<"msg", L:32, Bin:L/binary>>) ->
     try binary_to_term(Bin) of
         {Msg, Subs} when is_list(Subs) ->
             lists:foreach(
                 fun({SubscriberId, _SubInfo}) ->
-                    catch vmq_reg:on_message_drop_hook(SubscriberId, Msg, cluster_node_down)
+                    catch vmq_reg:on_message_drop_hook(
+                        SubscriberId, Msg, pending_dropped_on_teardown
+                    )
                 end,
                 Subs
             );

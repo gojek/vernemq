@@ -52,7 +52,6 @@ register_config_() ->
             "graphite_interval",
             "graphite_include_labels",
             "shared_subscription_policy",
-            "remote_enqueue_timeout",
             "topic_alias_max_client",
             "topic_alias_max_broker",
             "max_last_will_delay",
@@ -64,8 +63,7 @@ register_config_() ->
             "queue_sup_sup_max_t",
             "queue_sup_sup_max_r",
             "cache_shared_subscriptions_locally",
-            "direct_message_passing",
-            "cluster_node_liveness_rpc_timeout"
+            "direct_message_passing"
         ],
     _ = [
         clique:register_config([Key], fun register_config_callback/2)

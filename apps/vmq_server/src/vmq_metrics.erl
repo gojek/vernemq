@@ -83,8 +83,7 @@
     incr_cluster_bytes_sent/1,
     incr_cluster_bytes_received/1,
     incr_cluster_msg_drop_buffer_full/0,
-    incr_cluster_msg_drop_node_down/1,
-    incr_cluster_msg_drop_reaper_unmigratable/0,
+    incr_cluster_msg_drop_on_teardown/1,
     incr_cluster_drain_bytes/1,
     incr_cluster_drain_messages/1,
     pretimed_measurement/2,
@@ -186,11 +185,8 @@ incr_cluster_bytes_received(V) ->
 incr_cluster_msg_drop_buffer_full() ->
     incr_item(?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL, 1).
 
-incr_cluster_msg_drop_node_down(V) ->
-    incr_item(?METRIC_CLUSTER_MSG_DROP_NODE_DOWN, V).
-
-incr_cluster_msg_drop_reaper_unmigratable() ->
-    incr_item(?METRIC_CLUSTER_MSG_DROP_REAPER_UNMIGRATABLE, 1).
+incr_cluster_msg_drop_on_teardown(V) ->
+    incr_item(?METRIC_CLUSTER_MSG_DROP_ON_TEARDOWN, V).
 
 incr_cluster_drain_bytes(V) ->
     incr_item(?METRIC_CLUSTER_DRAIN_BYTES, V).
@@ -1721,16 +1717,9 @@ counter_entries_def() ->
         m(
             counter,
             [],
-            ?METRIC_CLUSTER_MSG_DROP_NODE_DOWN,
-            ?METRIC_CLUSTER_MSG_DROP_NODE_DOWN,
+            ?METRIC_CLUSTER_MSG_DROP_ON_TEARDOWN,
+            ?METRIC_CLUSTER_MSG_DROP_ON_TEARDOWN,
             <<"The number of buffered messages dropped because the remote cluster node was removed while messages were still queued.">>
-        ),
-        m(
-            counter,
-            [],
-            ?METRIC_CLUSTER_MSG_DROP_REAPER_UNMIGRATABLE,
-            ?METRIC_CLUSTER_MSG_DROP_REAPER_UNMIGRATABLE,
-            <<"The number of queued messages dropped by the reaper because the subscriber on a dead node could not be migrated (direct_message_passing off).">>
         ),
         m(
             counter,
@@ -2838,8 +2827,7 @@ met2idx(?METRIC_CLUSTER_BYTES_DROPPED) -> 379;
 met2idx(?METRIC_CLUSTER_BYTES_SENT) -> 380;
 met2idx(?METRIC_CLUSTER_BYTES_RECEIVED) -> 381;
 met2idx(?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL) -> 382;
-met2idx(?METRIC_CLUSTER_MSG_DROP_NODE_DOWN) -> 383;
-met2idx(?METRIC_CLUSTER_MSG_DROP_REAPER_UNMIGRATABLE) -> 384;
+met2idx(?METRIC_CLUSTER_MSG_DROP_ON_TEARDOWN) -> 383;
 met2idx(?METRIC_CLUSTER_DRAIN_MESSAGES) -> 385;
 met2idx(?METRIC_CLUSTER_DRAIN_BYTES) -> 386.
 

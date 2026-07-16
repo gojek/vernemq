@@ -1024,15 +1024,6 @@
                                                                     {datatype, string},
                                                                     hidden
                                                                    ]}.
-{mapping, "listener.vmqs.mountpoint", "vmq_server.listeners", [
-                                                               {datatype, string},
-                                                               hidden
-                                                              ]}.
-
-{mapping, "listener.vmqs.$name.mountpoint", "vmq_server.listeners", [
-                                                                     {datatype, string},
-                                                                     hidden
-                                                                    ]}.
 
 %% @doc The cafile is used to define the path to a file containing
 %% the PEM encoded CA certificates that are trusted. Set the cafile

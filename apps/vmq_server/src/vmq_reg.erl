@@ -47,8 +47,7 @@
     migrate_offline_queue/2
 ]).
 
-%% called by vmq_cluster_com
--export([route_remote_msg/4, enq_to_local_subs/2, on_message_drop_hook/3]).
+-export([enq_to_local_subs/2, on_message_drop_hook/3]).
 
 %% used from plugins
 -export([
@@ -73,9 +72,7 @@
     subscriber_groups = undefined :: undefined | map(),
     local_matches = 0 :: non_neg_integer(),
     remote_matches = 0 :: non_neg_integer(),
-    remote_nodes_published = #{} :: #{node() => true},
     remote_subs = #{} :: #{node() => [{subscriber_id(), subinfo()}]},
-    failed_nodes = #{} :: #{node() => true},
     direct_message_passing = false :: boolean(),
     remote_failed = false :: boolean()
 }).
@@ -409,22 +406,6 @@ publish(
             publish_fold_wrapper(RegView, ClientId, Topic, Msg)
     end.
 
-% route_remote_msg/4 is called by the vmq_cluster_com
--spec route_remote_msg(module(), mountpoint(), topic(), msg()) -> ok.
-route_remote_msg(RegView, MP, Topic, Msg) ->
-    SubscriberId = {MP, ?INTERNAL_CLIENT_ID},
-    Acc = #publish_fold_acc{msg = Msg},
-    _ = vmq_reg_view:fold(RegView, SubscriberId, Topic, fun route_remote_msg_fold_fun/3, Acc),
-    % don't increment the router_matches_[local|remote] here, as they're already counted
-    % at the origin node.
-    ok.
-route_remote_msg_fold_fun({Node, _, _} = SubscriberIdAndSubInfo, From, Acc) when Node =:= node() ->
-    publish_fold_fun(SubscriberIdAndSubInfo, From, Acc);
-route_remote_msg_fold_fun(_Node, _, Acc) ->
-    %% we ignore remote subscriptions, they are already covered
-    %% by original publisher
-    Acc.
-
 -spec publish_fold_wrapper(module(), client_id() | ?INTERNAL_CLIENT_ID, topic(), msg()) ->
     {ok, {integer(), integer()}} | {error, _}.
 publish_fold_wrapper(
@@ -581,9 +562,11 @@ publish_remote_subs(RemoteSubs, Msg, RemoteMatches0, RemoteFailed) ->
         RemoteSubs
     ).
 
+-spec enq_to_local_subs([{subscriber_id(), subinfo()}], msg()) -> ok.
 enq_to_local_subs(Subs, Msg) ->
     lists:foreach(fun(Sub) -> enqueue_msg(Sub, Msg) end, Subs).
 
+-spec on_message_drop_hook(subscriber_id(), msg(), any()) -> any().
 on_message_drop_hook(
     SubscriberId,
     #vmq_msg{

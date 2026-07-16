@@ -35,8 +35,6 @@
     code_change/3
 ]).
 
--include("vmq_server.hrl").
-
 -record(state, {
     fall = 3,
     timer = undefined,
@@ -262,7 +260,7 @@ filter_dead_nodes(Nodes, Fall) ->
                     %% Node is not part of the cluster anymore
                     lager:warning("trigger reaper for node ~p", [Node]),
                     vmq_state_store_backend:ensure_reaper(Node),
-                    vmq_cluster_node_sup:del_cluster_node(Node),
+                    _ = vmq_cluster_node_sup:del_cluster_node(Node),
                     ets:delete(?VMQ_CLUSTER_STATUS, Node);
                 false ->
                     ets:update_element(?VMQ_CLUSTER_STATUS, Node, [
