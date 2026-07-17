@@ -762,8 +762,7 @@
 %% - listener.wss.default = 127.0.0.1:880
 {mapping, "listener.tcp.$name", "vmq_server.listeners", [
                                                             {default, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
-                                                            {datatype, ip},
-                                                            {include_default, "default"}
+                                                            {datatype, ip}
                                                            ]}.
 
 {mapping, "listener.ws.$name", "vmq_server.listeners", [
@@ -779,9 +778,8 @@
                                                                  ]}.
 
 {mapping, "listener.ssl.$name", "vmq_server.listeners", [
-                                                            {default, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
-                                                            {datatype, ip},
-                                                            hidden
+                                                            {commented, { "{{mqtts_default_ip}}", {{mqtts_default_port}} }},
+                                                            {datatype, ip}
                                                            ]}.
 
 %% @doc listener.tcp.proxy_protocol specifies if the listener accepts
@@ -898,7 +896,7 @@
 
 {mapping, "listener.ws.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "3,4,131"},
+  {default, "3,4,5,131"},
   {datatype, string},
   hidden
  ]}.
@@ -911,7 +909,7 @@
 
 {mapping, "listener.wss.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "3,4,131"},
+  {default, "3,4,5,131"},
   {datatype, string},
   hidden
  ]}.
@@ -924,7 +922,7 @@
 
 {mapping, "listener.ssl.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "3,4,131"},
+  {default, "3,4,5,131"},
   {datatype, string},
   hidden
  ]}.
@@ -959,7 +957,7 @@
                                                                     ]}.
 
 {mapping, "listener.https.$name", "vmq_server.listeners", [
-                                                          {default, { "{{http_default_ip}}", {{http_default_port}} }},
+                                                          {default, { "{{https_default_ip}}", {{https_default_port}} }},
                                                           {datatype, ip},
                                                           hidden
                                                          ]}.
