@@ -1372,6 +1372,9 @@ publish_last_will(#state{delayed_will = {_, Fun}} = State) ->
     Fun(),
     unset_will_timer(State#state{delayed_will = undefined}).
 
+maybe_offline_store(_, _, #deliver{msg = #vmq_msg{qos = 0, persisted = false} = _Msg} = D) ->
+    % Don't store QoS 0 messages in the message store
+    D;
 maybe_offline_store(
     true,
     SubscriberId,
@@ -1379,7 +1382,7 @@ maybe_offline_store(
 ) when QoS > 0 ->
     %% this function writes the message to the message store, in case the queue
     %% has no online session attached anymore (Offline = true)
-    PMsg = Msg#vmq_msg{persisted = true, qos = QoS},
+    PMsg = Msg#vmq_msg{persisted = true},
     vmq_message_store:write(SubscriberId, PMsg),
     D#deliver{msg = PMsg};
 maybe_offline_store(true, _, #deliver{msg = #vmq_msg{persisted = true, dup = true}} = D) ->
