@@ -16,6 +16,9 @@
   {default, "vmq"}
 ]}.
 
+{mapping, "nodename" , "vm_args.-name", [
+                 {default, "{{nodename}}"}
+                ]}.
 
 %% @doc Where to emit the default log messages (typically at 'info'
 %% severity):
