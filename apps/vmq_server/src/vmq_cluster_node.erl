@@ -509,7 +509,8 @@ teardown(
 
 report_dropped_frame(<<"msg", L:32, Bin:L/binary>>) ->
     try binary_to_term(Bin) of
-        {Msg, Subs} when is_list(Subs) ->
+        {InMsg, Subs} when is_list(Subs) ->
+            Msg = vmq_cluster_com:to_vmq_msg(InMsg),
             lists:foreach(
                 fun({SubscriberId, _SubInfo}) ->
                     catch vmq_reg:on_message_drop_hook(

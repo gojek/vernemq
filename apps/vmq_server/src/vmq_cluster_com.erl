@@ -10,7 +10,6 @@
     loop/1
 ]).
 
-%% exported for testing
 -export([to_vmq_msg/1]).
 
 -record(st, {
@@ -313,7 +312,6 @@ to_vmq_msgs(Msgs) ->
         Msgs
     ).
 
-%% @private
 to_vmq_msg(#vmq_msg{} = Msg) ->
     Msg;
 to_vmq_msg(
