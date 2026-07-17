@@ -1135,6 +1135,7 @@ insert(
     Sessions == #{}
 ->
     %% no session online, skip message for QoS0 Subscription
+    _ = vmq_metrics:incr_queue_unhandled(1),
     on_message_drop_hook(SId, D, ?USER_OFFLINE, SessionId),
     State;
 insert(#deliver{msg = #vmq_msg{non_persistence = true}}, #state{sessions = Sessions} = State) when
@@ -1150,6 +1151,7 @@ insert(
     Sessions == #{}
 ->
     %% no session online, skip QoS0 message for QoS1 or QoS2 Subscription
+    _ = vmq_metrics:incr_queue_unhandled(1),
     on_message_drop_hook(SId, D, ?USER_OFFLINE, SessionId),
     State;
 insert(
