@@ -349,6 +349,13 @@
                                                     {datatype, integer}
                                                  ]}.
 
+%% @doc Allows a session that changes from offline to online to override the maximum
+%% online message count (max_online_messages). All offline messages will be added
+%% to the online queue.
+{mapping, "override_max_online_messages", "vmq_server.override_max_online_messages", [{default, off},
+                                                  {datatype, flag}
+                                                  ]}.
+
 %% @doc specify in case multiple sessions are allowed how the queue should
 %% deliver the messages. In case of 'fanout' all the attached sessions
 %% will receive the message, in case of 'balance' an attached session is
