@@ -60,6 +60,7 @@ register_config_() ->
             "suppress_lwt_on_session_takeover",
             "coordinate_registrations",
             "mqtt_connect_timeout",
+            "disconnect_on_unauthorized_publish_v3",
             "queue_sup_sup_max_t",
             "queue_sup_sup_max_r",
             "cache_shared_subscriptions_locally",
