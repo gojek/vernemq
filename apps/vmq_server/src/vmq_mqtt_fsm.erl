@@ -1764,8 +1764,15 @@ prop_val(Key, Args, Default, Validator) ->
     end.
 
 -spec queue_opts(state(), [any()]) -> map().
-queue_opts(#state{clean_session = CleanSession, session_id = SessionId}, Args) ->
-    Opts = maps:from_list([{cleanup_on_disconnect, CleanSession}, {session_id, SessionId} | Args]),
+queue_opts(
+    #state{clean_session = CleanSession, session_id = SessionId, upgrade_qos = UpgradeQoS}, Args
+) ->
+    Opts = maps:from_list([
+        {cleanup_on_disconnect, CleanSession},
+        {session_id, SessionId},
+        {upgrade_qos, UpgradeQoS}
+        | Args
+    ]),
     maps:merge(vmq_queue:default_opts(), Opts).
 
 -spec unflag(boolean() | 0 | 1) -> boolean().
