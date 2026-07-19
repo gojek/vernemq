@@ -39,6 +39,7 @@ register_config_() ->
             "max_inflight_messages",
             "max_online_messages",
             "max_offline_messages",
+            "override_max_online_messages",
             "queue_deliver_mode",
             "queue_type",
             "max_message_rate",
