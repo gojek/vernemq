@@ -1958,6 +1958,13 @@
 {mapping, "message_store.redis.password", "vmq_server.message_store.redis.password",
     [{datatype, atom}]}.
 
+%% @doc Disconnect v3.1 clients in case they are not authorized to publish. This breaks the MQTT 3.1 specification
+%% and is intended for old unpatchable MQTT 3.1 client devices.
+{mapping, "disconnect_on_unauthorized_publish_v3", "vmq_server.disconnect_on_unauthorized_publish_v3", [{default, off},
+                                                                                                        {datatype, flag},
+                                                                                                        hidden
+                                                                                                       ]}.
+
 %% @doc Enables direct message passing between nodes. Will be removed in a future release.
 {mapping, "direct_message_passing", "vmq_server.direct_message_passing", [
     {default, off},
