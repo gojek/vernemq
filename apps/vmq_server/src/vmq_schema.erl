@@ -183,6 +183,31 @@ translate_listeners(Conf) ->
         extract("listener.vmq", "low_msgq_watermark", IntVal, Conf)
     ),
 
+    {HTTPIPs, HTTPMaxLengths} = lists:unzip(
+        extract("listener.http", "max_request_line_length", IntVal, Conf)
+    ),
+    {HTTP_SSLIPs, HTTP_SSLMaxLengths} = lists:unzip(
+        extract("listener.https", "max_request_line_length", IntVal, Conf)
+    ),
+    {WSIPs, WSMaxLengths} = lists:unzip(
+        extract("listener.ws", "max_request_line_length", IntVal, Conf)
+    ),
+    {WS_SSLIPs, WS_SSLMaxLengths} = lists:unzip(
+        extract("listener.wss", "max_request_line_length", IntVal, Conf)
+    ),
+    {HTTPIPs, HTTPHeaderLengths} = lists:unzip(
+        extract("listener.http", "max_header_value_length", IntVal, Conf)
+    ),
+    {HTTP_SSLIPs, HTTP_SSLHeaderLengths} = lists:unzip(
+        extract("listener.https", "max_header_value_length", IntVal, Conf)
+    ),
+    {WSIPs, WSHeaderLengths} = lists:unzip(
+        extract("listener.ws", "max_header_value_length", IntVal, Conf)
+    ),
+    {WS_SSLIPs, WS_SSLHeaderLengths} = lists:unzip(
+        extract("listener.wss", "max_header_value_length", IntVal, Conf)
+    ),
+
     {HTTPIPs, HTTPConfigMod} = lists:unzip(extract("listener.http", "config_mod", AtomVal, Conf)),
     {HTTPIPs, HTTPConfigFun} = lists:unzip(extract("listener.http", "config_fun", AtomVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLConfigMod} = lists:unzip(
@@ -267,7 +292,9 @@ translate_listeners(Conf) ->
             WSNrOfAcceptors,
             WSMountPoint,
             WSProxyProto,
-            WSAllowedProto
+            WSAllowedProto,
+            WSMaxLengths,
+            WSHeaderLengths
         ])
     ),
     VMQ = lists:zip(
@@ -290,7 +317,9 @@ translate_listeners(Conf) ->
             HTTPNrOfAcceptors,
             HTTPConfigMod,
             HTTPConfigFun,
-            HTTPProxyProto
+            HTTPProxyProto,
+            HTTPMaxLengths,
+            HTTPHeaderLengths
         ])
     ),
 
@@ -330,7 +359,9 @@ translate_listeners(Conf) ->
             WS_SSLRequireCerts,
             WS_SSLVersions,
             WS_SSLUseIdents,
-            WS_SSLAllowedProto
+            WS_SSLAllowedProto,
+            WS_SSLMaxLengths,
+            WS_SSLHeaderLengths
         ])
     ),
     HTTPS = lists:zip(
@@ -348,7 +379,9 @@ translate_listeners(Conf) ->
             HTTP_SSLRequireCerts,
             HTTP_SSLVersions,
             HTTP_SSLConfigMod,
-            HTTP_SSLConfigFun
+            HTTP_SSLConfigFun,
+            HTTP_SSLMaxLengths,
+            HTTP_SSLHeaderLengths
         ])
     ),
 
@@ -389,6 +422,8 @@ extract(Prefix, Suffix, Val, Conf) ->
             %% http listener specific
             "config_mod",
             "config_fun",
+            "max_request_line_length",
+            "max_header_value_length",
             %% mqtt listener specific
             "allowed_protocol_versions",
             %% other
