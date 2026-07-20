@@ -799,6 +799,9 @@ direct_plugin_exports(LogName, Opts) ->
             ([W | _] = Topic) when is_binary(W) ->
                 CallingPid = self(),
                 subscribe({Mountpoint, ClientId}, [{Topic, 0}]);
+            ({[W | _] = Topic, SubInfo}) when is_binary(W) ->
+                CallingPid = self(),
+                subscribe({Mountpoint, ClientId}, [{Topic, {0, SubInfo}}]);
             (_) ->
                 {error, invalid_topic}
         end,
