@@ -769,7 +769,8 @@
 %% - listener.wss.default = 127.0.0.1:880
 {mapping, "listener.tcp.$name", "vmq_server.listeners", [
                                                             {default, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
-                                                            {datatype, ip}
+                                                            {datatype, [ip, domain_socket]},
+                                                            {include_default, "default"}
                                                            ]}.
 
 {mapping, "listener.ws.$name", "vmq_server.listeners", [
@@ -785,8 +786,9 @@
                                                                  ]}.
 
 {mapping, "listener.ssl.$name", "vmq_server.listeners", [
-                                                            {commented, { "{{mqtts_default_ip}}", {{mqtts_default_port}} }},
-                                                            {datatype, ip}
+                                                            {default, { "{{mqtts_default_ip}}", {{mqtts_default_port}} }},
+                                                            {datatype, ip},
+                                                            hidden
                                                            ]}.
 
 %% @doc listener.tcp.proxy_protocol specifies if the listener accepts

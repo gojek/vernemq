@@ -321,7 +321,7 @@ vmq_listener_show_cmd() ->
                             [
                                 {type, Type},
                                 {status, Status},
-                                {ip, Ip},
+                                {address, Ip},
                                 {port, Port},
                                 {mountpoint, MP},
                                 {max_conns, MaxConns},
@@ -354,9 +354,14 @@ parse_port(StrP) ->
     end.
 
 parse_addr(StrA) ->
-    case inet:parse_address(StrA) of
-        {ok, Ip} -> Ip;
-        {error, einval} -> {error, {invalid_args, [{address, StrA}]}}
+    case string:split(StrA, ":") of
+        ["local", DomainSocket] ->
+            {local, DomainSocket};
+        _ ->
+            case inet:parse_address(StrA) of
+                {ok, Ip} -> Ip;
+                {error, einval} -> {error, {invalid_args, [{address, StrA}]}}
+            end
     end.
 
 vmq_listener_usage() ->
