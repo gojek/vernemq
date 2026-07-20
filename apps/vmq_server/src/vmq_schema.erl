@@ -443,7 +443,7 @@ extract(Prefix, Suffix, Val, Conf) ->
     NameSubPrefix = lists:flatten([Prefix, ".$name"]),
     [
         begin
-            {ok, Addr} = inet:parse_address(StrAddr),
+            {ok, Addr} = parse_addr(StrAddr),
             Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
             V1 = Val(Name, RootDefault, undefined),
             V2 = Val(Name, RootDefault, V1),
@@ -460,6 +460,17 @@ extract(Prefix, Suffix, Val, Conf) ->
         ),
         not lists:member(Name, Mappings ++ ExcludeRootSuffixes)
     ].
+
+parse_addr(StrA) ->
+    case string:split(StrA, ":") of
+        ["local", DomainSocket] ->
+            {ok, {local, DomainSocket}};
+        _ ->
+            case inet:parse_address(StrA) of
+                {ok, Ip} -> {ok, Ip};
+                {error, einval} -> {error, {invalid_args, [{address, StrA}]}}
+            end
+    end.
 
 validate_eccs("") ->
     ssl:eccs();
