@@ -1086,7 +1086,7 @@ check_user(
                 F,
                 OutProps,
                 QueueOpts,
-                State#state{session_expiry_interval = SessionExpiryInterval}
+                State#state{session_expiry_interval = SessionExpiryInterval, username = User}
             )
     end.
 
@@ -1129,7 +1129,7 @@ register_subscriber(
                 F,
                 SessionPresent,
                 OutProps1,
-                State#state{queue_pid = QPid, username = User, next_msg_id = MsgId}
+                State#state{queue_pid = QPid, next_msg_id = MsgId}
             );
         {error, Reason} ->
             lager:warning(
@@ -1326,7 +1326,8 @@ auth_on_register(Password, Props, State) ->
                     ?P_RETAIN_AVAILABLE,
                     ?P_WILDCARD_SUBS_AVAILABLE,
                     ?P_SUB_IDS_AVAILABLE,
-                    ?P_SHARED_SUBS_AVAILABLE
+                    ?P_SHARED_SUBS_AVAILABLE,
+                    ?P_RESPONSE_INFO
                 ],
                 maps:get(properties, Args0, #{})
             ),
