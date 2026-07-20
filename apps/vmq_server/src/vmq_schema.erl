@@ -226,23 +226,6 @@ translate_listeners(Conf) ->
         extract("listener.wss", "use_identity_as_username", BoolVal, Conf)
     ),
 
-    % VMQS
-    {VMQ_SSLIPs, VMQ_SSLCAFiles} = lists:unzip(extract("listener.vmqs", "cafile", StrVal, Conf)),
-    {VMQ_SSLIPs, VMQ_SSLDepths} = lists:unzip(extract("listener.vmqs", "depth", IntVal, Conf)),
-    {VMQ_SSLIPs, VMQ_SSLCertFiles} = lists:unzip(
-        extract("listener.vmqs", "certfile", StrVal, Conf)
-    ),
-    {VMQ_SSLIPs, VMQ_SSLCiphers} = lists:unzip(extract("listener.vmqs", "ciphers", StrVal, Conf)),
-    {VMQ_SSLIPs, VMQ_SSLECCs} = lists:unzip(extract("listener.vmqs", "eccs", ECCListVal, Conf)),
-    {VMQ_SSLIPs, VMQ_SSLCrlFiles} = lists:unzip(extract("listener.vmqs", "crlfile", StrVal, Conf)),
-    {VMQ_SSLIPs, VMQ_SSLKeyFiles} = lists:unzip(extract("listener.vmqs", "keyfile", StrVal, Conf)),
-    {VMQ_SSLIPs, VMQ_SSLRequireCerts} = lists:unzip(
-        extract("listener.vmqs", "require_certificate", BoolVal, Conf)
-    ),
-    {VMQ_SSLIPs, VMQ_SSLVersions} = lists:unzip(
-        extract("listener.vmqs", "tls_version", AtomVal, Conf)
-    ),
-
     % HTTPS
     {HTTP_SSLIPs, HTTP_SSLCAFiles} = lists:unzip(extract("listener.https", "cafile", StrVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLDepths} = lists:unzip(extract("listener.https", "depth", IntVal, Conf)),
@@ -350,20 +333,6 @@ translate_listeners(Conf) ->
             WS_SSLAllowedProto
         ])
     ),
-    VMQS = lists:zip(
-        VMQ_SSLIPs,
-        MZip([
-            VMQ_SSLCAFiles,
-            VMQ_SSLDepths,
-            VMQ_SSLCertFiles,
-            VMQ_SSLCiphers,
-            VMQ_SSLECCs,
-            VMQ_SSLCrlFiles,
-            VMQ_SSLKeyFiles,
-            VMQ_SSLRequireCerts,
-            VMQ_SSLVersions
-        ])
-    ),
     HTTPS = lists:zip(
         HTTP_SSLIPs,
         MZip([
@@ -392,7 +361,6 @@ translate_listeners(Conf) ->
         {mqttws, DropUndef(WS)},
         {mqttwss, DropUndef(WSS)},
         {vmq, DropUndef(VMQ)},
-        {vmqs, DropUndef(VMQS)},
         {http, DropUndef(HTTP)},
         {https, DropUndef(HTTPS)}
     ].
