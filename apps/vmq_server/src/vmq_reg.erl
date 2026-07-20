@@ -541,7 +541,7 @@ enqueue_msg({{_, _} = SubscriberId, SubInfo}, Msg0) ->
 
 publish_remote_subs(RemoteSubs, Msg, RemoteMatches0, RemoteFailed) ->
     maps:fold(
-        fun(Node, Subs, {RN, RF}) ->
+        fun(Node, Subs, {RM, RF}) ->
             case vmq_cluster:publish(Node, {Msg, Subs}) of
                 ok ->
                     {RN + length(Subs), RF};

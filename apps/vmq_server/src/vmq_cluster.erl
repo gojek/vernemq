@@ -17,7 +17,7 @@
 publish(Node, Msg) ->
     case vmq_cluster_node_sup:get_cluster_node(Node) of
         {error, not_found} = Err ->
-            Err;
+            {error, remote_node_pid_not_found};
         {ok, Pid} ->
             case vmq_cluster_node:publish(Pid, Msg) of
                 {error, buffer_full} = Err ->
