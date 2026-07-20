@@ -82,8 +82,8 @@
     incr_cluster_bytes_dropped/1,
     incr_cluster_bytes_sent/1,
     incr_cluster_bytes_received/1,
-    incr_cluster_msg_drop_buffer_full/0,
-    incr_cluster_msg_drop_on_teardown/1,
+    incr_cluster_msg_drop/1,
+    incr_cluster_msg_drop/2,
     incr_cluster_drain_bytes/1,
     incr_cluster_drain_messages/1,
     pretimed_measurement/2,
@@ -182,11 +182,11 @@ incr_cluster_bytes_sent(V) ->
 incr_cluster_bytes_received(V) ->
     incr_item(?METRIC_CLUSTER_BYTES_RECEIVED, V).
 
-incr_cluster_msg_drop_buffer_full() ->
-    incr_item(?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL, 1).
+incr_cluster_msg_drop(Reason) ->
+    incr_cluster_msg_drop(Reason, 1).
 
-incr_cluster_msg_drop_on_teardown(V) ->
-    incr_item(?METRIC_CLUSTER_MSG_DROP_ON_TEARDOWN, V).
+incr_cluster_msg_drop(Reason, V) ->
+    incr_item({?METRIC_CLUSTER_MSG_DROP, Reason}, V).
 
 incr_cluster_drain_bytes(V) ->
     incr_item(?METRIC_CLUSTER_DRAIN_BYTES, V).
@@ -938,6 +938,7 @@ internal_defs() ->
     flatten(
         [
             counter_entries_def(),
+            cluster_msg_drop_def(),
             mqtt4_connack_sent_def(),
             mqtt5_disconnect_recv_def(),
             mqtt5_disconnect_sent_def(),
@@ -1710,20 +1711,6 @@ counter_entries_def() ->
         m(
             counter,
             [],
-            ?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL,
-            ?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL,
-            <<"The number of messages dropped because the outgoing cluster buffer was full.">>
-        ),
-        m(
-            counter,
-            [],
-            ?METRIC_CLUSTER_MSG_DROP_ON_TEARDOWN,
-            ?METRIC_CLUSTER_MSG_DROP_ON_TEARDOWN,
-            <<"The number of buffered messages dropped because the remote cluster node was removed while messages were still queued.">>
-        ),
-        m(
-            counter,
-            [],
             ?METRIC_CLUSTER_DRAIN_BYTES,
             ?METRIC_CLUSTER_DRAIN_BYTES,
             <<"The number of in-flight bytes drained from inbound cluster connections during connection close.">>
@@ -1749,6 +1736,19 @@ flatten([H | T], Acc) ->
 rcn_to_str(RNC) ->
     %% TODO: replace this with a real textual representation
     atom_to_list(RNC).
+
+cluster_msg_drop_def() ->
+    Reasons = [send_buffer_full, teardown, remote_node_pid_not_found, remote_node_rpc_failed],
+    [
+        m(
+            counter,
+            [{reason, atom_to_list(Reason)}],
+            {?METRIC_CLUSTER_MSG_DROP, Reason},
+            ?METRIC_CLUSTER_MSG_DROP,
+            <<"The number of messages dropped on the outgoing cluster path, labelled by reason.">>
+        )
+     || Reason <- Reasons
+    ].
 
 mqtt_disconnect_def() ->
     RCNs =
@@ -2826,10 +2826,12 @@ met2idx({?SIDECAR_EVENTS_ERROR, ?ON_REGISTER_FAILED}) -> 378;
 met2idx(?METRIC_CLUSTER_BYTES_DROPPED) -> 379;
 met2idx(?METRIC_CLUSTER_BYTES_SENT) -> 380;
 met2idx(?METRIC_CLUSTER_BYTES_RECEIVED) -> 381;
-met2idx(?METRIC_CLUSTER_MSG_DROP_BUFFER_FULL) -> 382;
-met2idx(?METRIC_CLUSTER_MSG_DROP_ON_TEARDOWN) -> 383;
-met2idx(?METRIC_CLUSTER_DRAIN_MESSAGES) -> 385;
-met2idx(?METRIC_CLUSTER_DRAIN_BYTES) -> 386.
+met2idx({?METRIC_CLUSTER_MSG_DROP, send_buffer_full}) -> 382;
+met2idx({?METRIC_CLUSTER_MSG_DROP, teardown}) -> 383;
+met2idx({?METRIC_CLUSTER_MSG_DROP, remote_node_pid_not_found}) -> 384;
+met2idx({?METRIC_CLUSTER_MSG_DROP, remote_node_rpc_failed}) -> 385;
+met2idx(?METRIC_CLUSTER_DRAIN_MESSAGES) -> 386;
+met2idx(?METRIC_CLUSTER_DRAIN_BYTES) -> 387.
 
 -ifdef(TEST).
 clear_stored_rates() ->

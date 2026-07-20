@@ -40,9 +40,11 @@
 %%% API
 %%%===================================================================
 
+-spec start_link(node()) -> {ok, pid()} | {error, term()}.
 start_link(RemoteNode) ->
     proc_lib:start_link(?MODULE, init, [[self(), RemoteNode]]).
 
+-spec publish(pid(), term()) -> ok | {error, term()}.
 publish(Pid, Msg) ->
     Ref = make_ref(),
     MRef = monitor(process, Pid),
@@ -55,6 +57,7 @@ publish(Pid, Msg) ->
             {error, Reason}
     end.
 
+-spec enqueue(pid(), term(), boolean(), timeout()) -> ok | {error, term()}.
 enqueue(Pid, Term, BufferIfUnreachable, Timeout) ->
     Ref = make_ref(),
     MRef = monitor(process, Pid),
@@ -81,12 +84,14 @@ enqueue(Pid, Term, BufferIfUnreachable, Timeout) ->
             end
     end.
 
+-spec enqueue_async(pid(), term(), boolean()) -> {reference(), reference()}.
 enqueue_async(Pid, Term, BufferIfUnreachable) ->
     Ref = make_ref(),
     MRef = monitor(process, Pid),
     Pid ! {enq, self(), Ref, Term, BufferIfUnreachable},
     {MRef, Ref}.
 
+-spec status(pid()) -> up | init | down | {error, timeout | term()}.
 status(Pid) ->
     Timeout = application:get_env(vmq_server, cluster_node_status_timeout, 500),
     Ref = make_ref(),
@@ -149,6 +154,7 @@ buffer_message(
                     true ->
                         {[BinMsg | Pending], 0};
                     false ->
+                        _ = vmq_metrics:incr_cluster_msg_drop(send_buffer_full),
                         {Pending, byte_size(BinMsg)}
                 end
         end,
@@ -332,13 +338,20 @@ flush_pending_on_shutdown(#state{pending = []} = State) ->
     _ = (catch shutdown_write(State#state.transport, State#state.socket)),
     State;
 flush_pending_on_shutdown(
-    #state{pending = Pending, transport = Transport, socket = Socket, node = Node} = State
+    #state{
+        pending = Pending,
+        transport = Transport,
+        socket = Socket,
+        node = Node,
+        bytes_send = {_, V}
+    } = State
 ) ->
     L = iolist_size(Pending),
     Msg = [<<"vmq-send", L:32>> | lists:reverse(Pending)],
     case send(Transport, Socket, Msg) of
         ok ->
             lager:info("flushed ~p pending bytes to ~p on shutdown", [L, Node]),
+            _ = vmq_metrics:incr_cluster_bytes_sent(V + L),
             _ = (catch shutdown_write(Transport, Socket)),
             State#state{pending = []};
         {error, Reason} ->
@@ -418,6 +431,9 @@ reconnect_timer() ->
     erlang:send_after(?RECONNECT, self(), reconnect).
 
 %% connect_params is called by a RPC
+-spec connect_params(node()) ->
+    {gen_tcp | ssl, inet:ip_address() | inet:hostname(), inet:port_number()}
+    | {error, not_ready}.
 connect_params(_Node) ->
     case whereis(vmq_server_sup) of
         undefined ->
@@ -480,7 +496,13 @@ controlling_process(ssl, {'ssl', Socket}, Pid) ->
     ssl:controlling_process(Socket, Pid).
 
 teardown(
-    #state{socket = Socket, transport = Transport, async_connect_pid = AsyncPid, pending = Pending},
+    #state{
+        socket = Socket,
+        transport = Transport,
+        async_connect_pid = AsyncPid,
+        pending = Pending,
+        node = Node
+    },
     Reason
 ) ->
     case AsyncPid of
@@ -493,16 +515,16 @@ teardown(
             ok;
         Dropped ->
             lager:warning("teardown with ~p pending messages, dropping them", [Dropped]),
-            _ = vmq_metrics:incr_cluster_msg_drop_on_teardown(Dropped),
+            _ = vmq_metrics:incr_cluster_msg_drop(teardown, Dropped),
             _ = lists:foreach(fun report_dropped_frame/1, Pending)
     end,
     case Reason of
         normal ->
-            lager:debug("normally stopped", []);
+            lager:debug("remote node ~p handler normally stopped", [Node]);
         shutdown ->
-            lager:info("stopped due to shutdown", []);
+            lager:info("remote node ~p handler stopped due to shutdown", [Node]);
         _ ->
-            lager:error("stopped abnormally due to '~p'", [Reason])
+            lager:error("remote node ~p handler stopped abnormally due to '~p'", [Node, Reason])
     end,
     close(Transport, Socket),
     ok.

@@ -73,8 +73,7 @@
     local_matches = 0 :: non_neg_integer(),
     remote_matches = 0 :: non_neg_integer(),
     remote_subs = #{} :: #{node() => [{subscriber_id(), subinfo()}]},
-    direct_message_passing = false :: boolean(),
-    remote_failed = false :: boolean()
+    direct_message_passing = false :: boolean()
 }).
 
 -define(NR_OF_REG_RETRIES, 10).
@@ -428,21 +427,16 @@ publish_fold_wrapper(
             local_matches = LocalMatches0,
             remote_matches = RemoteMatches0,
             remote_subs = RemoteSubs,
-            remote_failed = RemoteFailed
+            direct_message_passing = DirectMessagePassing
         } ->
-            {RemoteMatches1, RemoteFailed1} =
-                publish_remote_subs(RemoteSubs, NewMsg, RemoteMatches0, RemoteFailed),
+            RemoteMatches1 =
+                publish_remote_subs(RemoteSubs, NewMsg, RemoteMatches0, DirectMessagePassing),
             {LocalMatches1, RemoteMatches2} = vmq_shared_subscriptions:publish(
                 NewMsg, SGPolicy, SubscriberGroups, LocalMatches0, RemoteMatches1
             ),
-            case RemoteFailed1 of
-                true ->
-                    {error, remote_publish_failed};
-                false ->
-                    vmq_metrics:incr_router_matches_local(LocalMatches1),
-                    vmq_metrics:incr_router_matches_remote(RemoteMatches2),
-                    {ok, {LocalMatches1, RemoteMatches2}}
-            end;
+            vmq_metrics:incr_router_matches_local(LocalMatches1),
+            vmq_metrics:incr_router_matches_remote(RemoteMatches2),
+            {ok, {LocalMatches1, RemoteMatches2}};
         {error, _} = Err ->
             Err
     end.
@@ -467,7 +461,6 @@ publish_fold_fun(
     {Node, SubscriberId, SubInfo},
     FromClientId,
     #publish_fold_acc{
-        remote_matches = RN,
         remote_subs = RemoteSubs,
         msg = Msg,
         direct_message_passing = DirectMessagePassing
@@ -479,25 +472,18 @@ publish_fold_fun(
     % 3. RPC failed and redis true, drop message instrument and emit message drop event
     case vmq_cluster_mon:is_node_alive(Node) of
         true ->
-            case DirectMessagePassing of
-                true ->
-                    Acc#publish_fold_acc{
-                        remote_subs = maps:update_with(
-                            Node,
-                            fun(Subs) -> [{SubscriberId, SubInfo} | Subs] end,
-                            [{SubscriberId, SubInfo}],
-                            RemoteSubs
-                        )
-                    };
-                false ->
-                    vmq_state_store_backend:enqueue(
-                        Node, term_to_binary(SubscriberId), term_to_binary({SubInfo, Msg})
-                    ),
-                    Acc#publish_fold_acc{remote_matches = RN + 1}
-            end;
-        rpc_failed ->
+            Acc#publish_fold_acc{
+                remote_subs = maps:update_with(
+                    Node,
+                    fun(Subs) -> [{SubscriberId, SubInfo} | Subs] end,
+                    [{SubscriberId, SubInfo}],
+                    RemoteSubs
+                )
+            };
+        rpc_failed when DirectMessagePassing ->
+            vmq_metrics:incr_cluster_msg_drop(remote_node_rpc_failed),
             on_message_drop_hook(SubscriberId, Msg, remote_node_rpc_failed),
-            Acc#publish_fold_acc{remote_failed = true};
+            Acc;
         false ->
             %% Node not in cluster status — migrate the offline queue to this node.
             case migrate_offline_queue(SubscriberId, Node) of
@@ -539,26 +525,41 @@ enqueue_msg({{_, _} = SubscriberId, SubInfo}, Msg0) ->
             ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg4})
     end.
 
-publish_remote_subs(RemoteSubs, Msg, RemoteMatches0, RemoteFailed) ->
+publish_remote_subs(RemoteSubs, Msg, RemoteMatches0, DirectMessagePassing) ->
     maps:fold(
-        fun(Node, Subs, {RM, RF}) ->
-            case vmq_cluster:publish(Node, {Msg, Subs}) of
-                ok ->
-                    {RN + length(Subs), RF};
-                {error, Reason} ->
-                    lager:error(
-                        "direct publish to node ~p failed: ~p", [Node, Reason]
-                    ),
+        fun(Node, Subs, RM) ->
+            case DirectMessagePassing of
+                true ->
+                    case vmq_cluster:publish(Node, Subs, Msg) of
+                        ok ->
+                            RM + length(Subs);
+                        {error, Reason} ->
+                            lager:error(
+                                "direct publish to node ~p failed: ~p", [Node, Reason]
+                            ),
+                            lists:foreach(
+                                fun({SubscriberId, _SubInfo}) ->
+                                    on_message_drop_hook(SubscriberId, Msg, Reason)
+                                end,
+                                Subs
+                            ),
+                            RM
+                    end;
+                false ->
                     lists:foreach(
-                        fun({SubscriberId, _SubInfo}) ->
-                            on_message_drop_hook(SubscriberId, Msg, Reason)
+                        fun({SubscriberId, SubInfo}) ->
+                            vmq_state_store_backend:enqueue(
+                                Node,
+                                term_to_binary(SubscriberId),
+                                term_to_binary({SubInfo, Msg})
+                            )
                         end,
                         Subs
                     ),
-                    {RN, true}
+                    RM + length(Subs)
             end
         end,
-        {RemoteMatches0, RemoteFailed},
+        RemoteMatches0,
         RemoteSubs
     ).
 

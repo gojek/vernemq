@@ -3,7 +3,7 @@
 -include_lib("vmq_commons/include/vmq_types.hrl").
 
 -export([
-    publish/2,
+    publish/3,
     remote_enqueue/3,
     remote_enqueue/4,
     remote_enqueue_async/3
@@ -13,19 +13,16 @@
 %%% API
 %%%===================================================================
 
--spec publish(node(), {msg(), [{subscriber_id(), subinfo()}]}) -> ok | {error, term()}.
-publish(Node, Msg) ->
-    case vmq_cluster_node_sup:get_cluster_node(Node) of
-        {error, not_found} = Err ->
-            {error, remote_node_pid_not_found};
+-spec publish(RemoteNode :: node(), Subscribers :: [{subscriber_id(), subinfo()}], Msg :: msg()) ->
+    ok | {error, term()}.
+publish(RemoteNode, Subscribers, Msg) ->
+    case vmq_cluster_node_sup:get_cluster_node(RemoteNode) of
+        {error, not_found} ->
+            Err = remote_node_pid_not_found,
+            vmq_metrics:incr_cluster_msg_drop(Err),
+            {error, Err};
         {ok, Pid} ->
-            case vmq_cluster_node:publish(Pid, Msg) of
-                {error, buffer_full} = Err ->
-                    vmq_metrics:incr_cluster_msg_drop_buffer_full(),
-                    Err;
-                Reply ->
-                    Reply
-            end
+            vmq_cluster_node:publish(Pid, {Msg, Subscribers})
     end.
 
 -spec remote_enqueue(node(), Term, BufferIfUnreachable) ->
