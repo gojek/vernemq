@@ -204,7 +204,7 @@ reconfigure_listeners(Config) ->
         Config,
         vmq_config:get_env(listeners)
     ),
-    Listeners = supervisor:which_children(ranch_sup),
+    Listeners = ranch_server:get_listener_sups(),
     reconfigure_listeners(TCPListenOptions, ListenerConfig, Listeners).
 reconfigure_listeners(TCPListenOptions, [{T, Config} | Rest], Listeners) ->
     NewListeners = reconfigure_listeners_for_type(T, Config, TCPListenOptions, Listeners),
