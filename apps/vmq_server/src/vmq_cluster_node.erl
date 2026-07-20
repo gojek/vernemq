@@ -104,7 +104,7 @@ status(Pid) ->
         {'DOWN', MRef, process, Pid, Reason} ->
             {error, Reason}
     after Timeout ->
-        lager:warning("Timeout while trying to check cluster_node status"),
+        lager:error("Timeout while trying to check cluster_node status"),
         demonitor(MRef, [flush]),
         {error, timeout}
     end.
@@ -221,7 +221,7 @@ handle_message(
                 reachable = true
             };
         {error, Reason} ->
-            lager:warning("can't initiate connect to cluster node ~p due to ~p", [
+            lager:error("can't initiate connect to cluster node ~p due to ~p", [
                 RemoteNode, Reason
             ]),
             close_reconnect(State)
@@ -249,7 +249,7 @@ handle_message({NetEvClosed, Socket}, #state{node = RemoteNode, socket = Socket}
     NetEvClosed == tcp_closed;
     NetEvClosed == ssl_closed
 ->
-    lager:warning(
+    lager:error(
         "connection to node ~p has been closed, reconnect in ~pms",
         [RemoteNode, ?RECONNECT]
     ),
@@ -260,7 +260,7 @@ handle_message(
     NetEvError == tcp_error;
     NetEvError == ssl_error
 ->
-    lager:warning(
+    lager:error(
         "connection to node ~p has been closed due to error ~p, reconnect in ~pms",
         [RemoteNode, Reason, ?RECONNECT]
     ),
@@ -280,7 +280,7 @@ handle_message({'EXIT', AsyncPid, Reason}, #state{async_connect_pid = AsyncPid} 
 handle_message({'EXIT', _Pid, _Reason}, State) ->
     State;
 handle_message(Msg, #state{node = Node, reachable = Reachable} = State) ->
-    lager:warning(
+    lager:error(
         "got unknown message ~p for node ~p (reachable ~p)",
         [Msg, Node, Reachable]
     ),
