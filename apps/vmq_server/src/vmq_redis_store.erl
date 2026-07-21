@@ -175,12 +175,12 @@ ensure_no_local_client() ->
     vmq_redis:query(vmq_redis_client, ["SCARD", node()], ?SCARD, ?ENSURE_NO_LOCAL_CLIENT).
 
 deregister_node() ->
-    case whereis(vmq_redis_client) of
-        undefined ->
-            {error, no_connection};
-        Pid ->
-            eredis:q(Pid, ["ZREM", "cluster", node()], 1000)
-    end.
+    vmq_redis:query(
+        vmq_redis_client,
+        ["ZREM", "cluster", node()],
+        ?ZREM,
+        ?DEREGISTER_NODE
+    ).
 
 %%%===================================================================
 %%% Message Store
