@@ -15,12 +15,18 @@
 -include_lib("vmq_proto/include/on_session_expired_pb.hrl").
 -include_lib("vmq_proto/include/on_message_drop_pb.hrl").
 -include_lib("vmq_proto/include/any_pb.hrl").
+-include_lib("vmq_proto/include/event_request_pb.hrl").
 
 -export([start_tcp_server/0,
-         stop_tcp_server/1]).
+         stop_tcp_server/1,
+         start_grpc_server/0,
+         stop_grpc_server/0]).
+
+-export([event/2]).
 
 -define(DEBUG, false).
--define(LISTEN_SOCKET, listen_socket).
+-define(GRPC_PORT, 8891).
+-define(SERVER_NAME, vmq_test_grpc_server).
 
 start_tcp_server() ->
     Pid = self(),
@@ -91,6 +97,56 @@ decode({_, "type.googleapis.com/eventssidecar.v1.OnSessionExpired", Value}) ->
 decode({_, "type.googleapis.com/eventssidecar.v1.OnClientWakeUp", Value}) ->
     on_client_wakeup_pb:decode_msg(Value, 'eventssidecar.v1.OnClientWakeUp');
 decode({_, "type.googleapis.com/eventssidecar.v1.OnMessageDrop", Value}) ->
+    on_message_drop_pb:decode_msg(Value, 'eventssidecar.v1.OnMessageDrop').
+
+%% gRPC server for the gRPC path
+start_grpc_server() ->
+    Services = #{
+        protos => [webhook_service_pb],
+        services => #{'webhook.v1beta1.PluginService' => ?MODULE}
+    },
+    {ok, _} = grpc:start_server(?SERVER_NAME, ?GRPC_PORT, Services, [
+        {enable_default_services, []}
+    ]).
+
+stop_grpc_server() ->
+    grpc:stop_server(?SERVER_NAME).
+
+event(#'webhook.v1beta1.EventRequest'{
+        event = #'google.protobuf.Any'{type_url = TypeUrl, value = Value}}, Metadata) ->
+    AnyRecord = #'Any'{type_url = TypeUrl, value = Value},
+    Event = decode_grpc(AnyRecord),
+    process_hook(Event),
+    {ok, #{}, Metadata};
+event(_Req, Metadata) ->
+    {ok, #{}, Metadata}.
+
+%% gRPC path decodes from #'Any'{} record (binary type_url)
+decode_grpc(#'Any'{type_url = <<"type.googleapis.com/eventssidecar.v1.OnDeliveryComplete">>, value = Value}) ->
+    on_delivery_complete_pb:decode_msg(Value, 'eventssidecar.v1.OnDeliveryComplete');
+decode_grpc(#'Any'{type_url = <<"type.googleapis.com/eventssidecar.v1.OnDeliver">>, value = Value}) ->
+    on_deliver_pb:decode_msg(Value, 'eventssidecar.v1.OnDeliver');
+decode_grpc(#'Any'{type_url = <<"type.googleapis.com/eventssidecar.v1.OnRegister">>, value = Value}) ->
+    on_register_pb:decode_msg(Value, 'eventssidecar.v1.OnRegister');
+decode_grpc(#'Any'{type_url = <<"type.googleapis.com/eventssidecar.v1.OnRegisterFailed">>, value = Value}) ->
+    on_register_failed_pb:decode_msg(Value, 'eventssidecar.v1.OnRegisterFailed');
+decode_grpc(#'Any'{type_url = <<"type.googleapis.com/eventssidecar.v1.OnSubscribe">>, value = Value}) ->
+    on_subscribe_pb:decode_msg(Value, 'eventssidecar.v1.OnSubscribe');
+decode_grpc(#'Any'{type_url = <<"type.googleapis.com/eventssidecar.v1.OnUnsubscribe">>, value = Value}) ->
+    on_unsubscribe_pb:decode_msg(Value, 'eventssidecar.v1.OnUnsubscribe');
+decode_grpc(#'Any'{type_url = <<"type.googleapis.com/eventssidecar.v1.OnClientGone">>, value = Value}) ->
+    on_client_gone_pb:decode_msg(Value, 'eventssidecar.v1.OnClientGone');
+decode_grpc(#'Any'{type_url = <<"type.googleapis.com/eventssidecar.v1.OnOfflineMessage">>, value = Value}) ->
+    on_offline_message_pb:decode_msg(Value, 'eventssidecar.v1.OnOfflineMessage');
+decode_grpc(#'Any'{type_url = <<"type.googleapis.com/eventssidecar.v1.OnClientOffline">>, value = Value}) ->
+    on_client_offline_pb:decode_msg(Value, 'eventssidecar.v1.OnClientOffline');
+decode_grpc(#'Any'{type_url = <<"type.googleapis.com/eventssidecar.v1.OnPublish">>, value = Value}) ->
+    on_publish_pb:decode_msg(Value, 'eventssidecar.v1.OnPublish');
+decode_grpc(#'Any'{type_url = <<"type.googleapis.com/eventssidecar.v1.OnSessionExpired">>, value = Value}) ->
+    on_session_expired_pb:decode_msg(Value, 'eventssidecar.v1.OnSessionExpired');
+decode_grpc(#'Any'{type_url = <<"type.googleapis.com/eventssidecar.v1.OnClientWakeUp">>, value = Value}) ->
+    on_client_wakeup_pb:decode_msg(Value, 'eventssidecar.v1.OnClientWakeUp');
+decode_grpc(#'Any'{type_url = <<"type.googleapis.com/eventssidecar.v1.OnMessageDrop">>, value = Value}) ->
     on_message_drop_pb:decode_msg(Value, 'eventssidecar.v1.OnMessageDrop').
 
 %% callbacks for each hook
