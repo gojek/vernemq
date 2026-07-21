@@ -24,6 +24,7 @@ start(_StartType, _StartArgs) ->
 %%--------------------------------------------------------------------
 stop(_State) ->
     shackle_pool:stop(?APP),
+    vmq_events_sidecar_grpc_client:stop(),
     ok.
 
 %%====================================================================
