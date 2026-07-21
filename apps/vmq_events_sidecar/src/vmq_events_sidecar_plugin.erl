@@ -46,7 +46,10 @@
 
     enable_sampling/3,
     disable_sampling/2,
-    list_sampling_conf/1
+    list_sampling_conf/1,
+
+    set_grpc_percentage/1,
+    get_grpc_percentage/0
 ]).
 
 %% gen_server callbacks
@@ -118,6 +121,14 @@ all_hooks() ->
 -spec list_sampling_conf(Hook :: on_publish | on_deliver | on_delivery_complete) -> [term()].
 list_sampling_conf(Hook) ->
     ets:match(?SAMPLER_TBL, {{Hook, '$1'}, '$2'}).
+
+-spec set_grpc_percentage(0..100) -> ok.
+set_grpc_percentage(P) when is_integer(P), P >= 0, P =< 100 ->
+    gen_server:call(?MODULE, {set_grpc_percentage, P}).
+
+-spec get_grpc_percentage() -> 0..100.
+get_grpc_percentage() ->
+    persistent_term:get(?GRPC_ROLLOUT_PERCENTAGE, 0).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -195,7 +206,10 @@ handle_call({disable_sampling, Hook, Criterion}, _From, State) ->
                 ets:delete(?SAMPLER_TBL, {Hook, Criterion}),
                 ok
         end,
-    {reply, Reply, State}.
+    {reply, Reply, State};
+handle_call({set_grpc_percentage, P}, _From, State) ->
+    persistent_term:put(?GRPC_ROLLOUT_PERCENTAGE, P),
+    {reply, ok, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -510,15 +524,61 @@ from_internal_qos({QoS, Opts}) when
 -spec process_event(Hook :: hook_name(), EventPayload :: any()) -> ok.
 process_event(HookName, EventPayload) ->
     V1 = vmq_util:ts(),
+    case persistent_term:get(?GRPC_ROLLOUT_PERCENTAGE, 0) of
+        0 ->
+            shackle_send(HookName, EventPayload);
+        P ->
+            case (P =:= 100) orelse (rand:uniform(100) =< P) of
+                true ->
+                    grpc_send(HookName, EventPayload);
+                false ->
+                    shackle_send(HookName, EventPayload)
+            end
+    end,
+    V2 = vmq_util:ts(),
+    vmq_metrics:pretimed_measurement({vmq_events_sidecar, call_latency}, V2 - V1).
+
+shackle_send(HookName, EventPayload) ->
     case shackle:cast(?APP, {HookName, os:system_time(), EventPayload}, undefined) of
         {ok, _} ->
             ok;
         {error, Reason} ->
             lager:error("Error sending event(shackle:cast): ~p", [Reason]),
             vmq_events_sidecar_metrics:incr_sidecar_events_error(HookName)
-    end,
-    V2 = vmq_util:ts(),
-    vmq_metrics:pretimed_measurement({vmq_events_sidecar, call_latency}, V2 - V1).
+    end.
+
+grpc_send(HookName, EventPayload) ->
+    AnyRecord = vmq_events_sidecar_format:encode({HookName, os:system_time(), EventPayload}),
+    case AnyRecord of
+        <<>> ->
+            ok;
+        _ ->
+            InflightRef = persistent_term:get(?GRPC_INFLIGHT_COUNTER),
+            MaxInflight = application:get_env(vmq_events_sidecar, grpc_max_inflight, 4096),
+            Current = atomics:add_get(InflightRef, 1, 1),
+            case Current > MaxInflight of
+                true ->
+                    atomics:sub(InflightRef, 1, 1),
+                    vmq_events_sidecar_metrics:incr_grpc_call_result(HookName, dropped);
+                false ->
+                    spawn(fun() ->
+                        try
+                            case vmq_events_sidecar_grpc_client:send_event(HookName, AnyRecord) of
+                                ok ->
+                                    ok;
+                                {error, _} ->
+                                    vmq_events_sidecar_metrics:incr_sidecar_events_error(HookName)
+                            end
+                        catch
+                            _:Err ->
+                                lager:warning("gRPC event send crashed: ~p", [Err]),
+                                vmq_events_sidecar_metrics:incr_sidecar_events_error(HookName)
+                        after
+                            atomics:sub(InflightRef, 1, 1)
+                        end
+                    end)
+            end
+    end.
 
 -spec sample(Hook :: hook_name(), Criterion :: binary() | undefined) -> true | false.
 sample(_Hook, undefined) ->

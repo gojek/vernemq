@@ -523,7 +523,8 @@ histogram_metric_defs() ->
 histogram_metrics() ->
     Histogram = ets:foldl(
         fun(
-            {Metric, TotalCount, LE10, LE100, LE1K, LE10K, LE100K, LE1M, LE2M, LE4M, INF, TotalSum},
+            {Metric, TotalCount, LE10, LE100, LE1K, LE10K, LE25K, LE50K, LE100K, LE1M, LE2M, LE4M,
+                INF, TotalSum},
             Acc
         ) ->
             {UniqueId, MetricName, Description, Labels} = metric_name(Metric),
@@ -533,6 +534,8 @@ histogram_metrics() ->
                     100 => LE100,
                     1000 => LE1K,
                     10000 => LE10K,
+                    25000 => LE25K,
+                    50000 => LE50K,
                     100000 => LE100K,
                     1000000 => LE1M,
                     2000000 => LE2M,
@@ -557,23 +560,54 @@ histogram_metrics() ->
     ).
 
 incr_bucket_ops(V) when V =< 10 ->
-    [{2, 1}, {3, 1}, {4, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, 1}, {11, 1}, {12, V}];
+    [
+        {2, 1},
+        {3, 1},
+        {4, 1},
+        {5, 1},
+        {6, 1},
+        {7, 1},
+        {8, 1},
+        {9, 1},
+        {10, 1},
+        {11, 1},
+        {12, 1},
+        {13, 1},
+        {14, V}
+    ];
 incr_bucket_ops(V) when V =< 100 ->
-    [{2, 1}, {4, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, 1}, {11, 1}, {12, V}];
+    [
+        {2, 1},
+        {4, 1},
+        {5, 1},
+        {6, 1},
+        {7, 1},
+        {8, 1},
+        {9, 1},
+        {10, 1},
+        {11, 1},
+        {12, 1},
+        {13, 1},
+        {14, V}
+    ];
 incr_bucket_ops(V) when V =< 1000 ->
-    [{2, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, 1}, {11, 1}, {12, V}];
+    [{2, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, 1}, {11, 1}, {12, 1}, {13, 1}, {14, V}];
 incr_bucket_ops(V) when V =< 10000 ->
-    [{2, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, 1}, {11, 1}, {12, V}];
+    [{2, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, 1}, {11, 1}, {12, 1}, {13, 1}, {14, V}];
+incr_bucket_ops(V) when V =< 25000 ->
+    [{2, 1}, {7, 1}, {8, 1}, {9, 1}, {10, 1}, {11, 1}, {12, 1}, {13, 1}, {14, V}];
+incr_bucket_ops(V) when V =< 50000 ->
+    [{2, 1}, {8, 1}, {9, 1}, {10, 1}, {11, 1}, {12, 1}, {13, 1}, {14, V}];
 incr_bucket_ops(V) when V =< 100000 ->
-    [{2, 1}, {7, 1}, {8, 1}, {9, 1}, {10, 1}, {11, 1}, {12, V}];
+    [{2, 1}, {9, 1}, {10, 1}, {11, 1}, {12, 1}, {13, 1}, {14, V}];
 incr_bucket_ops(V) when V =< 1000000 ->
-    [{2, 1}, {8, 1}, {9, 1}, {10, 1}, {11, 1}, {12, V}];
+    [{2, 1}, {10, 1}, {11, 1}, {12, 1}, {13, 1}, {14, V}];
 incr_bucket_ops(V) when V =< 2000000 ->
-    [{2, 1}, {9, 1}, {10, 1}, {11, 1}, {12, V}];
+    [{2, 1}, {11, 1}, {12, 1}, {13, 1}, {14, V}];
 incr_bucket_ops(V) when V =< 4000000 ->
-    [{2, 1}, {10, 1}, {11, 1}, {12, V}];
+    [{2, 1}, {12, 1}, {13, 1}, {14, V}];
 incr_bucket_ops(V) ->
-    [{2, 1}, {11, 1}, {12, V}].
+    [{2, 1}, {13, 1}, {14, V}].
 
 pretimed_measurement(Metric, Val) ->
     BucketOps = incr_bucket_ops(Val),
@@ -585,7 +619,7 @@ incr_histogram_buckets(Metric, BucketOps) ->
     catch
         _:_ ->
             try
-                ets:insert_new(?TIMER_TABLE, {Metric, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}),
+                ets:insert_new(?TIMER_TABLE, {Metric, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}),
                 incr_histogram_buckets(Metric, BucketOps)
             catch
                 _:_ ->
