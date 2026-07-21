@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package webhook.v1beta1;
+
+import "google/protobuf/any.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "source.golabs.io/courier/apis-go/webhook/v1beta1";
+
+service PluginService {
+  rpc Event (EventRequest) returns (google.protobuf.Empty);
+}
+
+message EventRequest {
+  google.protobuf.Any event = 1;
+}

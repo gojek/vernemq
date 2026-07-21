@@ -20,7 +20,7 @@
 %% API
 -export([encode/1]).
 
--spec encode(event()) -> iodata().
+-spec encode(event()) -> #'Any'{} | <<>>.
 encode(
     {on_register, Timestamp,
         {MP, ClientId, PPeer, Port, UserName, #{?P_USER_PROPERTY := Properties}, SessionId}}
@@ -260,11 +260,12 @@ encode(
 encode(_) ->
     <<>>.
 
--spec encode_envelope(string(), iodata()) -> iodata().
+-spec encode_envelope(string(), iodata()) -> #'Any'{}.
 encode_envelope(Name, Value) ->
-    any_pb:encode_msg(#'Any'{
-        type_url = "type.googleapis.com/eventssidecar.v1." ++ Name, value = Value
-    }).
+    #'Any'{
+        type_url = list_to_binary("type.googleapis.com/eventssidecar.v1." ++ Name),
+        value = iolist_to_binary(Value)
+    }.
 
 convert_timestamp(Now) ->
     #'google.protobuf.Timestamp'{seconds = Now div 1000000000, nanos = Now rem 1000000000}.

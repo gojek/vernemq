@@ -12,7 +12,9 @@ register_cli() ->
     disable_cmd(),
     show_sampling_cmd(),
     enable_sampling_cmd(),
-    disable_sampling_cmd().
+    disable_sampling_cmd(),
+    rollout_show_cmd(),
+    rollout_set_cmd().
 
 register_config() ->
     ConfigKeys =
@@ -20,7 +22,14 @@ register_config() ->
             "vmq_events_sidecar.hostname",
             "vmq_events_sidecar.port",
             "vmq_events_sidecar.pool_size",
-            "vmq_events_sidecar.backlog_size"
+            "vmq_events_sidecar.backlog_size",
+            "vmq_events_sidecar.user_type",
+            "vmq_events_sidecar.grpc_endpoint",
+            "vmq_events_sidecar.grpc_port",
+            "vmq_events_sidecar.grpc_pool_size",
+            "vmq_events_sidecar.grpc_timeout",
+            "vmq_events_sidecar.grpc_max_inflight",
+            "vmq_events_sidecar.grpc_percentage"
         ],
     [
         clique:register_config([Key], fun register_config_callback/2)
@@ -164,6 +173,68 @@ disable_sampling_cmd() ->
         end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
+rollout_show_cmd() ->
+    Cmd = ["vmq-admin", "events", "rollout", "show"],
+    Callback =
+        fun
+            (_, [], []) ->
+                P = vmq_events_sidecar_plugin:get_grpc_percentage(),
+                Endpoint = application:get_env(vmq_events_sidecar, grpc_endpoint, ""),
+                Port = application:get_env(vmq_events_sidecar, grpc_port, 80),
+                Table = [
+                    [
+                        {percentage, P},
+                        {grpc_endpoint, Endpoint},
+                        {grpc_port, Port}
+                    ]
+                ],
+                [clique_status:table(Table)];
+            (_, _, _) ->
+                Text = clique_status:text(rollout_show_usage()),
+                [clique_status:alert([Text])]
+        end,
+    clique:register_command(Cmd, [], [], Callback).
+
+rollout_set_cmd() ->
+    Cmd = ["vmq-admin", "events", "rollout", "set"],
+    KeySpecs = [rollout_percentage_keyspec()],
+    FlagSpecs = [],
+    Callback =
+        fun
+            (_, [{percentage, P}], []) ->
+                case P > 0 of
+                    true ->
+                        Endpoint = application:get_env(
+                            vmq_events_sidecar, grpc_endpoint, ""
+                        ),
+                        case Endpoint of
+                            "" ->
+                                Text = "grpc_endpoint is not configured",
+                                [clique_status:alert([clique_status:text(Text)])];
+                            _ ->
+                                vmq_events_sidecar_plugin:set_grpc_percentage(P),
+                                [clique_status:text("Done")]
+                        end;
+                    false ->
+                        vmq_events_sidecar_plugin:set_grpc_percentage(0),
+                        [clique_status:text("Done")]
+                end;
+            (_, _, _) ->
+                Text = clique_status:text(rollout_set_usage()),
+                [clique_status:alert([Text])]
+        end,
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+rollout_percentage_keyspec() ->
+    {percentage, [
+        {typecast, fun(StrP) ->
+            case catch list_to_integer(StrP) of
+                P when (P >= 0) and (P =< 100) -> P;
+                _ -> {error, {invalid_args, [{percentage, StrP}]}}
+            end
+        end}
+    ]}.
+
 hook_keyspec() ->
     {hook, [
         {typecast, fun
@@ -261,6 +332,13 @@ register_cli_usage() ->
     ),
     clique:register_usage(
         ["vmq-admin", "events", "sampling", "show"], show_sampling_usage()
+    ),
+    clique:register_usage(["vmq-admin", "events", "rollout"], events_rollout_usage()),
+    clique:register_usage(
+        ["vmq-admin", "events", "rollout", "show"], rollout_show_usage()
+    ),
+    clique:register_usage(
+        ["vmq-admin", "events", "rollout", "set"], rollout_set_usage()
     ).
 
 events_usage() ->
@@ -271,7 +349,8 @@ events_usage() ->
         "    show        Show all registered events\n",
         "    enable      Enable an event\n",
         "    disable     Disable an event\n",
-        "    sampling    Allows sampling of enabled events\n"
+        "    sampling    Allows sampling of enabled events\n",
+        "    rollout     Manage gRPC rollout percentage\n",
         "  Use --help after a sub-command for more details.\n"
     ].
 
@@ -325,5 +404,31 @@ show_sampling_usage() ->
     [
         "vmq-admin events sampling show hook=<Hook>\n\n",
         "  Shows all the hook specific sampling configurations.",
+        "\n\n"
+    ].
+
+events_rollout_usage() ->
+    [
+        "vmq-admin events rollout <sub-command>\n\n",
+        "  Manage percentage-based rollout of gRPC (bypassing sidecar).\n\n",
+        "  Sub-commands:\n",
+        "    show        Show current rollout percentage and gRPC endpoint config\n",
+        "    set         Set the rollout percentage\n",
+        "  Use --help after a sub-command for more details.\n"
+    ].
+
+rollout_show_usage() ->
+    [
+        "vmq-admin events rollout show\n\n",
+        "  Shows the current gRPC rollout percentage and endpoint configuration.",
+        "\n\n"
+    ].
+
+rollout_set_usage() ->
+    [
+        "vmq-admin events rollout set percentage=<Percentage>\n\n",
+        "  Sets the percentage of events routed to the gRPC endpoint (0-100).\n",
+        "  0 = all events go to the local sidecar, 100 = all events go via gRPC.\n",
+        "  Requires grpc_endpoint to be configured for percentage > 0.",
         "\n\n"
     ].

@@ -15,7 +15,16 @@
 -compile([nowarn_export_all]).
 
 init_per_suite(Config) ->
+    %% Start TCP server for shackle (default) path
     ListenSock = start_tcp_server(),
+
+    %% Start gRPC server for rollout path
+    {ok, _} = application:ensure_all_started(grpc),
+    events_sidecar_handler:start_grpc_server(),
+
+    application:set_env(vmq_events_sidecar, grpc_endpoint, "127.0.0.1"),
+    application:set_env(vmq_events_sidecar, grpc_port, 8891),
+    application:set_env(vmq_events_sidecar, grpc_pool_size, 5),
 
     application:load(vmq_plugin),
     application:ensure_all_started(vmq_plugin),
@@ -29,12 +38,14 @@ init_per_suite(Config) ->
 
 end_per_suite(Config) ->
     stop_tcp_server(proplists:get_value(socket, Config, [])),
+    events_sidecar_handler:stop_grpc_server(),
 
     ok = vmq_plugin_mgr:disable_plugin(vmq_events_sidecar),
     ok = vmq_plugin_mgr:disable_plugin(vmq_metrics_plus),
     application:stop(vmq_plugin),
 
     application:stop(shackle),
+    application:stop(grpc),
     Config.
 
 init_per_testcase(_Case, Config) ->
@@ -57,7 +68,10 @@ all() ->
      on_client_wakeup_test,
      on_client_offline_test,
      on_client_gone_test,
-     on_message_drop_test
+     on_message_drop_test,
+     on_register_grpc_test,
+     on_publish_grpc_test,
+     on_subscribe_grpc_test
     ].
 
 
@@ -66,7 +80,7 @@ start_tcp_server() ->
 stop_tcp_server(S) ->
   events_sidecar_handler:stop_tcp_server(S).
 
-%% Test cases
+%% Test cases (shackle/TCP path — default, percentage=0)
 on_register_test(_) ->
     enable_hook(on_register),
     Self = pid_to_bin(self()),
@@ -96,7 +110,7 @@ on_subscribe_test(_) ->
     enable_hook(on_subscribe),
     Self = pid_to_bin(self()),
     [ok,ok] = vmq_plugin:all(on_subscribe,
-                            [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1, #matched_acl{name = ?LABEL, pattern = ?PATTERN}}, 
+                            [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1, #matched_acl{name = ?LABEL, pattern = ?PATTERN}},
                                                                        {?TOPIC, not_allowed, #matched_acl{}}], ?SESSION_ID]),
     ok = exp_response(on_subscribe_ok),
     disable_hook(on_subscribe).
@@ -173,6 +187,39 @@ on_register_failed_test(_) ->
                           [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, true, invalid_credentials]),
     ok = exp_response(on_register_failed_ok),
     disable_hook(on_register_failed).
+
+%% Test gRPC path (percentage=100)
+on_register_grpc_test(_) ->
+    vmq_events_sidecar_plugin:set_grpc_percentage(100),
+    enable_hook(on_register),
+    Self = pid_to_bin(self()),
+    UserProps = [{"k1", "v1"}, {"k2","v2"}, {"k3","v3"}],
+    [ok] = vmq_plugin:all(on_register,
+                            [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, #{?P_USER_PROPERTY => UserProps}, ?SESSION_ID]),
+    ok = exp_response(on_register_ok),
+    disable_hook(on_register),
+    vmq_events_sidecar_plugin:set_grpc_percentage(0).
+
+on_publish_grpc_test(_) ->
+    vmq_events_sidecar_plugin:set_grpc_percentage(100),
+    enable_hook(on_publish),
+    Self = pid_to_bin(self()),
+    [ok,ok] = vmq_plugin:all(on_publish,
+                           [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, ?SESSION_ID]),
+    ok = exp_response(on_publish_ok),
+    disable_hook(on_publish),
+    vmq_events_sidecar_plugin:set_grpc_percentage(0).
+
+on_subscribe_grpc_test(_) ->
+    vmq_events_sidecar_plugin:set_grpc_percentage(100),
+    enable_hook(on_subscribe),
+    Self = pid_to_bin(self()),
+    [ok,ok] = vmq_plugin:all(on_subscribe,
+                            [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1, #matched_acl{name = ?LABEL, pattern = ?PATTERN}},
+                                                                       {?TOPIC, not_allowed, #matched_acl{}}], ?SESSION_ID]),
+    ok = exp_response(on_subscribe_ok),
+    disable_hook(on_subscribe),
+    vmq_events_sidecar_plugin:set_grpc_percentage(0).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% helper functions

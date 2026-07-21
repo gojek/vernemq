@@ -8,13 +8,15 @@
         stdlib,
         lager,
         clique,
-        shackle
+        shackle,
+        grpc
     ]},
     {env, [
         {hostname, "127.0.0.1"},
         {port, 8890},
         {pool_size, 100},
         {backlog_size, 4096},
+        {user_type, "default"},
         {vmq_metrics_mfa, {vmq_events_sidecar_metrics, metrics, []}},
         {vmq_plugin_hooks, [
             {vmq_events_sidecar_plugin, on_register, 5, []},

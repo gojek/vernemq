@@ -54,7 +54,17 @@ start_link() ->
                             lager:error("Hook must be an atom.")
                     end,
                     SamplingHooks
-                )
+                ),
+
+                GrpcPercentage = application:get_env(
+                    vmq_events_sidecar, grpc_percentage, 0
+                ),
+                vmq_events_sidecar_plugin:set_grpc_percentage(GrpcPercentage),
+
+                UserType = application:get_env(vmq_events_sidecar, user_type, "default"),
+                persistent_term:put(?GRPC_USER_TYPE, list_to_binary(UserType)),
+                GrpcTimeout = application:get_env(vmq_events_sidecar, grpc_timeout, 500),
+                persistent_term:put(?GRPC_TIMEOUT, GrpcTimeout)
             end),
             Ret;
         E ->
@@ -102,4 +112,21 @@ init([]) ->
         {pool_size, PoolSize}
     ],
     ok = shackle_pool:start(?APP, ?CLIENT, ClientOpts, PoolOtps),
+
+    GrpcEndpoint = application:get_env(vmq_events_sidecar, grpc_endpoint, ""),
+    case GrpcEndpoint of
+        "" ->
+            ok;
+        _ ->
+            GrpcPort = application:get_env(vmq_events_sidecar, grpc_port, 80),
+            GrpcPoolSize = application:get_env(vmq_events_sidecar, grpc_pool_size, 100),
+            ok = vmq_events_sidecar_grpc_client:start(#{
+                endpoint => GrpcEndpoint,
+                port => GrpcPort,
+                pool_size => GrpcPoolSize
+            })
+    end,
+    InflightRef = atomics:new(1, [{signed, true}]),
+    persistent_term:put(?GRPC_INFLIGHT_COUNTER, InflightRef),
+
     {ok, {SupFlags, ChildSpecs}}.

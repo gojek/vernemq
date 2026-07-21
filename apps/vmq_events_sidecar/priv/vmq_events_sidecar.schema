@@ -31,7 +31,7 @@
 {mapping, "vmq_events_sidecar.clique_lead_line", "vmq_events_sidecar.clique_lead_line",
  [{datatype, string},
   hidden,
-  {default, "    events sidecar    Manage events sidecar\n"}]}.
+  {default, "    events                  Manage events sidecar\n"}]}.
 
 %% @doc Configure the maximum number of TCP connections in the sidecar pool.
 {mapping, "vmq_events_sidecar.pool_size", "vmq_events_sidecar.pool_size",
@@ -54,6 +54,51 @@
  [{datatype, integer},
   hidden,
   {default, 4096}]}.
+
+%% @doc Configure the user type sent as gRPC metadata header.
+%% Valid values: merchant, customer, driver, tokopedia-customer, clickstream
+{mapping, "vmq_events_sidecar.user_type", "vmq_events_sidecar.user_type",
+ [{datatype, string},
+  {default, "default"}]}.
+
+%% @doc Configure the gRPC endpoint hostname (bypasses the local sidecar).
+%% Leave empty to disable gRPC.
+{mapping, "vmq_events_sidecar.grpc_endpoint", "vmq_events_sidecar.grpc_endpoint",
+ [{datatype, string},
+  hidden,
+  {default, ""}]}.
+
+%% @doc Configure the gRPC endpoint port.
+{mapping, "vmq_events_sidecar.grpc_port", "vmq_events_sidecar.grpc_port",
+ [{datatype, integer},
+  hidden,
+  {default, 80}]}.
+
+%% @doc Configure the gRPC connection pool size.
+{mapping, "vmq_events_sidecar.grpc_pool_size", "vmq_events_sidecar.grpc_pool_size",
+ [{datatype, integer},
+  hidden,
+  {default, 100}]}.
+
+%% @doc Configure the gRPC request timeout in milliseconds.
+{mapping, "vmq_events_sidecar.grpc_timeout", "vmq_events_sidecar.grpc_timeout",
+ [{datatype, integer},
+  hidden,
+  {default, 500}]}.
+
+%% @doc Maximum concurrent in-flight gRPC requests.
+%% Events are dropped when this limit is exceeded (backpressure).
+{mapping, "vmq_events_sidecar.grpc_max_inflight", "vmq_events_sidecar.grpc_max_inflight",
+ [{datatype, integer},
+  hidden,
+  {default, 4096}]}.
+
+%% @doc Percentage of events routed to the gRPC endpoint (0-100).
+%% 0 = all events go to the local sidecar, 100 = all events go via gRPC.
+{mapping, "vmq_events_sidecar.grpc_percentage", "vmq_events_sidecar.grpc_percentage",
+ [{datatype, integer},
+  hidden,
+  {default, 0}]}.
 
 %% @doc Configure the sampling for on_publish events based on ACL names
 {mapping, "sample.on_publish.$acl.percentage", "vmq_events_sidecar.sampler.on_publish", 

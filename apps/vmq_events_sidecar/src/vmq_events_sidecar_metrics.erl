@@ -8,7 +8,8 @@
     incr_sidecar_events/1,
     incr_sidecar_events_error/1,
     incr_events_sampled/2,
-    incr_events_dropped/2
+    incr_events_dropped/2,
+    incr_grpc_call_result/2
 ]).
 
 -export([
@@ -25,6 +26,7 @@
 -define(SIDECAR_EVENTS, sidecar_events).
 -define(SIDECAR_EVENTS_ERROR, sidecar_events_error).
 -define(EVENTS_SAMPLING_TABLE, vmq_events_sidecar_events_sampling).
+-define(GRPC_CALL_RESULTS_TABLE, vmq_events_sidecar_grpc_call_results).
 
 -define(ON_REGISTER, on_register).
 -define(ON_REGISTER_FAILED, on_register_failed).
@@ -97,7 +99,7 @@ metrics() ->
             end
         end,
         MetricDefs
-    ) ++ events_sampling_metrics().
+    ) ++ events_sampling_metrics() ++ grpc_call_result_metrics().
 
 -spec incr_sidecar_events(atom()) -> ok.
 incr_sidecar_events(HookName) ->
@@ -119,6 +121,22 @@ incr_events_dropped(_, undefined) ->
 incr_events_dropped(HookName, Criterion) ->
     incr_events_sampled_item(HookName, Criterion, dropped).
 
+-spec incr_grpc_call_result(atom(), atom()) -> ok.
+incr_grpc_call_result(HookName, Reason) ->
+    try
+        ets:update_counter(?GRPC_CALL_RESULTS_TABLE, {HookName, Reason}, 1)
+    catch
+        _:_ ->
+            try
+                ets:insert_new(?GRPC_CALL_RESULTS_TABLE, {{HookName, Reason}, 0}),
+                incr_grpc_call_result(HookName, Reason)
+            catch
+                _:_ ->
+                    lager:warning("couldn't initialize grpc call errors table", [])
+            end
+    end,
+    ok.
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -132,6 +150,7 @@ init([]) ->
     NumEntries = length(lists:usort(Idxs)),
 
     ets:new(?EVENTS_SAMPLING_TABLE, [named_table, public, {write_concurrency, true}]),
+    ets:new(?GRPC_CALL_RESULTS_TABLE, [named_table, public, {write_concurrency, true}]),
 
     case catch persistent_term:get(?MODULE) of
         {'EXIT', {badarg, _}} ->
@@ -223,6 +242,20 @@ sampling_metric_labels(HookName, Criterion) ->
 
 sampling_metric_id(HookName, Criterion, Type) ->
     [sampling_metric_name(Type) | sampling_metric_labels(HookName, Criterion)].
+
+grpc_call_result_metrics() ->
+    ets:foldl(
+        fun({{HookName, Result}, TotalCount}, Acc) ->
+            Labels = [{hook, atom_to_list(HookName)}, {result, atom_to_list(Result)}],
+            [
+                {counter, Labels, [grpc_call_result | Labels], grpc_call_result,
+                    <<"The number of gRPC event-sidecar calls by hook and result.">>, TotalCount}
+                | Acc
+            ]
+        end,
+        [],
+        ?GRPC_CALL_RESULTS_TABLE
+    ).
 
 -spec metrics_defs() -> [metric_def()].
 metrics_defs() ->
