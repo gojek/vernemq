@@ -162,6 +162,7 @@ handle_message({'EXIT', _Parent, Reason}, State) ->
         _Parent,
         Reason
     ]),
+    close_connection(State),
     {exit, Reason, State}.
 
 close_connection(#st{socket = Socket} = State) ->
