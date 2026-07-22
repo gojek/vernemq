@@ -21,16 +21,9 @@
 -define(OFFLINE_MESSAGES, offline_messages).
 
 start() ->
-    case supervisor:start_link({local, ?MODULE}, ?MODULE, []) of
-        {ok, _} = Ret ->
-            case application:get_env(vmq_server, redis_enabled, true) of
-                true -> vmq_state_store_backend:load_msg_store_functions();
-                false -> ok
-            end,
-            Ret;
-        Error ->
-            Error
-    end.
+    Ret = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
+    vmq_state_store_backend:load_msg_store_functions(),
+    Ret.
 
 write(SubscriberId, Msg) ->
     case vmq_state_store_backend:msg_store_write(SubscriberId, Msg) of

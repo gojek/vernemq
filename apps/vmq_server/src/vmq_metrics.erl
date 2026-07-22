@@ -1738,7 +1738,7 @@ rcn_to_str(RNC) ->
     atom_to_list(RNC).
 
 cluster_msg_drop_def() ->
-    Reasons = [send_buffer_full, teardown, remote_node_pid_not_found, remote_node_rpc_failed],
+    Reasons = [send_buffer_full, teardown, remote_node_pid_not_found],
     [
         m(
             counter,
@@ -2829,9 +2829,8 @@ met2idx(?METRIC_CLUSTER_BYTES_RECEIVED) -> 381;
 met2idx({?METRIC_CLUSTER_MSG_DROP, send_buffer_full}) -> 382;
 met2idx({?METRIC_CLUSTER_MSG_DROP, teardown}) -> 383;
 met2idx({?METRIC_CLUSTER_MSG_DROP, remote_node_pid_not_found}) -> 384;
-met2idx({?METRIC_CLUSTER_MSG_DROP, remote_node_rpc_failed}) -> 385;
-met2idx(?METRIC_CLUSTER_DRAIN_MESSAGES) -> 386;
-met2idx(?METRIC_CLUSTER_DRAIN_BYTES) -> 387.
+met2idx(?METRIC_CLUSTER_DRAIN_MESSAGES) -> 385;
+met2idx(?METRIC_CLUSTER_DRAIN_BYTES) -> 386.
 
 -ifdef(TEST).
 clear_stored_rates() ->

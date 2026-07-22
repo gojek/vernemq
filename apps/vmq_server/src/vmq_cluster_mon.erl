@@ -73,14 +73,10 @@ status() ->
             ets:match(?VMQ_CLUSTER_STATUS, '$1')
     ].
 
--spec is_node_alive(atom()) -> true | rpc_failed | false.
+-spec is_node_alive(atom()) -> boolean().
 is_node_alive(Node) ->
     try
-        case ets:lookup(?VMQ_CLUSTER_STATUS, Node) of
-            [{_Node, true, _}] -> true;
-            [{_Node, false, 0}] -> rpc_failed;
-            _ -> false
-        end
+        ets:lookup_element(?VMQ_CLUSTER_STATUS, Node, 2)
     catch
         _:_ ->
             false
@@ -111,15 +107,7 @@ init([]) ->
     Fall = application:get_env(vmq_server, cluster_node_liveness_fall, 3),
     RecheckInterval = application:get_env(vmq_server, cluster_node_liveness_check_interval, 500),
 
-    ReadyResult =
-        case vmq_config:get_env(direct_message_passing, false) of
-            true ->
-                vmq_noop_store:ensure_no_local_client();
-            false ->
-                vmq_state_store_backend:ensure_no_local_client()
-        end,
-
-    case ReadyResult of
+    case vmq_state_store_backend:ensure_no_local_client() of
         {ok, <<"0">>} ->
             Tref = erlang:send_after(0, self(), recheck),
             {ok, #state{
@@ -184,7 +172,7 @@ handle_info(recheck, #state{shutting_down = true} = State) ->
 handle_info(recheck, State) ->
     case vmq_state_store_backend:get_live_nodes() of
         {ok, LiveNodes} when is_list(LiveNodes) ->
-            LiveNodesAtom = update_cluster_status(LiveNodes),
+            LiveNodesAtom = update_cluster_status(LiveNodes, []),
             filter_dead_nodes(LiveNodesAtom, State#state.fall);
         Res ->
             lager:error("~p", [Res])
@@ -229,26 +217,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-update_cluster_status(BNodes) ->
-    Nodes = [binary_to_atom(BNode) || BNode <- BNodes],
-    RpcTimeout = application:get_env(vmq_server, cluster_node_liveness_rpc_timeout, 1000),
-    Results = erpc:multicall(Nodes, erlang, whereis, [vmq_server_sup], RpcTimeout),
-    lists:foreach(
-        fun({Node, Res}) ->
-            IsReady =
-                case Res of
-                    {ok, Pid} when is_pid(Pid) -> true;
-                    _ -> false
-                end,
-            vmq_state_store_backend:del_reaper(Node),
-            vmq_cluster_node_sup:ensure_cluster_node(Node),
-            Status = vmq_cluster_node_sup:node_status(Node),
-            IsReady1 = IsReady andalso lists:member(Status, [up, init]),
-            ets:insert(?VMQ_CLUSTER_STATUS, {Node, IsReady1, 0})
-        end,
-        lists:zip(Nodes, Results)
-    ),
-    Nodes.
+update_cluster_status([], Acc) ->
+    Acc;
+update_cluster_status([BNode | Rest], Acc) ->
+    Node = binary_to_atom(BNode),
+    vmq_state_store_backend:del_reaper(Node),
+    vmq_cluster_node_sup:ensure_cluster_node(Node),
+    ets:insert(?VMQ_CLUSTER_STATUS, {Node, true, 0}),
+    update_cluster_status(Rest, [Node | Acc]).
 
 filter_dead_nodes(Nodes, Fall) ->
     ets:foldl(

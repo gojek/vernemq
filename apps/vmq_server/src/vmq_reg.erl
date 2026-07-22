@@ -461,15 +461,14 @@ publish_fold_fun(
     {Node, SubscriberId, SubInfo},
     FromClientId,
     #publish_fold_acc{
-        remote_subs = RemoteSubs,
-        msg = Msg,
-        direct_message_passing = DirectMessagePassing
+        remote_subs = RemoteSubs
     } = Acc
 ) ->
     % 1. In case RPC is ok irrespective of redis status we will send the message
     %   (What will happen if redis is DOWN and client is offline on the remote node?)
     % 2. If RPC is failed and redis false then we migrate and we won't wait Fall signal
-    % 3. RPC failed and redis true, drop message instrument and emit message drop event
+    % 3. RPC failed and redis true (there might be a network blip),
+    %    keep publishing, we should instrument this drop
     case vmq_cluster_mon:is_node_alive(Node) of
         true ->
             Acc#publish_fold_acc{
@@ -480,10 +479,6 @@ publish_fold_fun(
                     RemoteSubs
                 )
             };
-        rpc_failed when DirectMessagePassing ->
-            vmq_metrics:incr_cluster_msg_drop(remote_node_rpc_failed),
-            on_message_drop_hook(SubscriberId, Msg, remote_node_rpc_failed),
-            Acc;
         false ->
             %% Node not in cluster status — migrate the offline queue to this node.
             case migrate_offline_queue(SubscriberId, Node) of
