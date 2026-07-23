@@ -291,7 +291,7 @@ handle_message(Msg, #state{node = Node, reachable = Reachable} = State) ->
     State.
 
 % tcp-over-ethernet MSS 1460
--define(FLUSH_THRESHOLD, 1460).
+-define(FLUSH_THRESHOLD, 0).
 maybe_flush(#state{pending = Pending} = State) ->
     case iolist_size(Pending) >= ?FLUSH_THRESHOLD of
         true ->
