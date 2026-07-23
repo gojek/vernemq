@@ -1092,6 +1092,27 @@ redis_def() ->
                 {?REDIS_CMD_MISS, ?SCARD, ?ENSURE_NO_LOCAL_CLIENT},
                 redis_cmd_miss_total,
                 <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>
+            ),
+            m(
+                counter,
+                [{cmd, rcn_to_str(?ZREM)}, {operation, rcn_to_str(?DEREGISTER_NODE)}],
+                {?REDIS_CMD, ?ZREM, ?DEREGISTER_NODE},
+                redis_cmd_total,
+                <<"The number of redis cmd calls.">>
+            ),
+            m(
+                counter,
+                [{cmd, rcn_to_str(?ZREM)}, {operation, rcn_to_str(?DEREGISTER_NODE)}],
+                {?REDIS_CMD_ERROR, ?ZREM, ?DEREGISTER_NODE},
+                redis_cmd_error_total,
+                <<"The number of times redis cmd call failed.">>
+            ),
+            m(
+                counter,
+                [{cmd, rcn_to_str(?ZREM)}, {operation, rcn_to_str(?DEREGISTER_NODE)}],
+                {?REDIS_CMD_MISS, ?ZREM, ?DEREGISTER_NODE},
+                redis_cmd_miss_total,
+                <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>
             )
         ],
     REDIS_DEF_1 ++ REDIS_DEF_2 ++ REDIS_DEF_3.
@@ -2830,7 +2851,10 @@ met2idx({?METRIC_CLUSTER_MSG_DROP, send_buffer_full}) -> 382;
 met2idx({?METRIC_CLUSTER_MSG_DROP, teardown}) -> 383;
 met2idx({?METRIC_CLUSTER_MSG_DROP, remote_node_pid_not_found}) -> 384;
 met2idx(?METRIC_CLUSTER_DRAIN_MESSAGES) -> 385;
-met2idx(?METRIC_CLUSTER_DRAIN_BYTES) -> 386.
+met2idx(?METRIC_CLUSTER_DRAIN_BYTES) -> 386;
+met2idx({?REDIS_CMD, ?ZREM, ?DEREGISTER_NODE}) -> 387;
+met2idx({?REDIS_CMD_ERROR, ?ZREM, ?DEREGISTER_NODE}) -> 388;
+met2idx({?REDIS_CMD_MISS, ?ZREM, ?DEREGISTER_NODE}) -> 389.
 
 -ifdef(TEST).
 clear_stored_rates() ->

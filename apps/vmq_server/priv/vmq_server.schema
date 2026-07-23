@@ -1933,9 +1933,3 @@
     {default, off},
     {datatype, flag}
 ]}.
-
-%% @doc The timeout in milliseconds for cluster node liveness RPC calls.
-{mapping, "cluster_node_liveness_rpc_timeout", "vmq_server.cluster_node_liveness_rpc_timeout", [
-    {default, 1000},
-    {datatype, integer}
-]}.
