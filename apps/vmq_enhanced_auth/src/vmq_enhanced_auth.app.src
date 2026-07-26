@@ -20,6 +20,7 @@
             {vmq_enhanced_auth, auth_on_publish, 7, []},
             {vmq_enhanced_auth, auth_on_subscribe, 4, []},
             {vmq_enhanced_auth, auth_on_register, 6, []},
+            {vmq_enhanced_auth, auth_on_register_m5, 6, []},
             {vmq_enhanced_auth, auth_on_publish_m5, 7, []},
             {vmq_enhanced_auth, auth_on_subscribe_m5, 4, []}
         ]}
