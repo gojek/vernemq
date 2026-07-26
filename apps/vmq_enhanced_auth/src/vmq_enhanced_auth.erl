@@ -16,6 +16,7 @@
 -behaviour(auth_on_register_hook).
 -behaviour(auth_on_subscribe_hook).
 -behaviour(auth_on_publish_hook).
+-behaviour(auth_on_register_m5_hook).
 -behaviour(auth_on_subscribe_m5_hook).
 -behaviour(auth_on_publish_m5_hook).
 -behaviour(on_config_change_hook).
@@ -36,6 +37,7 @@
     auth_on_subscribe_m5/4,
     auth_on_publish_m5/7,
     auth_on_register/6,
+    auth_on_register_m5/6,
     change_config/1
 ]).
 
@@ -150,52 +152,91 @@ auth_on_publish(User, SubscriberId, QoS, Topic, _, _, _SessionId) ->
             end
     end.
 
-auth_on_subscribe_m5(_, _, []) ->
-    ok;
-auth_on_subscribe_m5(User, SubscriberId, [{Topic, _Qos} | Rest]) ->
-    case check(read, Topic, User, SubscriberId) of
-        {true, _} ->
-            auth_on_subscribe(User, SubscriberId, Rest, undefined);
-        false ->
-            next
+auth_on_subscribe_m5(User, SubscriberId, Topics, Props) ->
+    V3Topics = [{Topic, QoS} || {Topic, {QoS, _SubOpts}} <- Topics],
+    case auth_on_subscribe(User, SubscriberId, V3Topics, undefined) of
+        {ok, Modifiers} ->
+            V5Topics = lists:zipwith(
+                fun
+                    ({_Topic, {_QoS, _SubOpts}}, {MTopic, not_allowed, _AclMatch}) ->
+                        {MTopic, not_allowed};
+                    ({_Topic, {_QoS, SubOpts}}, {MTopic, MQoS, _AclMatch}) ->
+                        {MTopic, {MQoS, SubOpts}}
+                end,
+                Topics,
+                Modifiers
+            ),
+            UserProps = maps:get(p_user_property, Props, []),
+            ResponseProps =
+                case UserProps of
+                    [] -> #{};
+                    _ -> #{p_user_property => UserProps}
+                end,
+            {ok, #{topics => V5Topics, properties => ResponseProps}};
+        Other ->
+            Other
     end.
-auth_on_subscribe_m5(User, SubscriberId, Topics, _Props) ->
-    auth_on_subscribe_m5(User, SubscriberId, Topics).
 
-auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, _Props) ->
-    auth_on_publish(User, SubscriberId, QoS, Topic, Payload, IsRetain, undefined).
+auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, Properties) ->
+    D = is_acl_auth_disabled(),
+    if
+        D ->
+            next;
+        true ->
+            case check(write, Topic, User, SubscriberId) of
+                {true, #matched_acl{name = AclName} = MatchedAcl} ->
+                    case vmq_enhanced_auth_rate_limiter:check_publish_rate(AclName, QoS) of
+                        drop ->
+                            {error, #{reason_code => quota_exceeded}};
+                        allow ->
+                            {ok, #{
+                                topic => Topic,
+                                payload => Payload,
+                                qos => QoS,
+                                retain => IsRetain,
+                                properties => Properties,
+                                matched_acl => MatchedAcl
+                            }}
+                    end;
+                false ->
+                    next
+            end
+    end.
 
 auth_on_register(
-    {_IpAddr, _Port} = _Peer,
-    {_MountPoint, _ClientId} = _SubscriberId,
+    _Peer,
+    _SubscriberId,
     UserName,
     Password,
     _CleanSession,
     _SessionId
 ) ->
-    %% do whatever you like with the params, all that matters
-    %% is the return value of this function
-    %%
-    %% 1. return 'ok' -> CONNECT is authenticated
-    %% 2. return 'next' -> leave it to other plugins to decide
-    %% 3. return {ok, [{ModifierKey, NewVal}...]} -> CONNECT is authenticated, but we might want to set some options used throughout the client session:
-    %%      - {mountpoint, NewMountPoint::string}
-    %%      - {clean_session, NewCleanSession::boolean}
-    %% 4. return {error, invalid_credentials} -> CONNACK_CREDENTIALS is sent
-    %% 5. return {error, Error} -> CONNACK_AUTH is sent
+    auth_on_register_jwt(UserName, Password).
 
-    %% we return 'ok'
-    D = is_auth_on_register_disabled(),
-    if
-        D ->
-            next;
+auth_on_register_m5(
+    _Peer,
+    _SubscriberId,
+    UserName,
+    Password,
+    _CleanStart,
+    Properties
+) ->
+    Token =
+        case maps:get(p_authentication_data, Properties, undefined) of
+            undefined -> Password;
+            AuthData -> AuthData
+        end,
+    auth_on_register_jwt(UserName, Token).
+
+auth_on_register_jwt(UserName, Token) ->
+    case is_auth_on_register_disabled() of
         true ->
-            {Result, Claims} = verify(Password, ?SecretKey),
-            if
-                Result =:= ok ->
+            next;
+        false ->
+            case verify(Token, ?SecretKey) of
+                {ok, Claims} ->
                     check_rid(Claims, UserName);
-                %else block
-                true ->
+                _ ->
                     vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?INVALID_SIGNATURE}),
                     {error, ?INVALID_SIGNATURE}
             end
@@ -633,7 +674,9 @@ acl_test_() ->
         {"Complex ACL Test - Delete complex topic",
             {setup, fun setup_vmq_reg_redis_trie/0, fun teardown/1, fun delete_complex_acl_test/1}},
         {"Complex ACL Test - Sub-topic whitelisting",
-            {setup, fun setup_vmq_reg_redis_trie/0, fun teardown/1, fun subtopic_subscribe_test/1}}
+            {setup, fun setup_vmq_reg_redis_trie/0, fun teardown/1, fun subtopic_subscribe_test/1}},
+        {"MQTT5 subscribe modifier shape", ?setup(fun mqtt5_subscribe_test/1)},
+        {"MQTT5 publish rate limit", ?setup(fun mqtt5_publish_rate_limit_test/1)}
     ].
 
 init_rate_limiter() ->
@@ -1011,6 +1054,49 @@ simple_acl(_) ->
             split_topic_label(<<"a/b label a b\n">>)
         )
     ].
+mqtt5_subscribe_test(_) ->
+    ACL = [
+        <<"user test\n">>,
+        <<"topic x/y/z label simple_read\n">>
+    ],
+    load_from_list(ACL),
+    Topics = [{[<<"x">>, <<"y">>, <<"z">>], {1, #{}}}],
+    [
+        ?_assertEqual(
+            {ok, #{topics => [{[<<"x">>, <<"y">>, <<"z">>], {1, #{}}}], properties => #{}}},
+            auth_on_subscribe_m5(<<"test">>, {"", <<"client-id">>}, Topics, #{})
+        ),
+        ?_assertEqual(
+            {ok, #{
+                topics => [{[<<"x">>, <<"y">>, <<"z">>], not_allowed}],
+                properties => #{p_user_property => [{<<"k">>, <<"v">>}]}
+            }},
+            auth_on_subscribe_m5(
+                <<"invalid-user">>,
+                {"", <<"client-id">>},
+                Topics,
+                #{p_user_property => [{<<"k">>, <<"v">>}]}
+            )
+        )
+    ].
+
+mqtt5_publish_rate_limit_test(_) ->
+    ACL = [
+        <<"user test\n">>,
+        <<"topic write x/y/z label simple_write\n">>
+    ],
+    load_from_list(ACL),
+    ets:insert(?RATE_CONFIG_TBL, {<<"simple_write">>, 1}),
+    Topic = [<<"x">>, <<"y">>, <<"z">>],
+    PublishArgs = [<<"test">>, {"", <<"client-id">>}, 1, Topic, <<"payload">>, false, #{}],
+    [
+        ?_assertMatch({ok, #{matched_acl := _}}, apply(?MODULE, auth_on_publish_m5, PublishArgs)),
+        ?_assertEqual(
+            {error, #{reason_code => quota_exceeded}},
+            apply(?MODULE, auth_on_publish_m5, PublishArgs)
+        )
+    ].
+
 delete_aged_acl_test(_) ->
     ACL = [
         <<"topic a/b/c label abc\n">>,
