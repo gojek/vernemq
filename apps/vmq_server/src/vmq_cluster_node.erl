@@ -293,7 +293,10 @@ handle_message(Msg, #state{node = Node, reachable = Reachable} = State) ->
 % tcp-over-ethernet MSS 1460
 -define(FLUSH_THRESHOLD, 0).
 maybe_flush(#state{pending = Pending} = State) ->
-    case iolist_size(Pending) >= ?FLUSH_THRESHOLD of
+    Threshold = vmq_config:get_env(
+        cluster_node_flush_threshold, ?FLUSH_THRESHOLD
+    ),
+    case iolist_size(Pending) >= Threshold of
         true ->
             internal_flush(State);
         false ->

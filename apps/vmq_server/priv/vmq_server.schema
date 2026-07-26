@@ -395,6 +395,16 @@
                                                                                             hidden
                                                                                            ]}.
 
+%% @doc specifies the pending buffer size in bytes at which outgoing cluster
+%% messages are flushed to the socket. 0 (default) flushes every frame
+%% immediately for lowest latency; a larger value (e.g. 1460) batches frames
+%% up to roughly one TCP segment to reduce syscalls at high message rates.
+{mapping, "cluster_node_flush_threshold", "vmq_server.cluster_node_flush_threshold", [
+                                                                                      {default, 0},
+                                                                                      {datatype, integer},
+                                                                                      hidden
+                                                                                     ]}.
+
 %% @doc specifies the timeout for enqueuing something in a queue on a remote node.
 {mapping, "remote_enqueue_timeout", "vmq_server.remote_enqueue_timeout", [
                                                                           {default, 5000},
