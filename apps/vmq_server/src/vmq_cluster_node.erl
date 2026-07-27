@@ -360,7 +360,7 @@ flush_pending_on_shutdown(
             lager:info("flushed ~p pending bytes to ~p on shutdown", [L, Node]),
             _ = vmq_metrics:incr_cluster_bytes_sent(V + L),
             _ = (catch shutdown_write(Transport, Socket)),
-            State#state{pending = []};
+            State#state{pending = [], bytes_send = {os:timestamp(), 0}};
         {error, Reason} ->
             lager:error(
                 "failed to flush ~p pending bytes to ~p on shutdown: ~p",
@@ -508,7 +508,9 @@ teardown(
         transport = Transport,
         async_connect_pid = AsyncPid,
         pending = Pending,
-        node = Node
+        node = Node,
+        bytes_send = {_, SentV},
+        bytes_dropped = {_, DroppedV}
     },
     Reason
 ) ->
@@ -525,6 +527,16 @@ teardown(
             _ = vmq_metrics:incr_cluster_msg_drop(teardown, Dropped),
             _ = lists:foreach(fun report_dropped_frame/1, Pending)
     end,
+    _ =
+        case SentV > 0 of
+            true -> vmq_metrics:incr_cluster_bytes_sent(SentV);
+            false -> ok
+        end,
+    _ =
+        case DroppedV > 0 of
+            true -> vmq_metrics:incr_cluster_bytes_dropped(DroppedV);
+            false -> ok
+        end,
     case Reason of
         normal ->
             lager:debug("remote node ~p handler normally stopped", [Node]);
