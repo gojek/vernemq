@@ -522,10 +522,11 @@ teardown(
         0 ->
             lager:debug("no pending messages to count, teardown complete"),
             ok;
-        Dropped ->
-            lager:warning("teardown with ~p pending messages, dropping them", [Dropped]),
-            _ = vmq_metrics:incr_cluster_msg_drop(teardown, Dropped),
-            _ = lists:foreach(fun report_dropped_frame/1, Pending)
+        Count ->
+            lager:warning(
+                "teardown with ~p pending messages, enqueueing them to Redis", [Count]
+            ),
+            _ = lists:foreach(fun(Frame) -> enqueue_pending_redis(Frame, Node) end, Pending)
     end,
     _ =
         case SentV > 0 of
@@ -548,15 +549,27 @@ teardown(
     close(Transport, Socket),
     ok.
 
-report_dropped_frame(<<"msg", L:32, Bin:L/binary>>) ->
+enqueue_pending_redis(<<"msg", L:32, Bin:L/binary>>, Node) ->
     try binary_to_term(Bin) of
         {InMsg, Subs} when is_list(Subs) ->
             Msg = vmq_cluster_com:to_vmq_msg(InMsg),
             lists:foreach(
-                fun({SubscriberId, _SubInfo}) ->
-                    catch vmq_reg:on_message_drop_hook(
-                        SubscriberId, Msg, pending_dropped_on_teardown
-                    )
+                fun({SubscriberId, SubInfo}) ->
+                    case
+                        vmq_state_store_backend:enqueue(
+                            Node,
+                            term_to_binary(SubscriberId),
+                            term_to_binary({SubInfo, Msg})
+                        )
+                    of
+                        ok ->
+                            ok;
+                        {error, _} = Err ->
+                            _ = vmq_metrics:incr_cluster_msg_drop(teardown, 1),
+                            catch vmq_reg:on_message_drop_hook(
+                                SubscriberId, Msg, {pending_redis_enqueue_failed, Err}
+                            )
+                    end
                 end,
                 Subs
             );
@@ -564,10 +577,12 @@ report_dropped_frame(<<"msg", L:32, Bin:L/binary>>) ->
             ignore
     catch
         Class:Reason ->
-            lager:warning("failed to decode dropped cluster frame: ~p:~p", [Class, Reason]),
+            lager:warning(
+                "failed to decode pending cluster frame on teardown: ~p:~p", [Class, Reason]
+            ),
             ignore
     end;
-report_dropped_frame(_Frame) ->
+enqueue_pending_redis(_Frame, _Node) ->
     ignore.
 
 system_continue(_, _, State) ->

@@ -464,11 +464,6 @@ publish_fold_fun(
         remote_subs = RemoteSubs
     } = Acc
 ) ->
-    % 1. In case RPC is ok irrespective of redis status we will send the message
-    %   (What will happen if redis is DOWN and client is offline on the remote node?)
-    % 2. If RPC is failed and redis false then we migrate and we won't wait Fall signal
-    % 3. RPC failed and redis true (there might be a network blip),
-    %    keep publishing, we should instrument this drop
     case vmq_cluster_mon:is_node_alive(Node) of
         true ->
             Acc#publish_fold_acc{
@@ -521,24 +516,27 @@ enqueue_msg({{_, _} = SubscriberId, SubInfo}, Msg0) ->
     end.
 
 publish_remote_subs(RemoteSubs, Msg, RemoteMatches0, DirectMessagePassing) ->
-    maps:fold(
-        fun(Node, Subs, RM) ->
+    maps:foreach(
+        fun(Node, Subs) ->
             case DirectMessagePassing of
                 true ->
                     case vmq_cluster:publish(Node, Subs, Msg) of
-                        ok ->
-                            RM + length(Subs);
+                        ok -> 
+                            ok;
                         {error, Reason} ->
                             lager:error(
                                 "direct publish to node ~p failed: ~p", [Node, Reason]
                             ),
                             lists:foreach(
-                                fun({SubscriberId, _SubInfo}) ->
-                                    on_message_drop_hook(SubscriberId, Msg, Reason)
+                                fun({SubscriberId, SubInfo}) ->
+                                    vmq_state_store_backend:enqueue(
+                                        Node,
+                                        term_to_binary(SubscriberId),
+                                        term_to_binary({SubInfo, Msg})
+                                    )
                                 end,
                                 Subs
-                            ),
-                            RM
+                            )
                     end;
                 false ->
                     lists:foreach(
@@ -550,13 +548,12 @@ publish_remote_subs(RemoteSubs, Msg, RemoteMatches0, DirectMessagePassing) ->
                             )
                         end,
                         Subs
-                    ),
-                    RM + length(Subs)
+                    )
             end
         end,
-        RemoteMatches0,
         RemoteSubs
-    ).
+    ),
+    RemoteMatches0 + lists:sum([length(S) || S <- maps:values(RemoteSubs)]).
 
 -spec enq_to_local_subs([{subscriber_id(), subinfo()}], msg()) -> ok.
 enq_to_local_subs(Subs, Msg) ->
