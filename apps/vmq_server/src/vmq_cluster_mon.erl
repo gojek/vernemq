@@ -139,6 +139,7 @@ handle_call(prepare_shutdown, _From, #state{timer = Tref} = State) ->
     _ = (catch erlang:cancel_timer(Tref)),
     Res = vmq_state_store_backend:deregister_node(),
     lager:info("cluster_mon preparing for shutdown, node deregister result: ~p", [Res]),
+    announce_membership_change(),
     {reply, ok, State#state{shutting_down = true, timer = undefined}};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -154,6 +155,17 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast({membership_changed, _FromNode}, #state{shutting_down = true} = State) ->
+    {noreply, State};
+handle_cast({membership_changed, FromNode}, #state{timer = Tref} = State) ->
+    case erlang:cancel_timer(Tref) of
+        false ->
+            {noreply, State};
+        _RemainingMs ->
+            lager:debug("membership change signalled by ~p, rechecking now", [FromNode]),
+            NewTRef = erlang:send_after(0, self(), recheck),
+            {noreply, State#state{timer = NewTRef}}
+    end;
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -247,4 +259,9 @@ filter_dead_nodes(Nodes, Fall) ->
         ok,
         ?VMQ_CLUSTER_STATUS
     ),
+    ok.
+
+announce_membership_change() ->
+    Peers = ?MODULE:nodes() -- [node()],
+    gen_server:abcast(Peers, ?MODULE, {membership_changed, node()}),
     ok.
