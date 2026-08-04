@@ -64,6 +64,7 @@ register_config_() ->
             "queue_sup_sup_max_r",
             "cache_shared_subscriptions_locally",
             "direct_message_passing",
+            "redis_queue_polling",
             "cluster_node_flush_threshold"
         ],
     _ = [

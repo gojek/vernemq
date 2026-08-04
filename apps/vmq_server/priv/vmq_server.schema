@@ -1943,3 +1943,14 @@
     {default, off},
     {datatype, flag}
 ]}.
+
+%% @doc Keeps draining this node's Redis main queue (and the main queues of dead
+%% nodes, via the reaper) even when 'direct_message_passing' is on. Must stay 'on'
+%% while direct message passing is being rolled out: nodes that are still on the
+%% legacy path keep enqueueing into this node's main queue, and those messages are
+%% stranded if nothing reads the key. Turn it off once every node has direct
+%% message passing enabled and the main queues have drained to zero.
+{mapping, "redis_queue_polling", "vmq_server.redis_queue_polling", [
+    {default, on},
+    {datatype, flag}
+]}.

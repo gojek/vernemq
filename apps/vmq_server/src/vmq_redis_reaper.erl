@@ -101,10 +101,10 @@ handle_info(
     } = State
 ) ->
     NextStep =
-        case vmq_config:get_env(direct_message_passing, false) of
-            true ->
-                reap_subscribers;
+        case vmq_config:get_env(redis_queue_polling, true) of
             false ->
+                reap_subscribers;
+            true ->
                 MainQueue = "mainQueue::" ++ atom_to_list(DeadNode),
                 lists:foldl(
                     fun(RedisClient, Acc) ->

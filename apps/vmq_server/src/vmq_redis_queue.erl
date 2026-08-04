@@ -108,10 +108,10 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info(poll_redis_main_queue, #state{shard = RedisNode, interval = Interval} = State) ->
     MainQueue = "mainQueue::" ++ atom_to_list(node()),
-    case application:get_env(vmq_server, direct_message_passing, false) of
-        true ->
-            erlang:send_after(Interval, self(), poll_redis_main_queue);
+    case application:get_env(vmq_server, redis_queue_polling, true) of
         false ->
+            erlang:send_after(Interval, self(), poll_redis_main_queue);
+        true ->
             case
                 vmq_redis:query(
                     RedisNode,
