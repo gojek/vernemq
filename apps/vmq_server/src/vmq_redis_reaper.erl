@@ -100,9 +100,8 @@ handle_info(
         interval = Interval
     } = State
 ) ->
-    NextStep =
-        MainQueue = "mainQueue::" ++ atom_to_list(DeadNode),
-    lists:foldl(
+    MainQueue = "mainQueue::" ++ atom_to_list(DeadNode),
+    NextStep = lists:foldl(
         fun(RedisClient, Acc) ->
             case
                 vmq_redis:query(
