@@ -101,7 +101,7 @@ handle_info(
     } = State
 ) ->
     NextStep =
-    MainQueue = "mainQueue::" ++ atom_to_list(DeadNode),
+        MainQueue = "mainQueue::" ++ atom_to_list(DeadNode),
     lists:foldl(
         fun(RedisClient, Acc) ->
             case

@@ -521,7 +521,7 @@ publish_remote_subs(RemoteSubs, Msg, RemoteMatches0, DirectMessagePassing) ->
             case DirectMessagePassing of
                 true ->
                     case vmq_cluster:publish(Node, Subs, Msg) of
-                        ok -> 
+                        ok ->
                             ok;
                         {error, Reason} ->
                             lager:error(

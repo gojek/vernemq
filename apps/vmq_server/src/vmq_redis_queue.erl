@@ -61,7 +61,13 @@ enqueue(Node, SubscriberBin, MsgBin) when is_binary(SubscriberBin) and is_binary
 init([RedisShard]) ->
     {ok, init_state(RedisShard, #state{})}.
 init_state(RedisShard, State) ->
-    Interval = application:get_env(vmq_server, redis_queue_sleep_interval, 0),
+    Interval =
+        case application:get_env(vmq_server, direct_message_passing, false) of
+            true ->
+                application:get_env(vmq_server, redis_queue_sleep_interval_dmp, 1000);
+            false ->
+                application:get_env(vmq_server, redis_queue_sleep_interval, 0)
+        end,
     NTRef = erlang:send_after(Interval, self(), poll_redis_main_queue),
     State#state{shard = RedisShard, interval = Interval, timer = NTRef}.
 
@@ -150,7 +156,7 @@ handle_info(poll_redis_main_queue, #state{shard = RedisNode, interval = Interval
             erlang:send_after(0, self(), poll_redis_main_queue);
         _ ->
             erlang:send_after(Interval, self(), poll_redis_main_queue)
-        end,
+    end,
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
