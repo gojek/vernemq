@@ -277,11 +277,7 @@ handle_message({'EXIT', AsyncPid, Reason}, #state{async_connect_pid = AsyncPid} 
             lager:warning("async connect to ~p died: ~p", [State#state.node, Reason]),
             close_reconnect(State)
     end;
-handle_message({'EXIT', _Pid, Reason}, #state{node = Node} = State) ->
-    lager:error(
-        "got unexpected EXIT for node ~p with reason ~p",
-        [Node, Reason]
-    ),
+handle_message({'EXIT', _Pid, _Reason}, State) ->
     State;
 handle_message(Msg, #state{node = Node, reachable = Reachable} = State) ->
     lager:error(
