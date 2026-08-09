@@ -101,6 +101,7 @@ handle_info(
     } = State
 ) ->
     MainQueue = "mainQueue::" ++ atom_to_list(DeadNode),
+
     NextStep = lists:foldl(
         fun(RedisClient, Acc) ->
             case
@@ -135,9 +136,7 @@ handle_info(
                                             {SubInfo, Msg} = binary_to_term(MsgBin),
                                             vmq_reg:enqueue_msg({SId, SubInfo}, Msg);
                                         RemoteNode ->
-                                            vmq_redis_queue:enqueue(
-                                                RemoteNode, SubBin, MsgBin
-                                            )
+                                            vmq_redis_queue:enqueue(RemoteNode, SubBin, MsgBin)
                                     end;
                                 RandSubs when is_list(RandSubs) ->
                                     vmq_shared_subscriptions:publish_to_group(
@@ -146,11 +145,7 @@ handle_info(
                                         {0, 0}
                                     );
                                 UnknownMsg ->
-                                    lager:error(
-                                        "Unknown Msg in Redis Main Queue : ~p", [
-                                            UnknownMsg
-                                        ]
-                                    )
+                                    lager:error("Unknown Msg in Redis Main Queue : ~p", [UnknownMsg])
                             end
                         end,
                         Msgs

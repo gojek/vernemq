@@ -245,21 +245,15 @@ handle_message({status, CallerPid, Ref}, #state{socket = Socket, reachable = Rea
     State;
 handle_message({system, From, Request}, #state{parent = Parent} = State) ->
     sys:handle_system_msg(Request, From, Parent, ?MODULE, [], State);
-handle_message({NetEvClosed, Socket}, #state{node = RemoteNode, socket = Socket} = State) when
-    NetEvClosed == tcp_closed;
-    NetEvClosed == ssl_closed
-->
+handle_message({tcp_closed, Socket}, #state{node = RemoteNode, socket = Socket} = State) ->
     lager:error(
         "connection to node ~p has been closed, reconnect in ~pms",
         [RemoteNode, ?RECONNECT]
     ),
     close_reconnect(State);
 handle_message(
-    {NetEvError, Socket, Reason}, #state{node = RemoteNode, socket = Socket} = State
-) when
-    NetEvError == tcp_error;
-    NetEvError == ssl_error
-->
+    {tcp_error, Socket, Reason}, #state{node = RemoteNode, socket = Socket} = State
+) ->
     lager:error(
         "connection to node ~p has been closed due to error ~p, reconnect in ~pms",
         [RemoteNode, Reason, ?RECONNECT]
@@ -393,13 +387,12 @@ connect_async(ParentPid, RemoteNode) ->
                 of
                     {ok, Socket} ->
                         % at least tune 'buffer'
-                        MaskedSocket = mask_socket(Transport, Socket),
-                        {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
+                        {ok, BufSizes} = inet:getopts(Socket, [sndbuf, recbuf, buffer]),
                         BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
-                        setopts(MaskedSocket, [{buffer, BufSize}]),
-                        case controlling_process(Transport, MaskedSocket, ParentPid) of
+                        inet:setopts(Socket, [{buffer, BufSize}]),
+                        case controlling_process(Transport, Socket, ParentPid) of
                             ok ->
-                                {ok, {Transport, MaskedSocket}};
+                                {ok, {Transport, Socket}};
                             {error, Reason} ->
                                 lager:debug("can't assign socket ownership to ~p due to ~p", [
                                     ParentPid, Reason
@@ -435,7 +428,7 @@ reconnect_timer() ->
 
 %% connect_params is called by a RPC
 -spec connect_params(node()) ->
-    {gen_tcp | ssl, inet:ip_address() | inet:hostname(), inet:port_number()}
+    {gen_tcp, inet:ip_address() | inet:hostname(), inet:port_number()}
     | {error, not_ready}.
 connect_params(_Node) ->
     case whereis(vmq_server_sup) of
@@ -444,59 +437,32 @@ connect_params(_Node) ->
             {error, not_ready};
         _ ->
             Listeners = vmq_config:get_env(listeners),
-            MaybeSSLConfig = proplists:get_value(vmqs, Listeners, []),
-            case connect_params(ssl, MaybeSSLConfig) of
-                no_config ->
-                    case proplists:get_value(vmq, Listeners) of
-                        undefined ->
-                            exit("can't connect to cluster node");
-                        Config ->
-                            connect_params(tcp, Config)
-                    end;
+            case proplists:get_value(vmq, Listeners) of
+                undefined ->
+                    exit("can't connect to cluster node");
                 Config ->
-                    Config
+                    connect_params(tcp, Config)
             end
     end.
-mask_socket(gen_tcp, Socket) -> Socket;
-mask_socket(ssl, Socket) -> {ssl, Socket}.
-getopts({ssl, Socket}, Opts) ->
-    ssl:getopts(Socket, Opts);
-getopts(Socket, Opts) ->
-    inet:getopts(Socket, Opts).
-
-setopts({ssl, Socket}, Opts) ->
-    ssl:setopts(Socket, Opts);
-setopts(Socket, Opts) ->
-    inet:setopts(Socket, Opts).
 
 connect_params(tcp, [{{Addr, Port}, _} | _]) ->
     {gen_tcp, Addr, Port};
-connect_params(ssl, [{{Addr, Port}, _} | _]) ->
-    {ssl, Addr, Port};
-connect_params(_, []) ->
+connect_params(tcp, []) ->
     no_config.
 
 send(gen_tcp, Socket, Msg) ->
-    gen_tcp:send(Socket, Msg);
-send(ssl, {'ssl', Socket}, Msg) ->
-    ssl:send(Socket, Msg).
+    gen_tcp:send(Socket, Msg).
 
 close(_, undefined) -> ok;
-close(gen_tcp, Socket) -> gen_tcp:close(Socket);
-close(ssl, {'ssl', Socket}) -> ssl:close(Socket).
+close(gen_tcp, Socket) -> gen_tcp:close(Socket).
 
-shutdown_write(gen_tcp, Socket) -> gen_tcp:shutdown(Socket, write);
-shutdown_write(ssl, {'ssl', Socket}) -> ssl:shutdown(Socket, write).
+shutdown_write(gen_tcp, Socket) -> gen_tcp:shutdown(Socket, write).
 
 connect(gen_tcp, Host, Port, Opts, Timeout) ->
-    gen_tcp:connect(Host, Port, Opts, Timeout);
-connect(ssl, Host, Port, Opts, Timeout) ->
-    ssl:connect(Host, Port, Opts, Timeout).
+    gen_tcp:connect(Host, Port, Opts, Timeout).
 
 controlling_process(gen_tcp, Socket, Pid) ->
-    gen_tcp:controlling_process(Socket, Pid);
-controlling_process(ssl, {'ssl', Socket}, Pid) ->
-    ssl:controlling_process(Socket, Pid).
+    gen_tcp:controlling_process(Socket, Pid).
 
 teardown(
     #state{

@@ -33,7 +33,6 @@ init(Ref, Transport, Opts) ->
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_redis_trie),
 
     process_flag(trap_exit, true),
-    MaskedSocket = mask_socket(Transport, Socket),
     %% tune buffer sizes
     CfgBufSizes = proplists:get_value(buffer_sizes, Opts, undefined),
     HighWatermark = proplists:get_value(high_watermark, Opts, 8192),
@@ -42,22 +41,22 @@ init(Ref, Transport, Opts) ->
     LowMsgQWatermark = proplists:get_value(low_msgq_watermark, Opts, 4096),
     case CfgBufSizes of
         undefined ->
-            {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
+            {ok, BufSizes} = inet:getopts(Socket, [sndbuf, recbuf, buffer]),
             BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
-            setopts(MaskedSocket, [{buffer, BufSize}]);
+            inet:setopts(Socket, [{buffer, BufSize}]);
         [SndBuf, RecBuf, Buffer] ->
-            setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}])
+            inet:setopts(Socket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}])
     end,
-    setopts(MaskedSocket, [
+    inet:setopts(Socket, [
         {high_watermark, HighWatermark},
         {low_watermark, LowWatermark},
         {high_msgq_watermark, HighMsgQWatermark},
         {low_msgq_watermark, LowMsgQWatermark}
     ]),
-    case active_once(MaskedSocket) of
+    case active_once(Socket) of
         ok ->
             loop(#st{
-                socket = MaskedSocket,
+                socket = Socket,
                 reg_view = RegView,
                 proto_tag = proto_tag(Transport)
             });
@@ -65,11 +64,7 @@ init(Ref, Transport, Opts) ->
             exit(Reason)
     end.
 
-proto_tag(ranch_tcp) -> {tcp, tcp_closed, tcp_error};
-proto_tag(ranch_ssl) -> {ssl, ssl_closed, ssl_error}.
-
-mask_socket(ranch_tcp, Socket) -> Socket;
-mask_socket(ranch_ssl, Socket) -> {ssl, Socket}.
+proto_tag(ranch_tcp) -> {tcp, tcp_closed, tcp_error}.
 
 loop(#st{} = State) ->
     receive
@@ -83,31 +78,15 @@ loop({exit, Reason, _State}) ->
         _ -> lager:warning("terminate due to ~p", [Reason])
     end.
 
-active_once({ssl, Socket}) ->
-    ssl:setopts(Socket, [{active, once}]);
 active_once(Socket) ->
     inet:setopts(Socket, [{active, once}]).
-
-getopts({ssl, Socket}, Opts) ->
-    ssl:getopts(Socket, Opts);
-getopts(Socket, Opts) ->
-    inet:getopts(Socket, Opts).
-
-setopts({ssl, Socket}, Opts) ->
-    ssl:setopts(Socket, Opts);
-setopts(Socket, Opts) ->
-    inet:setopts(Socket, Opts).
 
 shutdown(Socket) ->
     gen_tcp:shutdown(Socket, write).
 
-close({ssl, Socket}) ->
-    ssl:close(Socket);
 close(Socket) ->
     gen_tcp:close(Socket).
 
-recv({ssl, Socket}, Length, Timeout) ->
-    ssl:recv(Socket, Length, Timeout);
 recv(Socket, Length, Timeout) ->
     gen_tcp:recv(Socket, Length, Timeout).
 
@@ -175,7 +154,7 @@ close_connection(#st{socket = Socket} = State) ->
 -define(DRAIN_RECV_TIMEOUT_MS, 200).
 
 drain(#st{socket = Socket, proto_tag = {Proto, _, _}} = State0) ->
-    _ = setopts(Socket, [{active, false}]),
+    _ = inet:setopts(Socket, [{active, false}]),
     Deadline = erlang:monotonic_time(millisecond) + ?DRAIN_DEADLINE_MS,
     lager:error("draining cluster com socket"),
     {State, Acc0} = drain_mailbox(Proto, State0, {0, 0}),
