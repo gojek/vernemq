@@ -13,6 +13,7 @@
     fetch_subscriber/2,
     fetch_matched_topic_subscribers/2,
     get_live_nodes/0,
+    deregister_node/0,
     ensure_no_local_client/0,
     msg_store_write/2,
     msg_store_read/2,
@@ -172,6 +173,14 @@ get_live_nodes() ->
 
 ensure_no_local_client() ->
     vmq_redis:query(vmq_redis_client, ["SCARD", node()], ?SCARD, ?ENSURE_NO_LOCAL_CLIENT).
+
+deregister_node() ->
+    vmq_redis:query(
+        vmq_redis_client,
+        ["ZREM", "cluster", node()],
+        ?ZREM,
+        ?DEREGISTER_NODE
+    ).
 
 %%%===================================================================
 %%% Message Store

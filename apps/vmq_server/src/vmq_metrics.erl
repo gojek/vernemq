@@ -79,6 +79,13 @@
 
     incr_router_matches_local/1,
     incr_router_matches_remote/1,
+    incr_cluster_bytes_dropped/1,
+    incr_cluster_bytes_sent/1,
+    incr_cluster_bytes_received/1,
+    incr_cluster_msg_drop/1,
+    incr_cluster_msg_drop/2,
+    incr_cluster_drain_bytes/1,
+    incr_cluster_drain_messages/1,
     pretimed_measurement/2,
 
     incr_redis_cmd/1,
@@ -165,6 +172,27 @@ incr_bytes_received(V) ->
 
 incr_bytes_sent(V) ->
     incr_item(?METRIC_BYTES_SENT, V).
+
+incr_cluster_bytes_dropped(V) ->
+    incr_item(?METRIC_CLUSTER_BYTES_DROPPED, V).
+
+incr_cluster_bytes_sent(V) ->
+    incr_item(?METRIC_CLUSTER_BYTES_SENT, V).
+
+incr_cluster_bytes_received(V) ->
+    incr_item(?METRIC_CLUSTER_BYTES_RECEIVED, V).
+
+incr_cluster_msg_drop(Reason) ->
+    incr_cluster_msg_drop(Reason, 1).
+
+incr_cluster_msg_drop(Reason, V) ->
+    incr_item({?METRIC_CLUSTER_MSG_DROP, Reason}, V).
+
+incr_cluster_drain_bytes(V) ->
+    incr_item(?METRIC_CLUSTER_DRAIN_BYTES, V).
+
+incr_cluster_drain_messages(V) ->
+    incr_item(?METRIC_CLUSTER_DRAIN_MESSAGES, V).
 
 incr_mqtt_connect_received() ->
     incr_item(?MQTT4_CONNECT_RECEIVED, 1).
@@ -910,6 +938,7 @@ internal_defs() ->
     flatten(
         [
             counter_entries_def(),
+            cluster_msg_drop_def(),
             mqtt4_connack_sent_def(),
             mqtt5_disconnect_recv_def(),
             mqtt5_disconnect_sent_def(),
@@ -1061,6 +1090,27 @@ redis_def() ->
                 counter,
                 [{cmd, rcn_to_str(?SCARD)}, {operation, rcn_to_str(?ENSURE_NO_LOCAL_CLIENT)}],
                 {?REDIS_CMD_MISS, ?SCARD, ?ENSURE_NO_LOCAL_CLIENT},
+                redis_cmd_miss_total,
+                <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>
+            ),
+            m(
+                counter,
+                [{cmd, rcn_to_str(?ZREM)}, {operation, rcn_to_str(?DEREGISTER_NODE)}],
+                {?REDIS_CMD, ?ZREM, ?DEREGISTER_NODE},
+                redis_cmd_total,
+                <<"The number of redis cmd calls.">>
+            ),
+            m(
+                counter,
+                [{cmd, rcn_to_str(?ZREM)}, {operation, rcn_to_str(?DEREGISTER_NODE)}],
+                {?REDIS_CMD_ERROR, ?ZREM, ?DEREGISTER_NODE},
+                redis_cmd_error_total,
+                <<"The number of times redis cmd call failed.">>
+            ),
+            m(
+                counter,
+                [{cmd, rcn_to_str(?ZREM)}, {operation, rcn_to_str(?DEREGISTER_NODE)}],
+                {?REDIS_CMD_MISS, ?ZREM, ?DEREGISTER_NODE},
                 redis_cmd_miss_total,
                 <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>
             )
@@ -1657,6 +1707,41 @@ counter_entries_def() ->
             ?METRIC_NOOP_ENQUEUE,
             noop_enqueue,
             <<"The number of times a message enqueue operation was triggered from noop operations.">>
+        ),
+        m(
+            counter,
+            [],
+            ?METRIC_CLUSTER_BYTES_DROPPED,
+            cluster_bytes_dropped,
+            <<"The number of bytes dropped when forwarding to a cluster node.">>
+        ),
+        m(
+            counter,
+            [],
+            ?METRIC_CLUSTER_BYTES_SENT,
+            cluster_bytes_sent,
+            <<"The number of bytes sent to other cluster nodes.">>
+        ),
+        m(
+            counter,
+            [],
+            ?METRIC_CLUSTER_BYTES_RECEIVED,
+            cluster_bytes_received,
+            <<"The number of bytes received from other cluster nodes.">>
+        ),
+        m(
+            counter,
+            [],
+            ?METRIC_CLUSTER_DRAIN_BYTES,
+            ?METRIC_CLUSTER_DRAIN_BYTES,
+            <<"The number of in-flight bytes drained from inbound cluster connections during connection close.">>
+        ),
+        m(
+            counter,
+            [],
+            ?METRIC_CLUSTER_DRAIN_MESSAGES,
+            ?METRIC_CLUSTER_DRAIN_MESSAGES,
+            <<"The number of in-flight messages routed (instead of dropped) while draining inbound cluster connections during connection close.">>
         )
     ].
 
@@ -1672,6 +1757,19 @@ flatten([H | T], Acc) ->
 rcn_to_str(RNC) ->
     %% TODO: replace this with a real textual representation
     atom_to_list(RNC).
+
+cluster_msg_drop_def() ->
+    Reasons = [send_buffer_full, teardown, remote_node_pid_not_found],
+    [
+        m(
+            counter,
+            [{reason, atom_to_list(Reason)}],
+            {?METRIC_CLUSTER_MSG_DROP, Reason},
+            ?METRIC_CLUSTER_MSG_DROP,
+            <<"The number of messages dropped on the outgoing cluster path, labelled by reason.">>
+        )
+     || Reason <- Reasons
+    ].
 
 mqtt_disconnect_def() ->
     RCNs =
@@ -2745,7 +2843,18 @@ met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?DELETE_SUBS_OFFLINE_MESSAGES}) -> 374;
 met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?DELETE_SUBS_OFFLINE_MESSAGES}) -> 375;
 met2idx(?METRIC_NOOP_ENQUEUE) -> 376;
 met2idx({?SIDECAR_EVENTS, ?ON_REGISTER_FAILED}) -> 377;
-met2idx({?SIDECAR_EVENTS_ERROR, ?ON_REGISTER_FAILED}) -> 378.
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_REGISTER_FAILED}) -> 378;
+met2idx(?METRIC_CLUSTER_BYTES_DROPPED) -> 379;
+met2idx(?METRIC_CLUSTER_BYTES_SENT) -> 380;
+met2idx(?METRIC_CLUSTER_BYTES_RECEIVED) -> 381;
+met2idx({?METRIC_CLUSTER_MSG_DROP, send_buffer_full}) -> 382;
+met2idx({?METRIC_CLUSTER_MSG_DROP, teardown}) -> 383;
+met2idx({?METRIC_CLUSTER_MSG_DROP, remote_node_pid_not_found}) -> 384;
+met2idx(?METRIC_CLUSTER_DRAIN_MESSAGES) -> 385;
+met2idx(?METRIC_CLUSTER_DRAIN_BYTES) -> 386;
+met2idx({?REDIS_CMD, ?ZREM, ?DEREGISTER_NODE}) -> 387;
+met2idx({?REDIS_CMD_ERROR, ?ZREM, ?DEREGISTER_NODE}) -> 388;
+met2idx({?REDIS_CMD_MISS, ?ZREM, ?DEREGISTER_NODE}) -> 389.
 
 -ifdef(TEST).
 clear_stored_rates() ->

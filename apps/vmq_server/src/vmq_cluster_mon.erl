@@ -21,7 +21,8 @@
     start_link/0,
     nodes/0,
     status/0,
-    is_node_alive/1
+    is_node_alive/1,
+    prepare_shutdown/0
 ]).
 
 %% gen_server callbacks
@@ -34,12 +35,11 @@
     code_change/3
 ]).
 
--include("vmq_server.hrl").
-
 -record(state, {
     fall = 3,
     timer = undefined,
-    recheck_interval = 500
+    recheck_interval = 500,
+    shutting_down = false
 }).
 -define(VMQ_CLUSTER_STATUS, vmq_status).
 
@@ -81,6 +81,10 @@ is_node_alive(Node) ->
         _:_ ->
             false
     end.
+
+-spec prepare_shutdown() -> ok.
+prepare_shutdown() ->
+    gen_server:call(?MODULE, prepare_shutdown, 5000).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -131,6 +135,11 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(prepare_shutdown, _From, #state{timer = Tref} = State) ->
+    _ = (catch erlang:cancel_timer(Tref)),
+    Res = vmq_state_store_backend:deregister_node(),
+    lager:info("cluster_mon preparing for shutdown, node deregister result: ~p", [Res]),
+    {reply, ok, State#state{shutting_down = true, timer = undefined}};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -158,6 +167,8 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info(recheck, #state{shutting_down = true} = State) ->
+    {noreply, State};
 handle_info(recheck, State) ->
     case vmq_state_store_backend:get_live_nodes() of
         {ok, LiveNodes} when is_list(LiveNodes) ->
@@ -211,6 +222,7 @@ update_cluster_status([], Acc) ->
 update_cluster_status([BNode | Rest], Acc) ->
     Node = binary_to_atom(BNode),
     vmq_state_store_backend:del_reaper(Node),
+    vmq_cluster_node_sup:ensure_cluster_node(Node),
     ets:insert(?VMQ_CLUSTER_STATUS, {Node, true, 0}),
     update_cluster_status(Rest, [Node | Acc]).
 
@@ -222,6 +234,7 @@ filter_dead_nodes(Nodes, Fall) ->
                     ok;
                 false when FailedAttempts > Fall ->
                     %% Node is not part of the cluster anymore
+                    _ = vmq_cluster_node_sup:del_cluster_node(Node),
                     lager:warning("trigger reaper for node ~p", [Node]),
                     vmq_state_store_backend:ensure_reaper(Node),
                     ets:delete(?VMQ_CLUSTER_STATUS, Node);

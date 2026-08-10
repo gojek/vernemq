@@ -159,7 +159,6 @@ handle_info(
         reap_subscribers,
         ShardClients
     ),
-
     erlang:send_after(Interval, self(), NextStep),
     {noreply, State};
 handle_info(

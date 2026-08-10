@@ -82,7 +82,9 @@
 -define(MIGRATE_OFFLINE_QUEUE, migrate_offline_queue).
 -define(REAP_SUBSCRIBERS, reap_subscribers).
 -define(SCARD, scard).
+-define(ZREM, zrem).
 -define(ENSURE_NO_LOCAL_CLIENT, ensure_no_local_client).
+-define(DEREGISTER_NODE, deregister_node).
 -define(WRITE_OFFLINE_MESSAGE, write_offline_message).
 -define(POP_OFFLINE_MESSAGE, pop_offline_message).
 -define(DELETE_SUBS_OFFLINE_MESSAGES, delete_subs_offline_messages).

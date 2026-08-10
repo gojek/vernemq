@@ -240,10 +240,6 @@ encode({on_session_expired, Timestamp, {MP, ClientId, SessionId}}) ->
 encode(
     {on_register_failed, Timestamp, {MP, ClientId, PPeer, Port, UserName, CleanSession, Reason}}
 ) ->
-    lager:info(
-        "Encoding OnRegisterFailed event: MP=~p, ClientId=~p, Peer=~p, Port=~p, UserName=~p, CleanSession=~p, Reason=~p",
-        [MP, ClientId, PPeer, Port, UserName, CleanSession, Reason]
-    ),
     encode_envelope(
         "OnRegisterFailed",
         on_register_failed_pb:encode_msg(#'eventssidecar.v1.OnRegisterFailed'{

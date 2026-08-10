@@ -17,7 +17,7 @@
 -behaviour(application).
 
 %% Application callbacks
--export([start/2, stop/1]).
+-export([start/2, prep_stop/1, stop/1]).
 
 -define(DELAYED_PUBACK_TBL, vmq_delayed_puback_table).
 
@@ -69,6 +69,11 @@ start_user_plugin(
         {error, Reason} ->
             lager:warning("could not start plugin ~p due to ~p", [PluginName, Reason])
     end.
+
+-spec prep_stop(_) -> _.
+prep_stop(State) ->
+    _ = (catch vmq_cluster_mon:prepare_shutdown()),
+    State.
 
 -spec stop(_) -> 'ok'.
 stop(_State) ->

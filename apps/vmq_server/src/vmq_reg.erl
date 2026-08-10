@@ -47,6 +47,8 @@
     migrate_offline_queue/2
 ]).
 
+-export([enq_to_local_subs/2, on_message_drop_hook/3]).
+
 %% used from plugins
 -export([
     direct_plugin_exports/1,
@@ -69,7 +71,9 @@
     msg :: msg(),
     subscriber_groups = undefined :: undefined | map(),
     local_matches = 0 :: non_neg_integer(),
-    remote_matches = 0 :: non_neg_integer()
+    remote_matches = 0 :: non_neg_integer(),
+    remote_subs = #{} :: #{node() => [{subscriber_id(), subinfo()}]},
+    direct_message_passing = false :: boolean()
 }).
 
 -define(NR_OF_REG_RETRIES, 10).
@@ -412,20 +416,27 @@ publish_fold_wrapper(
         mountpoint = MP
     } = Msg
 ) ->
-    Acc = #publish_fold_acc{msg = Msg},
+    Acc = #publish_fold_acc{
+        msg = Msg,
+        direct_message_passing = vmq_config:get_env(direct_message_passing, false)
+    },
     case vmq_reg_view:fold(RegView, {MP, ClientId}, Topic, fun publish_fold_fun/3, Acc) of
         #publish_fold_acc{
             msg = NewMsg,
             subscriber_groups = SubscriberGroups,
             local_matches = LocalMatches0,
-            remote_matches = RemoteMatches0
+            remote_matches = RemoteMatches0,
+            remote_subs = RemoteSubs,
+            direct_message_passing = DirectMessagePassing
         } ->
-            {LocalMatches1, RemoteMatches1} = vmq_shared_subscriptions:publish(
-                NewMsg, SGPolicy, SubscriberGroups, LocalMatches0, RemoteMatches0
+            RemoteMatches1 =
+                publish_remote_subs(RemoteSubs, NewMsg, RemoteMatches0, DirectMessagePassing),
+            {LocalMatches1, RemoteMatches2} = vmq_shared_subscriptions:publish(
+                NewMsg, SGPolicy, SubscriberGroups, LocalMatches0, RemoteMatches1
             ),
             vmq_metrics:incr_router_matches_local(LocalMatches1),
-            vmq_metrics:incr_router_matches_remote(RemoteMatches1),
-            {ok, {LocalMatches1, RemoteMatches1}};
+            vmq_metrics:incr_router_matches_remote(RemoteMatches2),
+            {ok, {LocalMatches1, RemoteMatches2}};
         {error, _} = Err ->
             Err
     end.
@@ -450,44 +461,21 @@ publish_fold_fun(
     {Node, SubscriberId, SubInfo},
     FromClientId,
     #publish_fold_acc{
-        remote_matches = RN,
-        msg = Msg
+        remote_subs = RemoteSubs
     } = Acc
 ) ->
     case vmq_cluster_mon:is_node_alive(Node) of
         true ->
-            vmq_state_store_backend:enqueue(
-                Node, term_to_binary(SubscriberId), term_to_binary({SubInfo, Msg})
-            ),
-            Acc#publish_fold_acc{remote_matches = RN + 1};
-        _ ->
-            %% Transfer the client on local node if the remote node is not alive.
-            %% It could happen that the client has reconnected to the cluster before we
-            %% can transfer it here. In that case, we should enqueue the msg there without local Xfer.
-            %% In case the client has not yet reconnected, then remap(Xfer) it here and enqueue.
-            %%
-            %% The question is how do we know whether the client reconnected or not in this case?
-            %% The source of truth is redis and this operation must be atomic on redis. When we
-            %% attempt to Xfer the client here, checking on redis for old node comparsion is a must
-            %% before redis remap operations are performed. In case the node value is unaffected node
-            %% then continue with remap otherwise return and initiate the enqueue op on the new
-            %% node's mainQueue.
-            %%
-            %% What is the time period in which this specific case is true?
-            %% It is when node is down, publish happened, subscriber info was fetched from redis
-            %% and before we Xfer it here, the client reconnects/Xfered elsewhere.
-            %% Probability of such msgs will be --
-            %% Until the complete Xfer happens - msg rate * vulnerable clients / total clients
-            %% And the above figure is upper bound
-            %%
-            %%
-            %%
-            %% Now to migrate the client from remote node, the following operations need to be performed.
-            %% 1. Start the queue with clean session false
-            %% 2. Migrate client on Redis - If the client had connected with clean session true, then
-            %% delete its entry and return nil. Otherwise change its node name and return true.
-            %% 3. If the result was undefined then terminate the queue otherwise initialize offline queue
-            %% and then enqueue.
+            Acc#publish_fold_acc{
+                remote_subs = maps:update_with(
+                    Node,
+                    fun(Subs) -> [{SubscriberId, SubInfo} | Subs] end,
+                    [{SubscriberId, SubInfo}],
+                    RemoteSubs
+                )
+            };
+        false ->
+            %% Node not in cluster status — migrate the offline queue to this node.
             case migrate_offline_queue(SubscriberId, Node) of
                 {error, _} ->
                     Acc;
@@ -515,7 +503,9 @@ publish_fold_fun(
 enqueue_msg({{_, _} = SubscriberId, SubInfo}, Msg0) ->
     case get_queue_pid(SubscriberId) of
         not_found ->
-            vmq_metrics:incr_msg_enqueue_subscriber_not_found();
+            vmq_metrics:incr_msg_enqueue_subscriber_not_found(),
+            _ = on_message_drop_hook(SubscriberId, Msg0, subscriber_not_found_on_enqueue),
+            ok;
         QPid ->
             Msg1 = handle_rap_flag(SubInfo, Msg0),
             Msg2 = maybe_add_sub_id(SubInfo, Msg1),
@@ -524,6 +514,69 @@ enqueue_msg({{_, _} = SubscriberId, SubInfo}, Msg0) ->
             QoS = qos(SubInfo),
             ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg4})
     end.
+
+publish_remote_subs(RemoteSubs, Msg, RemoteMatches0, DirectMessagePassing) ->
+    maps:foreach(
+        fun(Node, Subs) ->
+            case DirectMessagePassing of
+                true ->
+                    case vmq_cluster:publish(Node, Subs, Msg) of
+                        ok ->
+                            ok;
+                        {error, Reason} ->
+                            lager:error(
+                                "direct publish to node ~p failed: ~p", [Node, Reason]
+                            ),
+                            lists:foreach(
+                                fun({SubscriberId, SubInfo}) ->
+                                    vmq_state_store_backend:enqueue(
+                                        Node,
+                                        term_to_binary(SubscriberId),
+                                        term_to_binary({SubInfo, Msg})
+                                    )
+                                end,
+                                Subs
+                            )
+                    end;
+                false ->
+                    lists:foreach(
+                        fun({SubscriberId, SubInfo}) ->
+                            vmq_state_store_backend:enqueue(
+                                Node,
+                                term_to_binary(SubscriberId),
+                                term_to_binary({SubInfo, Msg})
+                            )
+                        end,
+                        Subs
+                    )
+            end
+        end,
+        RemoteSubs
+    ),
+    RemoteMatches0 + lists:sum([length(S) || S <- maps:values(RemoteSubs)]).
+
+-spec enq_to_local_subs([{subscriber_id(), subinfo()}], msg()) -> ok.
+enq_to_local_subs(Subs, Msg) ->
+    lists:foreach(fun(Sub) -> enqueue_msg(Sub, Msg) end, Subs).
+
+-spec on_message_drop_hook(subscriber_id(), msg(), any()) -> any().
+on_message_drop_hook(
+    SubscriberId,
+    #vmq_msg{
+        routing_key = RoutingKey,
+        qos = QoS,
+        payload = Payload,
+        properties = Props,
+        acl_name = AclName
+    },
+    Reason
+) ->
+    vmq_plugin:all(on_message_drop, [
+        SubscriberId,
+        fun() -> {RoutingKey, QoS, Payload, Props, #matched_acl{name = AclName}} end,
+        Reason,
+        undefined
+    ]).
 
 maybe_set_expiry_ts(#{p_message_expiry_interval := ExpireAfter}) ->
     {vmq_time:timestamp(second) + ExpireAfter, ExpireAfter};
