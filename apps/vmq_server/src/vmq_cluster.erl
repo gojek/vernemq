@@ -5,8 +5,7 @@
 -export([
     publish/3,
     remote_enqueue/3,
-    remote_enqueue/4,
-    remote_enqueue_async/3
+    remote_enqueue/4
 ]).
 
 %%%===================================================================
@@ -50,12 +49,4 @@ remote_enqueue(Node, Term, BufferIfUnreachable, Timeout) ->
             {error, remote_node_pid_not_found};
         {ok, Pid} ->
             vmq_cluster_node:enqueue(Pid, Term, BufferIfUnreachable, Timeout)
-    end.
-
-remote_enqueue_async(Node, Term, BufferIfUnreachable) ->
-    case vmq_cluster_node_sup:get_cluster_node(Node) of
-        {error, not_found} ->
-            {error, remote_node_pid_not_found};
-        {ok, Pid} ->
-            vmq_cluster_node:enqueue_async(Pid, Term, BufferIfUnreachable)
     end.

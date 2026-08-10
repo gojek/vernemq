@@ -15,7 +15,6 @@
 -record(st, {
     socket,
     parser_state,
-    reg_view,
     proto_tag,
     bytes_recv = {os:timestamp(), 0}
 }).
@@ -29,8 +28,6 @@ start_link(Ref, Transport, Opts) ->
     {ok, Pid}.
 init(Ref, Transport, Opts) ->
     {ok, Socket} = ranch:handshake(Ref),
-
-    RegView = vmq_config:get_env(default_reg_view, vmq_reg_redis_trie),
 
     process_flag(trap_exit, true),
     %% tune buffer sizes
@@ -57,7 +54,6 @@ init(Ref, Transport, Opts) ->
         ok ->
             loop(#st{
                 socket = Socket,
-                reg_view = RegView,
                 proto_tag = proto_tag(Transport)
             });
         {error, Reason} ->

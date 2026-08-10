@@ -62,7 +62,7 @@ init([RedisShard]) ->
     {ok, init_state(RedisShard, #state{})}.
 init_state(RedisShard, State) ->
     Interval =
-        case application:get_env(vmq_server, direct_message_passing, false) of
+        case vmq_config:get_env(direct_message_passing, false) of
             true ->
                 application:get_env(vmq_server, redis_queue_sleep_interval_dmp, 1000);
             false ->

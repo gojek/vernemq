@@ -36,8 +36,13 @@ ensure_cluster_node(Node) when Node == node() ->
 ensure_cluster_node(Node) ->
     case get_cluster_node(Node) of
         {error, not_found} ->
-            {ok, _} = supervisor:start_child(?MODULE, child_spec(Node)),
-            ok;
+            case supervisor:start_child(?MODULE, child_spec(Node)) of
+                {ok, _} ->
+                    ok;
+                {error, Reason} ->
+                    lager:error("cannot start cluster node ~p: ~p", [Node, Reason]),
+                    {error, Reason}
+            end;
         {ok, _} ->
             ok
     end.
