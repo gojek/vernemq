@@ -44,7 +44,7 @@ send_event(HookName, #'Any'{type_url = TypeUrl, value = Value}) ->
         #'webhook.v1beta1.EventRequest'{event = GrpcAny}
     ),
     UserType = persistent_term:get(?GRPC_USER_TYPE, <<"default">>),
-    Timeout = persistent_term:get(?GRPC_TIMEOUT, 1500),
+    Timeout = persistent_term:get(?GRPC_TIMEOUT, 500),
     Metadata = #{<<"user-type">> => UserType},
     Def = #{
         path => ?SERVICE_PATH,
@@ -80,9 +80,7 @@ send_event(HookName, #'Any'{type_url = TypeUrl, value = Value}) ->
         {error, Reason} ->
             vmq_events_sidecar_metrics:incr_grpc_call_result(HookName, classify_error(Reason)),
             {error, Reason}
-    end;
-send_event(_HookName, _) ->
-    ok.
+    end.
 
 classify_error({StatusName, _Message}) when is_atom(StatusName) ->
     StatusName;
