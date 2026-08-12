@@ -50,19 +50,12 @@ send_event(HookName, #'Any'{type_url = TypeUrl, value = Value}) ->
         path => ?SERVICE_PATH,
         service => 'webhook.v1beta1.PluginService',
         message_type => <<"webhook.v1beta1.EventRequest">>,
-        marshal => fun(X) -> X end,
+        marshal => fun(#{encoded := Bin}) -> Bin end,
         unmarshal => fun(_X) -> #{} end
     },
     Ts1 = vmq_util:ts(),
     Result = grpc_client:unary(
-        Def,
-        EventRequestBin,
-        Metadata,
-        #{
-            channel => ?GRPC_CHANNEL,
-            timeout => Timeout,
-            key_dispatch => erlang:unique_integer()
-        }
+        Def, #{encoded => EventRequestBin}, Metadata, unary_opts(Timeout)
     ),
     Ts2 = vmq_util:ts(),
     HookLabel = atom_to_list(HookName),
@@ -71,9 +64,6 @@ send_event(HookName, #'Any'{type_url = TypeUrl, value = Value}) ->
         Ts2 - Ts1
     ),
     case Result of
-        {ok, _Response} ->
-            vmq_events_sidecar_metrics:incr_grpc_call_result(HookName, ok),
-            ok;
         {ok, _Response, _Metadata} ->
             vmq_events_sidecar_metrics:incr_grpc_call_result(HookName, ok),
             ok;
@@ -81,6 +71,14 @@ send_event(HookName, #'Any'{type_url = TypeUrl, value = Value}) ->
             vmq_events_sidecar_metrics:incr_grpc_call_result(HookName, classify_error(Reason)),
             {error, Reason}
     end.
+
+-spec unary_opts(non_neg_integer()) -> map().
+unary_opts(Timeout) ->
+    maps:from_list([
+        {channel, ?GRPC_CHANNEL},
+        {timeout, Timeout},
+        {key_dispatch, erlang:unique_integer()}
+    ]).
 
 classify_error({StatusName, _Message}) when is_atom(StatusName) ->
     StatusName;
