@@ -728,23 +728,7 @@ convert_subscriber_id(Modifiers) ->
         _ ->
             Modifiers
     end.
--spec all(hook_name(), [
-    {
-        'addr'
-        | 'client_id'
-        | 'mountpoint'
-        | 'payload'
-        | 'port'
-        | 'properties'
-        | 'qos'
-        | 'retain'
-        | 'topic'
-        | 'topics'
-        | 'username',
-        _
-    },
-    ...
-]) -> 'next'.
+-spec all(hook_name(), [{atom(), _}, ...]) -> 'next'.
 all(HookName, Args) ->
     case ets:lookup(?TBL, HookName) of
         [] ->
@@ -753,28 +737,7 @@ all(HookName, Args) ->
             all(Endpoints, HookName, Args)
     end.
 
--spec all(
-    [_],
-    hook_name(),
-    [
-        {
-            'addr'
-            | 'client_id'
-            | 'mountpoint'
-            | 'payload'
-            | 'port'
-            | 'properties'
-            | 'qos'
-            | 'retain'
-            | 'topic'
-            | 'topics'
-            | 'username',
-            _
-        },
-        ...
-    ]
-) ->
-    'next'.
+-spec all([_], hook_name(), [{atom(), _}, ...]) -> 'next'.
 all([{Endpoint, EOpts} | Rest], HookName, Args) ->
     _ = call_endpoint(Endpoint, EOpts, HookName, Args),
     all(Rest, HookName, Args);
