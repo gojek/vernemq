@@ -28,7 +28,8 @@ register_config() ->
             "vmq_events_sidecar.grpc_port",
             "vmq_events_sidecar.grpc_pool_size",
             "vmq_events_sidecar.grpc_timeout",
-            "vmq_events_sidecar.grpc_max_inflight",
+            "vmq_events_sidecar.grpc_worker_pool_size",
+            "vmq_events_sidecar.grpc_worker_max_queue_len",
             "vmq_events_sidecar.grpc_percentage"
         ],
     [

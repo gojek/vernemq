@@ -2,6 +2,7 @@
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
 -include_lib("vmq_commons/include/vmq_types.hrl").
 -include("vmq_events_sidecar_test.hrl").
+-include("../include/vmq_events_sidecar.hrl").
 
 -export([
          init_per_suite/1,
@@ -14,6 +15,8 @@
 -compile([export_all]).
 -compile([nowarn_export_all]).
 
+-define(TEST_POOL_SIZE, 4).
+
 init_per_suite(Config) ->
     %% Start TCP server for shackle (default) path
     ListenSock = start_tcp_server(),
@@ -25,6 +28,9 @@ init_per_suite(Config) ->
     application:set_env(vmq_events_sidecar, grpc_endpoint, "127.0.0.1"),
     application:set_env(vmq_events_sidecar, grpc_port, 8891),
     application:set_env(vmq_events_sidecar, grpc_pool_size, 5),
+    %% Small pool so the dispatch tests can suspend every worker and reason about
+    %% exact mailbox depths.
+    application:set_env(vmq_events_sidecar, grpc_worker_pool_size, ?TEST_POOL_SIZE),
 
     application:load(vmq_plugin),
     application:ensure_all_started(vmq_plugin),
@@ -71,7 +77,16 @@ all() ->
      on_message_drop_test,
      on_register_grpc_test,
      on_publish_grpc_test,
-     on_subscribe_grpc_test
+     on_subscribe_grpc_test,
+     grpc_worker_pool_started_test,
+     grpc_dispatch_round_robin_test,
+     grpc_dispatch_retries_next_worker_test,
+     grpc_dispatch_drop_when_all_full_test,
+     grpc_dispatch_no_workers_test,
+     grpc_worker_survives_bad_event_test,
+     grpc_worker_queue_metrics_test,
+     grpc_worker_crash_restart_test,
+     grpc_worker_lost_events_counted_test
     ].
 
 
@@ -222,6 +237,217 @@ on_subscribe_grpc_test(_) ->
     vmq_events_sidecar_plugin:set_grpc_percentage(0).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% gRPC worker pool
+%%
+%% These drive vmq_events_sidecar_grpc_dispatcher:dispatch/3 directly rather than
+%% through the hooks, so they do not depend on the rollout percentage. Workers are
+%% suspended so mailbox depths stay put long enough to assert on.
+%%
+%% The probe payload is deliberately unencodable ({} does not match any
+%% vmq_events_sidecar_format:encode/1 clause), so an event that reaches a worker
+%% is counted as encode_error and never touches the network. The hook name is a
+%% real one because vmq_events_sidecar_metrics:met2idx/1 has no catch-all.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+grpc_worker_pool_started_test(_) ->
+    %% grpc_endpoint is set for this suite, so the conditional child must be there.
+    Children = [Id || {Id, _Pid, _Type, _Mods} <- supervisor:which_children(
+        vmq_events_sidecar_sup
+    )],
+    true = lists:member(vmq_events_sidecar_grpc_worker_sup, Children),
+    Names = persistent_term:get(?GRPC_WORKER_NAMES),
+    ?TEST_POOL_SIZE = tuple_size(Names),
+    [] = [N || N <- tuple_to_list(Names), whereis(N) =:= undefined],
+    2000 = persistent_term:get(?GRPC_MAX_QUEUE_LEN),
+    %% add 0 reads the counter without disturbing round-robin ordering
+    Counter = persistent_term:get(?GRPC_RR_COUNTER),
+    true = is_integer(atomics:add_get(Counter, 1, 0)),
+    %% One depth slot per worker, and the array must be signed -- an unsigned
+    %% array would wrap a transient negative into a huge value and wedge the
+    %% worker as permanently full.
+    DepthRef = persistent_term:get(?GRPC_DEPTH_COUNTERS),
+    #{size := ?TEST_POOL_SIZE, min := Min} = atomics:info(DepthRef),
+    true = Min < 0,
+    ok.
+
+grpc_dispatch_round_robin_test(_) ->
+    Pids = worker_pids(),
+    ok = drain_workers(),
+    suspend_all(Pids),
+    try
+        [dispatch_probe() || _ <- Pids],
+        %% One event per worker, dispatched pool-size times: every worker must
+        %% have exactly one. Anything else means selection is not round-robin.
+        Lens = [queue_len(P) || P <- Pids],
+        Expected = [1 || _ <- Pids],
+        Expected = Lens
+    after
+        resume_all(Pids)
+    end,
+    ok = drain_workers().
+
+grpc_dispatch_retries_next_worker_test(_) ->
+    Pids = worker_pids(),
+    ok = drain_workers(),
+    Saved = persistent_term:get(?GRPC_MAX_QUEUE_LEN),
+    persistent_term:put(?GRPC_MAX_QUEUE_LEN, 1),
+    Before = metric_value(grpc_call_result, [{hook, "on_publish"}, {result, "dropped"}]),
+    suspend_all(Pids),
+    try
+        %% Fill worker 1 to its threshold, then aim the next dispatch at it again.
+        %% A pool that drops on first refusal leaves worker 2 empty.
+        aim_at_worker(1),
+        ok = dispatch_probe(),
+        1 = depth(1),
+        aim_at_worker(1),
+        ok = dispatch_probe(),
+        1 = depth(1),
+        1 = depth(2),
+        Before = metric_value(grpc_call_result, [{hook, "on_publish"}, {result, "dropped"}])
+    after
+        resume_all(Pids),
+        persistent_term:put(?GRPC_MAX_QUEUE_LEN, Saved)
+    end,
+    ok = drain_workers().
+
+grpc_dispatch_drop_when_all_full_test(_) ->
+    Pids = worker_pids(),
+    ok = drain_workers(),
+    Saved = persistent_term:get(?GRPC_MAX_QUEUE_LEN),
+    persistent_term:put(?GRPC_MAX_QUEUE_LEN, 1),
+    DroppedBefore = metric_value(grpc_call_result, [{hook, "on_publish"}, {result, "dropped"}]),
+    ErrorsBefore = metric_value(sidecar_events_error, [{hook, "on_publish"}]),
+    suspend_all(Pids),
+    try
+        %% Round-robin means pool-size dispatches fill every worker to 1.
+        [ok = dispatch_probe() || _ <- Pids],
+        [] = [S || S <- slots(), depth(S) =/= 1],
+        %% Nowhere left to put it. dispatch/3 must still return ok: a saturated
+        %% pool may never surface as an error on the MQTT session process.
+        ok = dispatch_probe(),
+        DroppedAfter = metric_value(grpc_call_result, [{hook, "on_publish"}, {result, "dropped"}]),
+        DroppedAfter = DroppedBefore + 1,
+        ErrorsAfter = metric_value(sidecar_events_error, [{hook, "on_publish"}]),
+        ErrorsAfter = ErrorsBefore + 1,
+        %% A refused reservation must be rolled back, not left inflating depth.
+        [] = [S || S <- slots(), depth(S) =/= 1]
+    after
+        resume_all(Pids),
+        persistent_term:put(?GRPC_MAX_QUEUE_LEN, Saved)
+    end,
+    ok = drain_workers().
+
+grpc_dispatch_no_workers_test(_) ->
+    ok = drain_workers(),
+    Names = persistent_term:get(?GRPC_WORKER_NAMES),
+    Before = metric_value(grpc_call_result, [{hook, "on_publish"}, {result, "no_workers"}]),
+    persistent_term:erase(?GRPC_WORKER_NAMES),
+    try
+        %% Reachable when grpc_percentage is non-zero but grpc_endpoint is unset.
+        %% Must be counted, not raised into the caller.
+        ok = dispatch_probe(),
+        After = metric_value(grpc_call_result, [{hook, "on_publish"}, {result, "no_workers"}]),
+        After = Before + 1,
+        %% Same state a broker with gRPC disabled is in: it must not publish
+        %% queue-depth series for a pool that does not exist.
+        undefined = metric_type(grpc_worker_queue_max),
+        undefined = metric_type(grpc_worker_queue_total)
+    after
+        persistent_term:put(?GRPC_WORKER_NAMES, Names)
+    end,
+    ok.
+
+grpc_worker_survives_bad_event_test(_) ->
+    ok = drain_workers(),
+    [Pid | _] = worker_pids(),
+    Before = metric_value(grpc_call_result, [{hook, "on_publish"}, {result, "encode_error"}]),
+    aim_at_worker(1),
+    ok = dispatch_probe(),
+    ok = wait_until(fun() ->
+        metric_value(grpc_call_result, [{hook, "on_publish"}, {result, "encode_error"}]) > Before
+    end),
+    %% Same pid: an event it cannot encode must not cost the worker its mailbox.
+    [Pid | _] = worker_pids(),
+    true = is_process_alive(Pid),
+    %% and the reservation was released even though the event failed
+    ok = wait_until(fun() -> depth(1) =:= 0 end),
+    ok.
+
+grpc_worker_queue_metrics_test(_) ->
+    Pids = worker_pids(),
+    ok = drain_workers(),
+    0 = metric_value(grpc_worker_queue_total, []),
+    suspend_all(Pids),
+    try
+        aim_at_worker(1),
+        ok = dispatch_probe(),
+        aim_at_worker(1),
+        ok = dispatch_probe(),
+        aim_at_worker(2),
+        ok = dispatch_probe(),
+        2 = metric_value(grpc_worker_queue_max, []),
+        3 = metric_value(grpc_worker_queue_total, []),
+        gauge = metric_type(grpc_worker_queue_max),
+        gauge = metric_type(grpc_worker_queue_total)
+    after
+        resume_all(Pids)
+    end,
+    ok = drain_workers().
+
+%% The reason the depth counters exist. A worker killed outright skips terminate/2
+%% entirely, so grpc_worker_crashed cannot fire and the mailbox is gone -- but the
+%% reservations it never released are still in its slot, and the replacement worker
+%% reports them.
+grpc_worker_lost_events_counted_test(_) ->
+    Pids = worker_pids(),
+    ok = drain_workers(),
+    Name = vmq_events_sidecar_grpc_worker:name(1),
+    Pid = whereis(Name),
+    LostBefore = metric_value(grpc_events_lost, []),
+    suspend_all(Pids),
+    try
+        [begin aim_at_worker(1), ok = dispatch_probe() end || _ <- lists:seq(1, 3)],
+        3 = depth(1),
+        %% Killed while still suspended, and with kill so terminate/2 never runs.
+        %% Resuming first would let the worker drain the queue and release the very
+        %% reservations this test is about.
+        exit(Pid, kill),
+        ok = wait_until(fun() ->
+            case whereis(Name) of
+                undefined -> false;
+                New -> New =/= Pid
+            end
+        end),
+        ok = wait_until(fun() -> metric_value(grpc_events_lost, []) =:= LostBefore + 3 end),
+        %% Slot handed back clean, so the replacement starts with full capacity.
+        ok = wait_until(fun() -> depth(1) =:= 0 end)
+    after
+        %% Only the ones this process actually suspended; the replacement worker
+        %% was never suspended and resume_process/1 would raise badarg on it.
+        resume_all(Pids -- [Pid])
+    end,
+    ok = drain_workers().
+
+grpc_worker_crash_restart_test(_) ->
+    ok = drain_workers(),
+    Name = vmq_events_sidecar_grpc_worker:name(1),
+    Pid = whereis(Name),
+    Before = metric_value(grpc_worker_crashed, []),
+    %% sys:terminate drives terminate/2 with an abnormal reason, which exit/2
+    %% with kill would skip.
+    sys:terminate(Pid, kaboom),
+    ok = wait_until(fun() ->
+        case whereis(Name) of
+            undefined -> false;
+            New -> New =/= Pid
+        end
+    end),
+    After = metric_value(grpc_worker_crashed, []),
+    After = Before + 1,
+    %% Restarted in place, and the rest of the pool was untouched.
+    ?TEST_POOL_SIZE = length(worker_pids()),
+    ok.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% helper functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 enable_hook(Hook) ->
@@ -250,4 +476,96 @@ exp_nothing(Timeout) ->
     after
         Timeout ->
             ok
+    end.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% gRPC worker pool helpers
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+worker_names() ->
+    tuple_to_list(persistent_term:get(?GRPC_WORKER_NAMES)).
+
+worker_pids() ->
+    [whereis(N) || N <- worker_names()].
+
+%% {} matches no encode/1 clause, so this never reaches the network.
+probe_event() ->
+    {event, on_publish, os:system_time(), {}}.
+
+dispatch_probe() ->
+    vmq_events_sidecar_grpc_dispatcher:dispatch(on_publish, os:system_time(), {}).
+
+%% Point the round-robin counter so the next dispatch selects worker N (1-based).
+%% dispatch/3 does add_get(+1) and then element((Idx rem Size) + 1, Names).
+aim_at_worker(N) ->
+    Counter = persistent_term:get(?GRPC_RR_COUNTER),
+    atomics:put(Counter, 1, N - 2 + ?TEST_POOL_SIZE),
+    ok.
+
+slots() ->
+    lists:seq(1, ?TEST_POOL_SIZE).
+
+%% Events reserved against a worker but not yet released: what the dispatcher
+%% admits against and what the queue gauges report.
+depth(Slot) ->
+    atomics:get(persistent_term:get(?GRPC_DEPTH_COUNTERS), Slot).
+
+queue_len(Pid) ->
+    case erlang:process_info(Pid, message_queue_len) of
+        {message_queue_len, Len} -> Len;
+        undefined -> undefined
+    end.
+
+suspend_all(Pids) ->
+    [erlang:suspend_process(P) || P <- Pids],
+    ok.
+
+resume_all(Pids) ->
+    [erlang:resume_process(P) || P <- Pids, is_process_alive(P)],
+    ok.
+
+%% Workers drop probe events on the floor (encode_error), so zero depth and empty
+%% mailboxes across the pool mean the previous test left nothing behind.
+drain_workers() ->
+    wait_until(fun() ->
+        lists:all(fun(Slot) -> depth(Slot) =:= 0 end, slots()) andalso
+            lists:all(fun(Pid) -> queue_len(Pid) =:= 0 end, worker_pids())
+    end).
+
+wait_until(Fun) ->
+    wait_until(Fun, 100).
+
+wait_until(_Fun, 0) ->
+    timeout;
+wait_until(Fun, Retries) ->
+    case Fun() of
+        true ->
+            ok;
+        _ ->
+            timer:sleep(50),
+            wait_until(Fun, Retries - 1)
+    end.
+
+metric_value(Name, Labels) ->
+    case
+        [
+            V
+         || {_Type, L, _Id, N, _Desc, V} <- vmq_events_sidecar_metrics:metrics(),
+            N =:= Name,
+            L =:= Labels
+        ]
+    of
+        [V] -> V;
+        [] -> 0
+    end.
+
+metric_type(Name) ->
+    case
+        [
+            Type
+         || {Type, _L, _Id, N, _Desc, _V} <- vmq_events_sidecar_metrics:metrics(),
+            N =:= Name
+        ]
+    of
+        [Type] -> Type;
+        [] -> undefined
     end.

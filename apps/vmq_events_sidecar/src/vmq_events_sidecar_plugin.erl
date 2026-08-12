@@ -547,38 +547,10 @@ shackle_send(HookName, EventPayload) ->
             vmq_events_sidecar_metrics:incr_sidecar_events_error(HookName)
     end.
 
+%% Hands the event to a worker and returns immediately. Encoding happens in the worker
+%%
 grpc_send(HookName, EventPayload) ->
-    AnyRecord = vmq_events_sidecar_format:encode({HookName, os:system_time(), EventPayload}),
-    case AnyRecord of
-        <<>> ->
-            ok;
-        _ ->
-            InflightRef = persistent_term:get(?GRPC_INFLIGHT_COUNTER),
-            MaxInflight = application:get_env(vmq_events_sidecar, grpc_max_inflight, 4096),
-            Current = atomics:add_get(InflightRef, 1, 1),
-            case Current > MaxInflight of
-                true ->
-                    atomics:sub(InflightRef, 1, 1),
-                    vmq_events_sidecar_metrics:incr_grpc_call_result(HookName, dropped);
-                false ->
-                    spawn(fun() ->
-                        try
-                            case vmq_events_sidecar_grpc_client:send_event(HookName, AnyRecord) of
-                                ok ->
-                                    ok;
-                                {error, _} ->
-                                    vmq_events_sidecar_metrics:incr_sidecar_events_error(HookName)
-                            end
-                        catch
-                            _:Err ->
-                                lager:warning("gRPC event send crashed: ~p", [Err]),
-                                vmq_events_sidecar_metrics:incr_sidecar_events_error(HookName)
-                        after
-                            atomics:sub(InflightRef, 1, 1)
-                        end
-                    end)
-            end
-    end.
+    vmq_events_sidecar_grpc_dispatcher:dispatch(HookName, os:system_time(), EventPayload).
 
 -spec sample(Hook :: hook_name(), Criterion :: binary() | undefined) -> true | false.
 sample(_Hook, undefined) ->

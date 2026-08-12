@@ -86,12 +86,20 @@
   hidden,
   {default, 500}]}.
 
-%% @doc Maximum concurrent in-flight gRPC requests.
-%% Events are dropped when this limit is exceeded (backpressure).
-{mapping, "vmq_events_sidecar.grpc_max_inflight", "vmq_events_sidecar.grpc_max_inflight",
+%% @doc Configure the number of gRPC worker processes in the pool.
+%% Each worker handles one event at a time for the full gRPC round-trip, so this
+%% bounds concurrent in-flight requests. Applied at boot only.
+{mapping, "vmq_events_sidecar.grpc_worker_pool_size", "vmq_events_sidecar.grpc_worker_pool_size",
  [{datatype, integer},
   hidden,
-  {default, 4096}]}.
+  {default, 100}]}.
+
+%% @doc Maximum number of events queued per gRPC worker.
+%% Events are dropped when every candidate worker is at this limit (backpressure).
+{mapping, "vmq_events_sidecar.grpc_worker_max_queue_len", "vmq_events_sidecar.grpc_worker_max_queue_len",
+ [{datatype, integer},
+  hidden,
+  {default, 2000}]}.
 
 %% @doc Percentage of events routed to the gRPC endpoint (0-100).
 %% 0 = all events go to the local sidecar, 100 = all events go via gRPC.

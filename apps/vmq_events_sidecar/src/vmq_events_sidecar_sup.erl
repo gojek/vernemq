@@ -59,7 +59,9 @@ start_link() ->
                 GrpcPercentage = application:get_env(
                     vmq_events_sidecar, grpc_percentage, 0
                 ),
-                vmq_events_sidecar_plugin:set_grpc_percentage(GrpcPercentage),
+                vmq_events_sidecar_plugin:set_grpc_percentage(
+                    effective_grpc_percentage(GrpcPercentage)
+                ),
 
                 UserType = application:get_env(vmq_events_sidecar, user_type, "default"),
                 persistent_term:put(?GRPC_USER_TYPE, list_to_binary(UserType)),
@@ -77,10 +79,15 @@ start_link() ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
+    %% intensity 1 / period 5 would be too tight now that a child supervises a
+    %% whole worker pool: one transient blip there would escalate to killing the
+    %% metrics and plugin gen_servers, and with them the shackle path that still
+    %% carries production traffic during the rollout.
     SupFlags =
-        #{strategy => one_for_one, intensity => 1, period => 5},
+        #{strategy => one_for_one, intensity => 5, period => 10},
     ChildSpecs =
         [
+            %% Must start before the workers -- it owns the tables they write to.
             #{
                 id => vmq_events_sidecar_metrics,
                 start => {vmq_events_sidecar_metrics, start_link, []},
@@ -113,20 +120,54 @@ init([]) ->
     ],
     ok = shackle_pool:start(?APP, ?CLIENT, ClientOpts, PoolOtps),
 
-    GrpcEndpoint = application:get_env(vmq_events_sidecar, grpc_endpoint, ""),
-    case GrpcEndpoint of
-        "" ->
-            ok;
-        _ ->
-            GrpcPort = application:get_env(vmq_events_sidecar, grpc_port, 80),
-            GrpcPoolSize = application:get_env(vmq_events_sidecar, grpc_pool_size, 100),
-            ok = vmq_events_sidecar_grpc_client:start(#{
-                endpoint => GrpcEndpoint,
-                port => GrpcPort,
-                pool_size => GrpcPoolSize
-            })
-    end,
-    InflightRef = atomics:new(1, [{signed, true}]),
-    persistent_term:put(?GRPC_INFLIGHT_COUNTER, InflightRef),
+    %% The gRPC channel pool and the worker pool are both gated on grpc_endpoint,
+    %% so a deployment that has not enabled gRPC starts exactly the processes it
+    %% started before this path existed.
+    GrpcChildSpecs =
+        case grpc_endpoint() of
+            "" ->
+                [];
+            GrpcEndpoint ->
+                GrpcPort = application:get_env(vmq_events_sidecar, grpc_port, 80),
+                GrpcPoolSize = application:get_env(vmq_events_sidecar, grpc_pool_size, 100),
+                ok = vmq_events_sidecar_grpc_client:start(#{
+                    endpoint => GrpcEndpoint,
+                    port => GrpcPort,
+                    pool_size => GrpcPoolSize
+                }),
+                [
+                    #{
+                        id => vmq_events_sidecar_grpc_worker_sup,
+                        start => {vmq_events_sidecar_grpc_worker_sup, start_link, []},
+                        restart => permanent,
+                        type => supervisor,
+                        modules => [vmq_events_sidecar_grpc_worker_sup]
+                    }
+                ]
+        end,
 
-    {ok, {SupFlags, ChildSpecs}}.
+    {ok, {SupFlags, ChildSpecs ++ GrpcChildSpecs}}.
+
+%%====================================================================
+%% Internal functions
+%%====================================================================
+
+grpc_endpoint() ->
+    application:get_env(vmq_events_sidecar, grpc_endpoint, "").
+
+%% Routing to gRPC without an endpoint would send every event to a pool that was
+%% never started. vmq_events_sidecar_cli already refuses this at runtime; boot
+%% config needs the same guard.
+effective_grpc_percentage(0) ->
+    0;
+effective_grpc_percentage(Percentage) ->
+    case grpc_endpoint() of
+        "" ->
+            lager:warning(
+                "ignoring grpc_percentage=~p because grpc_endpoint is not configured",
+                [Percentage]
+            ),
+            0;
+        _Endpoint ->
+            Percentage
+    end.
