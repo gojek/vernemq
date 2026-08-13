@@ -23,6 +23,7 @@
          queue_lifo_offline_drop_test/1,
          queue_offline_transition_test/1,
          queue_persistent_client_expiration_test/1,
+         queue_offline_drop_hook_test/1,
          queue_force_disconnect_test/1,
          queue_force_disconnect_cleanup_test/1]).
 
@@ -64,6 +65,7 @@ groups() ->
      queue_lifo_offline_drop_test,
      queue_offline_transition_test,
      queue_persistent_client_expiration_test,
+     queue_offline_drop_hook_test,
      queue_force_disconnect_test,
      queue_force_disconnect_cleanup_test
     ],
@@ -271,6 +273,52 @@ queue_persistent_client_expiration_test(Cfg) ->
     not_found = vmq_queue_sup_sup:get_queue_pid(SubscriberId),
     {ok, []} = vmq_message_store:find(SubscriberId).
 
+queue_offline_drop_hook_test(Cfg) ->
+    #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),
+    Parent = self(),
+    Topic = [<<"test">>, <<"drophook">>],
+    SubscriberId = {"", <<"offline-drop-hook">>},
+    application:set_env(vmq_server, persistent_client_expiration, 2),
+    QueueOpts = maps:merge(vmq_queue:default_opts(), #{cleanup_on_disconnect => false,
+                                                       max_offline_messages => 1000,
+                                                       queue_type => fifo}),
+    SessionPid1 = spawn(fun() -> mock_session(Parent) end),
+    {ok, #{session_present := false,
+           queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid1, SubscriberId, false, QueueOpts, 10),
+    {ok, [1]} = vmq_reg:subscribe(SubscriberId, [{Topic, 1}]),
+    timer:sleep(50),
+
+    register(vmq_queue_drop_collector, self()),
+
+    catch vmq_queue:set_last_waiting_acks(QPid, []),
+    SessionPid1 ! {go_down_in, 1},
+    Msgs = publish_multi(RegView, SubscriberId, Topic),
+    NumPubbedMsgs = length(Msgs),
+
+    timer:sleep(500),
+    {ok, FoundMsgs} = vmq_message_store:find(SubscriberId),
+    NumPubbedMsgs = length(FoundMsgs),
+
+    timer:sleep(3000),
+    not_found = vmq_queue_sup_sup:get_queue_pid(SubscriberId),
+    {ok, []} = vmq_message_store:find(SubscriberId),
+
+    Drops = collect_drops([]),
+    catch unregister(vmq_queue_drop_collector),
+
+    NumPubbedMsgs = length(Drops),
+    [] = [R || {R, _T} <- Drops, R =/= session_expired],
+    [] = [T || {_R, T} <- Drops, T =/= Topic],
+    ok.
+
+collect_drops(Acc) ->
+    receive
+        {message_drop, Reason, Topic} ->
+            collect_drops([{Reason, Topic} | Acc])
+    after 1000 ->
+        lists:reverse(Acc)
+    end.
+
 queue_force_disconnect_test(_) ->
     Parent = self(),
     SubscriberId = {"", <<"force-client-disconnect">>},
@@ -414,5 +462,12 @@ enable_hooks() ->
 
 hook_auth_on_publish(_, _, _, _, _, _, _) -> ok.
 hook_auth_on_subscribe(_, _, _, _) -> ok.
-hook_on_message_drop(_, _, queue_full, _) -> ok;
-hook_on_message_drop(_, _, no_matching_subscribers, _) -> ok.
+hook_on_message_drop(_SubscriberId, Promise, Reason, _SessionId) ->
+    case whereis(vmq_queue_drop_collector) of
+        Pid when is_pid(Pid), is_function(Promise, 0) ->
+            {RoutingKey, _QoS, _Payload, _Props, _Acl} = Promise(),
+            Pid ! {message_drop, Reason, RoutingKey},
+            ok;
+        _ ->
+            ok
+    end.
