@@ -124,6 +124,7 @@ groups() ->
             message_size_exceeded_close,
             publish_c2b_retry_qos2_test,
             publish_b2c_retry_qos1_test,
+            publish_b2c_retry_qos1_metric_test,
             publish_b2c_retry_qos2_test
             | V4V5Tests
         ],
@@ -490,6 +491,41 @@ publish_b2c_retry_qos1_test(Config) ->
     %% expect packet, but we don't ack
     %% The broker should repeat the PUBLISH with dup set
     ok = packet:expect_packet(Socket, "dup publish", PublishDup),
+    ok = gen_tcp:send(Socket, Puback),
+    disable_on_publish(),
+    disable_on_subscribe(),
+    ok = expect_alive(Socket),
+    ok = gen_tcp:close(Socket).
+
+publish_b2c_retry_qos1_metric_test(Config) ->
+    Connect = packet:gen_connect("pub-qos1-retry-metric-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(3266, "qos1/retry/metric", 1),
+    Suback = packet:gen_suback(3266, 1),
+    Publish = packet:gen_publish(
+        "qos1/retry/metric",
+        1,
+        <<"retry-metric-message">>,
+        [{mid, 1}]
+    ),
+    PublishDup = packet:gen_publish(
+        "qos1/retry/metric",
+        1,
+        <<"retry-metric-message">>,
+        [{mid, 1}, {dup, true}]
+    ),
+    Puback = packet:gen_puback(1),
+    enable_on_publish(),
+    enable_on_subscribe(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    Before = publish_retry_count(),
+    helper_pub_qos1("test-helper", 1, Publish, Config),
+    ok = packet:expect_packet(Socket, "publish", Publish),
+    ok = packet:expect_packet(Socket, "dup publish", PublishDup),
+    After = publish_retry_count(),
+    true = After > Before,
     ok = gen_tcp:send(Socket, Puback),
     disable_on_publish(),
     disable_on_subscribe(),
@@ -1712,3 +1748,15 @@ remove_first_(Payload, [Payload | Rest]) ->
     {Payload, Rest};
 remove_first_(_, List) ->
     {none, List}.
+
+publish_retry_count() ->
+    lists:foldl(
+        fun
+            ({#metric_def{type = counter, name = publish_retry}, Val}, Acc) ->
+                Acc + Val;
+            (_, Acc) ->
+                Acc
+        end,
+        0,
+        vmq_metrics:metrics(#{aggregate => false})
+    ).

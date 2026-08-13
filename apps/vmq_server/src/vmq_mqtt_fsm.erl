@@ -1679,11 +1679,13 @@ get_retry_frame(
         routing_key = Topic,
         qos = QoS,
         retain = Retain,
-        payload = Payload
+        payload = Payload,
+        acl_name = AclName
     },
     Acc
 ) ->
     _ = vmq_metrics:incr_mqtt_publish_sent(),
+    _ = vmq_metrics:incr_publish_retry(AclName),
     Frame = #mqtt_publish{
         message_id = MsgId,
         topic = Topic,

@@ -101,7 +101,8 @@
 
     incr_msg_enqueue_subscriber_not_found/0,
     incr_shared_subscription_group_publish_attempt_failed/0,
-    update_config_version_metric/2
+    update_config_version_metric/2,
+    incr_publish_retry/1
 ]).
 
 -export([
@@ -131,6 +132,7 @@
 
 -define(TIMER_TABLE, vmq_metrics_timers).
 -define(CONFIG_VERION_TABLE, config_version_table).
+-define(PUBLISH_RETRY_TABLE, mqtt_publish_retry_metrics).
 
 -record(state, {
     info = #{}
@@ -351,6 +353,12 @@ incr_msg_enqueue_subscriber_not_found() ->
 incr_shared_subscription_group_publish_attempt_failed() ->
     incr_item(shared_subscription_group_publish_attempt_failed, 1).
 
+incr_publish_retry(undefined) ->
+    Key = <<>>,
+    ets:update_counter(?PUBLISH_RETRY_TABLE, Key, 1, {Key, 0});
+incr_publish_retry(AclName) when is_binary(AclName) ->
+    ets:update_counter(?PUBLISH_RETRY_TABLE, AclName, 1, {AclName, 0}).
+
 incr(Entry) ->
     incr_item(Entry, 1).
 
@@ -423,12 +431,14 @@ metrics(Opts) ->
     {PluggableMetricDefs, PluggableMetricValues} = pluggable_metrics(),
     {HistogramMetricDefs, HistogramMetricValues} = histogram_metrics(),
     {ConfigVersionMetricsDefs, ConfigVersionMetricsValues} = config_version_metrics(),
+    {PublishRetryMetricDefs, PublishRetryMetricValues} = publish_retry_metrics(),
 
     MetricDefs =
-        metric_defs() ++ PluggableMetricDefs ++ HistogramMetricDefs ++ ConfigVersionMetricsDefs,
+        metric_defs() ++ PluggableMetricDefs ++ HistogramMetricDefs ++
+            ConfigVersionMetricsDefs ++ PublishRetryMetricDefs,
     MetricValues =
         metric_values() ++ PluggableMetricValues ++ HistogramMetricValues ++
-            ConfigVersionMetricsValues,
+            ConfigVersionMetricsValues ++ PublishRetryMetricValues,
 
     %% Create id->metric def map
     IdDef = lists:foldl(
@@ -617,6 +627,36 @@ update_config_version_metric(MetricName, Version) ->
             end
     end.
 
+publish_retry_metric_defs() ->
+    {Defs, _} = publish_retry_metrics(),
+    Defs.
+
+publish_retry_metrics() ->
+    try
+        ets:foldl(
+            fun({AclName, Count}, {DefsAcc, ValsAcc}) ->
+                LabelVal =
+                    case AclName of
+                        <<>> -> <<"undefined">>;
+                        _ -> AclName
+                    end,
+                UniqueId = {publish_retry, AclName},
+                Def = m(
+                    counter,
+                    [{acl_name, LabelVal}],
+                    UniqueId,
+                    publish_retry,
+                    <<"Publish retry attempts for which the ACK is not received by the broker">>
+                ),
+                {[Def | DefsAcc], [{UniqueId, Count} | ValsAcc]}
+            end,
+            {[], []},
+            ?PUBLISH_RETRY_TABLE
+        )
+    catch
+        _:_ -> {[], []}
+    end.
+
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
@@ -655,7 +695,7 @@ get_label_info() ->
             end,
             #{},
             metric_defs() ++ pluggable_metric_defs() ++ histogram_metric_defs() ++
-                config_version_metric_defs()
+                config_version_metric_defs() ++ publish_retry_metric_defs()
         ),
     maps:to_list(LabelInfo).
 
@@ -694,6 +734,7 @@ init([]) ->
 
     ets:new(?TIMER_TABLE, [named_table, public, {write_concurrency, true}]),
     ets:new(?CONFIG_VERION_TABLE, [named_table, public, {write_concurrency, true}]),
+    ets:new(?PUBLISH_RETRY_TABLE, [named_table, public, {write_concurrency, true}]),
 
     %% only alloc a new atomics array if one doesn't already exist!
     case catch persistent_term:get(?MODULE) of
