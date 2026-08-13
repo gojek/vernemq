@@ -392,7 +392,7 @@ connect_async(ParentPid, RemoteNode) ->
                                 error
                         end;
                     {error, Reason} ->
-                        lager:warning("can't connect to cluster node ~p due to ~p", [
+                        lager:error("can't connect to cluster node ~p due to ~p", [
                             RemoteNode, Reason
                         ]),
                         error
@@ -401,7 +401,7 @@ connect_async(ParentPid, RemoteNode) ->
                 %% we don't scream.. vmq_cluster_mon screams
                 error;
             E ->
-                lager:warning("can't connect to cluster node ~p due to ~p", [RemoteNode, E]),
+                lager:error("can't connect to cluster node ~p due to ~p", [RemoteNode, E]),
                 error
         end,
     ParentPid ! {connect_async_done, self(), Reply}.
