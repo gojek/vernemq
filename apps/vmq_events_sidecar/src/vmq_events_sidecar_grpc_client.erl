@@ -13,8 +13,8 @@
     connect_timeout => 5000,
     retry => 5,
     retry_timeout => 5000,
-    http2_opts => #{keepalive => 30000},
-    tcp_opts => [{nodelay, true}]
+    http2_opts => #{keepalive => 30000, keepalive_tolerance => 2},
+    tcp_opts => [{nodelay, true}, {send_timeout, 15000}, {send_timeout_close, true}]
 }).
 
 -spec start(#{endpoint := string(), port := integer(), pool_size := integer()}) -> ok.
