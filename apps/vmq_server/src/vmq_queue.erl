@@ -1382,7 +1382,7 @@ maybe_offline_store(
 ) when QoS > 0 ->
     %% this function writes the message to the message store, in case the queue
     %% has no online session attached anymore (Offline = true)
-    PMsg = Msg#vmq_msg{persisted = true},
+    PMsg = Msg#vmq_msg{persisted = true, qos = min(QoS, Msg#vmq_msg.qos)},
     vmq_message_store:write(SubscriberId, PMsg),
     D#deliver{msg = PMsg};
 maybe_offline_store(true, _, #deliver{msg = #vmq_msg{persisted = true, dup = true}} = D) ->
