@@ -86,7 +86,13 @@ all() ->
      grpc_worker_survives_bad_event_test,
      grpc_worker_queue_metrics_test,
      grpc_worker_crash_restart_test,
-     grpc_worker_lost_events_counted_test
+     grpc_worker_lost_events_counted_test,
+     grpc_connection_metrics_test,
+     grpc_connection_recycle_test,
+     grpc_connection_recycle_without_traffic_test,
+     grpc_connection_recycle_pauses_when_degraded_test,
+     grpc_connection_recycle_rate_scales_with_pool_test,
+     grpc_connection_recycle_disabled_by_default_test
     ].
 
 
@@ -447,6 +453,147 @@ grpc_worker_crash_restart_test(_) ->
     ?TEST_POOL_SIZE = length(worker_pids()),
     ok.
 
+%% The channel pool is grpc_pool_size (5 here) gun connections, and gun is the
+%% only user of gun_conns_sup in the release, so the sampler should see exactly
+%% those.
+grpc_connection_metrics_test(_) ->
+    ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
+    GunConns = length(supervisor:which_children(gun_conns_sup)),
+    Active = metric_value(grpc_connections_active, []),
+    Active = GunConns,
+    true = Active > 0,
+    gauge = metric_type(grpc_connections_active),
+    gauge = metric_type(grpc_connection_age_max_seconds),
+    gauge = metric_type(grpc_connection_sample_age_seconds),
+    %% Every live connection was counted on the way in, so the cumulative
+    %% counter can never be below the live count.
+    true = metric_value(grpc_connects, []) >= Active,
+    %% Age is measured from first sight, so it is defined but may still be 0.
+    true = metric_value(grpc_connection_age_max_seconds, []) >= 0,
+    %% Re-sampling an unchanged pool must not inflate the counter.
+    Before = metric_value(grpc_connects, []),
+    ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
+    Before = metric_value(grpc_connects, []),
+    ok.
+
+%% Recycling is what replaces the Go sidecar's xgrpc/pool connection ageing:
+%% close the connection, and grpc_client re-dials, which re-resolves DNS.
+grpc_connection_recycle_test(_) ->
+    ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
+    Before = conn_pids(),
+    RecycledBefore = metric_value(grpc_connections_recycled, []),
+
+    {ok, Closed} = vmq_events_sidecar_grpc_conn_monitor:recycle_oldest_now(),
+    true = lists:member(Closed, Before),
+
+    %% Counted, and actually gone.
+    RecycledAfter = metric_value(grpc_connections_recycled, []),
+    RecycledAfter = RecycledBefore + 1,
+    ok = wait_until(fun() -> not is_process_alive(Closed) end),
+    ok = wait_until(fun() -> not lists:member(Closed, conn_pids()) end),
+
+    %% The published count is a snapshot taken at the start of a tick, so it
+    %% cannot be compared to a fresh live read -- the async reconnect may land in
+    %% between. Bound it instead: never zero, never above the pool.
+    ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
+    {Active, _MaxAge, _SampleAge} = vmq_events_sidecar_grpc_conn_monitor:stats(),
+    true = Active > 0 andalso Active =< length(Before),
+
+    %% recycle/1 triggers the reconnect itself, so the pool heals with no traffic
+    %% and no manual poking.
+    ok = wait_until(fun() -> length(conn_pids()) =:= length(Before) end),
+
+    %% Recycling must not permanently shrink the pool.
+    ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
+    {Restored, _MaxAge2, _SampleAge2} = vmq_events_sidecar_grpc_conn_monitor:stats(),
+    Restored = length(Before),
+    ok.
+
+%% Regression: recycling used to close connections that only ever reconnected on
+%% the next request, so at a low rollout percentage -- no traffic on the gRPC path
+%% at all -- the pool was walked to zero and stayed there.
+grpc_connection_recycle_without_traffic_test(_) ->
+    0 = vmq_events_sidecar_plugin:get_grpc_percentage(),
+    ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
+    Expected = length(conn_pids()),
+    true = Expected > 0,
+    %% Recycle every connection in the pool with no traffic whatsoever.
+    lists:foreach(
+        fun(_) ->
+            {ok, _Closed} = vmq_events_sidecar_grpc_conn_monitor:recycle_oldest_now(),
+            ok = wait_until(fun() -> length(conn_pids()) =:= Expected end)
+        end,
+        lists:seq(1, Expected)
+    ),
+    %% Pool intact, and the monitor agrees.
+    ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
+    {Expected, _MaxAge, _SampleAge} = vmq_events_sidecar_grpc_conn_monitor:stats(),
+    ok.
+
+%% The second guard: a pool that is short must not be recycled further, so a
+%% pool that cannot reconnect degrades no worse than one connection.
+grpc_connection_recycle_pauses_when_degraded_test(_) ->
+    ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
+    Expected = length(conn_pids()),
+    Saved = application:get_env(vmq_events_sidecar, grpc_pool_size, 5),
+    %% Claim the pool should be bigger than it is, so it always looks degraded.
+    application:set_env(vmq_events_sidecar, grpc_pool_size, Expected + 1),
+    RecycledBefore = metric_value(grpc_connections_recycled, []),
+    try
+        %% Age everything out, then tick: no recycling may happen.
+        application:set_env(vmq_events_sidecar, grpc_connection_max_age_seconds, 1),
+        timer:sleep(1100),
+        ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
+        ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
+        RecycledBefore = metric_value(grpc_connections_recycled, []),
+        Expected = length(conn_pids())
+    after
+        application:set_env(vmq_events_sidecar, grpc_pool_size, Saved),
+        application:set_env(vmq_events_sidecar, grpc_connection_max_age_seconds, 0)
+    end,
+    ok.
+
+%% The per-tick recycle budget must scale with pool size and max age, otherwise a
+%% larger pool silently stops honouring max_age: at one per tick the age settles
+%% at pool_size / achievable_rate instead. Here max_age is short enough that the
+%% whole pool is due, so more than one must be recycled in a single tick.
+grpc_connection_recycle_rate_scales_with_pool_test(_) ->
+    ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
+    Expected = length(conn_pids()),
+    true = Expected > 1,
+    Before = metric_value(grpc_connections_recycled, []),
+    application:set_env(vmq_events_sidecar, grpc_connection_max_age_seconds, 1),
+    try
+        %% Everything is now older than its deadline.
+        timer:sleep(1100),
+        ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
+        Recycled = metric_value(grpc_connections_recycled, []) - Before,
+        true = Recycled > 1
+    after
+        application:set_env(vmq_events_sidecar, grpc_connection_max_age_seconds, 0)
+    end,
+    %% And the pool comes back on its own.
+    ok = wait_until(fun() -> length(conn_pids()) =:= Expected end),
+    ok.
+
+%% Recycling is opt-in: the proxy can age connections without losing in-flight
+%% requests, so the broker should not do it unless explicitly told to.
+grpc_connection_recycle_disabled_by_default_test(_) ->
+    Saved = application:get_env(vmq_events_sidecar, grpc_connection_max_age_seconds),
+    application:unset_env(vmq_events_sidecar, grpc_connection_max_age_seconds),
+    Before = metric_value(grpc_connections_recycled, []),
+    try
+        ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
+        ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
+        Before = metric_value(grpc_connections_recycled, [])
+    after
+        case Saved of
+            {ok, V} -> application:set_env(vmq_events_sidecar, grpc_connection_max_age_seconds, V);
+            undefined -> ok
+        end
+    end,
+    ok.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% helper functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -481,6 +628,9 @@ exp_nothing(Timeout) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% gRPC worker pool helpers
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+conn_pids() ->
+    [Pid || {_Id, Pid, _Type, _Mods} <- supervisor:which_children(gun_conns_sup), is_pid(Pid)].
+
 worker_names() ->
     tuple_to_list(persistent_term:get(?GRPC_WORKER_NAMES)).
 

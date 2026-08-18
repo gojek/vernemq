@@ -30,6 +30,8 @@ register_config() ->
             "vmq_events_sidecar.grpc_timeout",
             "vmq_events_sidecar.grpc_worker_pool_size",
             "vmq_events_sidecar.grpc_worker_max_queue_len",
+            "vmq_events_sidecar.grpc_connection_max_age_seconds",
+            "vmq_events_sidecar.grpc_connection_age_jitter_seconds",
             "vmq_events_sidecar.grpc_percentage"
         ],
     [

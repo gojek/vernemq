@@ -142,6 +142,13 @@ init([]) ->
                         restart => permanent,
                         type => supervisor,
                         modules => [vmq_events_sidecar_grpc_worker_sup]
+                    },
+                    #{
+                        id => vmq_events_sidecar_grpc_conn_monitor,
+                        start => {vmq_events_sidecar_grpc_conn_monitor, start_link, []},
+                        restart => permanent,
+                        type => worker,
+                        modules => [vmq_events_sidecar_grpc_conn_monitor]
                     }
                 ]
         end,
