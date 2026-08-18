@@ -161,8 +161,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-incr_item(_, 0) ->
-    ok;
 incr_item(Entry, Val) when Val > 0 ->
     ARef =
         case get(vmq_events_sidecar_metrics_atomics_ref) of
