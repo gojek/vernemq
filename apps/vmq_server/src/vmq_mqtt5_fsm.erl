@@ -1086,7 +1086,7 @@ check_user(
                 F,
                 OutProps,
                 QueueOpts,
-                State#state{session_expiry_interval = SessionExpiryInterval}
+                State#state{session_expiry_interval = SessionExpiryInterval, username = User}
             )
     end.
 
