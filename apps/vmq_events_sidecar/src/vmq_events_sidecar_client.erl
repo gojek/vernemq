@@ -31,11 +31,16 @@ handle_request({cast, Data}, #state{} = State) ->
     lager:error("cast handle request called ~p~n", [error]),
     {ok, undefined, [Data], State};
 handle_request(Request, #state{} = State) ->
-    Val = vmq_events_sidecar_format:encode(Request),
-    Size = byte_size(Val),
-    SizeByte = <<Size:32>>,
-    Data = <<SizeByte/binary, Val/binary>>,
-    {ok, undefined, [Data], State}.
+    case vmq_events_sidecar_format:encode(Request) of
+        <<>> ->
+            {ok, undefined, [<<>>], State};
+        AnyRecord ->
+            Val = any_pb:encode_msg(AnyRecord),
+            Size = byte_size(Val),
+            SizeByte = <<Size:32>>,
+            Data = <<SizeByte/binary, Val/binary>>,
+            {ok, undefined, [Data], State}
+    end.
 
 %%Use byte_size or length to get length of Data and append.
 
