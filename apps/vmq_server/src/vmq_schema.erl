@@ -225,6 +225,7 @@ translate_listeners(Conf) ->
     {SSLIPs, SSLECCs} = lists:unzip(extract("listener.ssl", "eccs", ECCListVal, Conf)),
     {SSLIPs, SSLCrlFiles} = lists:unzip(extract("listener.ssl", "crlfile", StrVal, Conf)),
     {SSLIPs, SSLKeyFiles} = lists:unzip(extract("listener.ssl", "keyfile", StrVal, Conf)),
+    {SSLIPs, SSLKeyPasswd} = lists:unzip(extract("listener.ssl", "keypasswd", StrVal, Conf)),
     {SSLIPs, SSLRequireCerts} = lists:unzip(
         extract("listener.ssl", "require_certificate", BoolVal, Conf)
     ),
@@ -241,6 +242,7 @@ translate_listeners(Conf) ->
     {WS_SSLIPs, WS_SSLECCs} = lists:unzip(extract("listener.wss", "eccs", ECCListVal, Conf)),
     {WS_SSLIPs, WS_SSLCrlFiles} = lists:unzip(extract("listener.wss", "crlfile", StrVal, Conf)),
     {WS_SSLIPs, WS_SSLKeyFiles} = lists:unzip(extract("listener.wss", "keyfile", StrVal, Conf)),
+    {WS_SSLIPs, WS_SSLKeyPasswd} = lists:unzip(extract("listener.wss", "keypasswd", StrVal, Conf)),
     {WS_SSLIPs, WS_SSLRequireCerts} = lists:unzip(
         extract("listener.wss", "require_certificate", BoolVal, Conf)
     ),
@@ -249,6 +251,26 @@ translate_listeners(Conf) ->
     ),
     {WS_SSLIPs, WS_SSLUseIdents} = lists:unzip(
         extract("listener.wss", "use_identity_as_username", BoolVal, Conf)
+    ),
+
+    % VMQS
+    {VMQ_SSLIPs, VMQ_SSLCAFiles} = lists:unzip(extract("listener.vmqs", "cafile", StrVal, Conf)),
+    {VMQ_SSLIPs, VMQ_SSLDepths} = lists:unzip(extract("listener.vmqs", "depth", IntVal, Conf)),
+    {VMQ_SSLIPs, VMQ_SSLCertFiles} = lists:unzip(
+        extract("listener.vmqs", "certfile", StrVal, Conf)
+    ),
+    {VMQ_SSLIPs, VMQ_SSLCiphers} = lists:unzip(extract("listener.vmqs", "ciphers", StrVal, Conf)),
+    {VMQ_SSLIPs, VMQ_SSLECCs} = lists:unzip(extract("listener.vmqs", "eccs", ECCListVal, Conf)),
+    {VMQ_SSLIPs, VMQ_SSLCrlFiles} = lists:unzip(extract("listener.vmqs", "crlfile", StrVal, Conf)),
+    {VMQ_SSLIPs, VMQ_SSLKeyFiles} = lists:unzip(extract("listener.vmqs", "keyfile", StrVal, Conf)),
+    {VMQ_SSLIPs, VMQ_SSLKeyPasswd} = lists:unzip(
+        extract("listener.vmqs", "keypasswd", StrVal, Conf)
+    ),
+    {VMQ_SSLIPs, VMQ_SSLRequireCerts} = lists:unzip(
+        extract("listener.vmqs", "require_certificate", BoolVal, Conf)
+    ),
+    {VMQ_SSLIPs, VMQ_SSLVersions} = lists:unzip(
+        extract("listener.vmqs", "tls_version", AtomVal, Conf)
     ),
 
     % HTTPS
@@ -266,6 +288,9 @@ translate_listeners(Conf) ->
     ),
     {HTTP_SSLIPs, HTTP_SSLKeyFiles} = lists:unzip(
         extract("listener.https", "keyfile", StrVal, Conf)
+    ),
+    {HTTP_SSLIPs, HTTP_SSLKeyPasswd} = lists:unzip(
+        extract("listener.https", "keypasswd", StrVal, Conf)
     ),
     {HTTP_SSLIPs, HTTP_SSLRequireCerts} = lists:unzip(
         extract("listener.https", "require_certificate", BoolVal, Conf)
@@ -336,6 +361,7 @@ translate_listeners(Conf) ->
             SSLECCs,
             SSLCrlFiles,
             SSLKeyFiles,
+            SSLKeyPasswd,
             SSLRequireCerts,
             SSLVersions,
             SSLUseIdents,
@@ -356,12 +382,28 @@ translate_listeners(Conf) ->
             WS_SSLECCs,
             WS_SSLCrlFiles,
             WS_SSLKeyFiles,
+            WS_SSLKeyPasswd,
             WS_SSLRequireCerts,
             WS_SSLVersions,
             WS_SSLUseIdents,
             WS_SSLAllowedProto,
             WS_SSLMaxLengths,
             WS_SSLHeaderLengths
+        ])
+    ),
+    VMQS = lists:zip(
+        VMQ_SSLIPs,
+        MZip([
+            VMQ_SSLCAFiles,
+            VMQ_SSLDepths,
+            VMQ_SSLCertFiles,
+            VMQ_SSLCiphers,
+            VMQ_SSLECCs,
+            VMQ_SSLCrlFiles,
+            VMQ_SSLKeyFiles,
+            VMQ_SSLKeyPasswd,
+            VMQ_SSLRequireCerts,
+            VMQ_SSLVersions
         ])
     ),
     HTTPS = lists:zip(
@@ -376,6 +418,7 @@ translate_listeners(Conf) ->
             HTTP_SSLECCs,
             HTTP_SSLCrlFiles,
             HTTP_SSLKeyFiles,
+            HTTP_SSLKeyPasswd,
             HTTP_SSLRequireCerts,
             HTTP_SSLVersions,
             HTTP_SSLConfigMod,
@@ -393,6 +436,7 @@ translate_listeners(Conf) ->
         {mqtts, DropUndef(SSL)},
         {mqttws, DropUndef(WS)},
         {mqttwss, DropUndef(WSS)},
+        {vmqs, DropUndef(VMQS)},
         {vmq, DropUndef(VMQ)},
         {http, DropUndef(HTTP)},
         {https, DropUndef(HTTPS)}
@@ -410,6 +454,7 @@ extract(Prefix, Suffix, Val, Conf) ->
             "eccs",
             "crlfile",
             "keyfile",
+            "keypasswd",
             "require_certificate",
             "tls_version",
             "use_identity_as_username",
