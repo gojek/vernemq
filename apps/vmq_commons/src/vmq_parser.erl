@@ -188,7 +188,11 @@ variable(
                                 {ok, <<>>, Conn3} ->
                                     Conn3;
                                 {ok, Rest3, Conn3} ->
-                                    case vmq_parser_mqtt5:parse_properties(Rest3, #{}) of
+                                    case
+                                        vmq_parser_mqtt5:parse_properties(
+                                            Rest3, #{}, vmq_parser_mqtt5:connect_allowed_props()
+                                        )
+                                    of
                                         #{p_user_property := UserProps} = Props ->
                                             %% Make sure to preserve order of the user properties
                                             Conn3#mqtt_connect{

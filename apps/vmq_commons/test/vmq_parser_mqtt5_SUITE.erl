@@ -6,7 +6,7 @@
 -include("vmq_parser_mqtt5.hrl").
 
 -import(vmq_parser_mqtt5, [enc_properties/1,
-                           parse_properties/2]).
+                           parse_properties/3]).
 
 init_per_suite(Config) ->
     Config.
@@ -267,7 +267,7 @@ no_null_char_in_client(_Config) ->
 
 parse_unparse_property(Property) ->
     Encoded = enc_property_(Property),
-    Parsed = parse_properties(Encoded, #{}),
+    Parsed = parse_properties(Encoded, #{}, ?allProps),
     compare_property(Property, Parsed).
 
 enc_property_(Property) ->
