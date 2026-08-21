@@ -77,6 +77,7 @@ opts(Opts) ->
         {cacertfile, proplists:get_value(cafile, Opts)},
         {certfile, proplists:get_value(certfile, Opts)},
         {keyfile, proplists:get_value(keyfile, Opts)},
+        {password, proplists:get_value(keypasswd, Opts, "")},
         {ciphers, ciphersuite_transform(proplists:get_value(ciphers, Opts, []))},
         {eccs, proplists:get_value(eccs, Opts, ssl:eccs())},
         {fail_if_no_peer_cert,

@@ -113,6 +113,10 @@ vmq_listener_start_cmd() ->
                 end
             end}
         ]},
+        {keypasswd, [
+            {longname, "keypasswd"},
+            {typecast, fun(P) -> P end}
+        ]},
         {ciphers, [
             {longname, "ciphers"},
             {typecast, fun(C) -> C end}
