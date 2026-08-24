@@ -8,6 +8,8 @@
 
 -define(SERVICE_PATH, <<"/webhook.v1beta1.PluginService/Event">>).
 
+%% keepalive_tolerance is required for keepalive to work at all: gun guards on
+%% map_get/2 for it and never defaults it, so without it the ping never fails.
 -define(DEFAULT_GUN_OPTS, #{
     protocols => [http2],
     connect_timeout => 5000,

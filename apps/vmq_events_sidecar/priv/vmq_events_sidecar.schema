@@ -101,20 +101,19 @@
   hidden,
   {default, 2000}]}.
 
-%% @doc Maximum age of a gRPC connection, in seconds, before it is closed and
-%% re-established. Re-dialling re-resolves DNS, which is what redistributes us
-%% across proxy endpoints -- grpc-erl never replaces a healthy connection on its
-%% own, so without this connections pin to whichever endpoints they resolved at
-%% boot for the lifetime of the node.
-%%
-%% 0 (the default) disables recycling.
+%% @doc Maximum age of a gRPC connection in seconds, after which it is closed and
+%% re-established. grpc-erl keeps a connection until it fails, so without this a
+%% long-lived node never re-resolves its endpoint. Closing a connection fails
+%% whatever was in flight on it, counted as
+%% grpc_call_result{result="connection_down"}. 0 disables recycling.
 {mapping, "vmq_events_sidecar.grpc_connection_max_age_seconds", "vmq_events_sidecar.grpc_connection_max_age_seconds",
  [{datatype, integer},
   hidden,
   {default, 0}]}.
 
-%% @doc Jitter applied to grpc_connection_max_age_seconds, in seconds.
-%% Ignored when max_age is 0.
+%% @doc Jitter in seconds applied to grpc_connection_max_age_seconds, so that
+%% connections replaced one at a time do not drift into lockstep. Ignored when
+%% grpc_connection_max_age_seconds is 0.
 {mapping, "vmq_events_sidecar.grpc_connection_age_jitter_seconds", "vmq_events_sidecar.grpc_connection_age_jitter_seconds",
  [{datatype, integer},
   hidden,

@@ -1,59 +1,16 @@
 %% Copyright Gojek
 
 %%%-------------------------------------------------------------------
-%% @doc Tracks and optionally recycles the gRPC channel pool's connections.
+%% @doc Tracks the gRPC channel pool's connections, and recycles them when
+%% grpc_connection_max_age_seconds is set.
 %%
-%% == Why this exists ==
+%% grpc-erl keeps a connection until it fails, so a long-lived node never
+%% re-establishes one. Closing a connection at a configured age makes
+%% grpc_client re-dial, which re-resolves the endpoint.
 %%
-%% grpc-erl opens its connections once and never replaces a healthy one: it has
-%% no connection ageing, no re-resolution and no load-balancing policy. Our
-%% connections terminate at the proxy rather than at the webhook, so the
-%% webhook's MaxConnectionAge never reaches us either. Left alone they pin to
-%% whichever proxy endpoints they resolved at boot, for the lifetime of the node.
-%%
-%% Recycling closes a connection so that grpc_client re-dials, which re-resolves
-%% DNS.
-%%
-%%   xgrpc/pool                        here
-%%   --------------------------------  ------------------------------------
-%%   conn.createdAt                    FirstSeen in ?TABLE
-%%   conn.dl (jittered deadline)       DeadlineSeconds in ?TABLE
-%%   maxLifeTimeout 10m                grpc_connection_max_age_seconds
-%%   stdDev 10s (normal)               grpc_connection_age_jitter_seconds
-%%   age checked per RPC in get()      deadline checked per tick
-%%   refreshConnection -> cc.Close()   gun:close/1
-%%
-%% == Cost, when enabled ==
-%%
-%% Closing a connection fails whatever was in flight on it. grpc_client replies
-%% {error, {connection_down, Reason}} to those callers immediately, so they are
-%% counted as grpc_call_result{result="connection_down"} rather than waiting out a
-%% timeout. As a fraction of throughput the loss is latency / max_age
-%%
-%% == Notes ==
-%%
-%% gun creates one process per connection under `gun_conns_sup', and grpc-erl is
-%% gun's only user in this release, so that supervisor's children are exactly our
-%% channel-pool connections.
-%%
-%% Age is tracked here because Erlang exposes no process start time, so it is
-%% measured from first sight rather than from the TCP handshake. Sampling also
-%% means a connection that comes and goes entirely between ticks is missed, which
-%% makes grpc_connects a lower bound on churn.
-%%
-%% == What lives where ==
-%%
-%% Per-connection bookkeeping is private gen_server state. Only the aggregate is
-%% published, to a single ETS row, because the reader is the metrics scrape running
-%% in another process: a gen_server:call from there would queue behind a tick, and
-%% a tick can block in gun:close/1 (supervisor:terminate_child). Reading live
-%% connections at scrape time had the same problem one process further along --
-%% supervisor:which_children/1 contends with the very terminate_child we issue.
-%%
-%% The published aggregate is therefore up to one interval stale, which is
-%% immaterial for a connection count and age. grpc_connection_sample_age_seconds
-%% exposes that staleness so a wedged sampler is visible rather than silently
-%% serving a frozen gauge.
+%% gun runs one process per connection under gun_conns_sup, and grpc-erl is its
+%% only user here, so those children are the channel pool. Connection age is
+%% tracked from first sight because Erlang exposes no process start time.
 %% @end
 %%%-------------------------------------------------------------------
 
@@ -104,7 +61,8 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 %% @doc `{Connections, AgeOfOldestSeconds, SampleAgeSeconds}' as of the last tick,
-%% or `undefined' when this process is not running, i.e. gRPC is disabled.
+%% or `undefined' when gRPC is disabled. Read from ETS so a scrape never blocks
+%% behind a tick, which can be closing a connection.
 -spec stats() ->
     undefined | {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 stats() ->
@@ -126,8 +84,8 @@ stats() ->
 sample_now() ->
     gen_server:call(?MODULE, sample, ?RECONNECT_TIMEOUT_MS).
 
-%% @doc Recycle the oldest connection now, ignoring both its deadline and the
-%% whole-pool guard. For tests, and for rotating a connection by hand.
+%% @doc Recycle the oldest connection now, ignoring its deadline and the
+%% whole-pool guard.
 -spec recycle_oldest_now() -> {ok, pid()} | none.
 recycle_oldest_now() ->
     gen_server:call(?MODULE, recycle_oldest, 2 * ?RECONNECT_TIMEOUT_MS).
@@ -138,7 +96,7 @@ recycle_oldest_now() ->
 
 init([]) ->
     ?TABLE = ets:new(?TABLE, [named_table, protected, set, {read_concurrency, true}]),
-    %% Sample immediately so the metrics are populated before the first scrape.
+    %% Sample once up front so the metrics are populated before the first scrape.
     {ok, sample_and_recycle(#state{max_age_seconds = max_age_seconds()}), ?INTERVAL_MS}.
 
 handle_call(sample, _From, State) ->
@@ -175,24 +133,20 @@ sample_and_recycle(State0) ->
     State1 = reassign_deadlines_if_max_age_changed(State0),
     case live_connection_pids() of
         undefined ->
-            %% gun is not running, so there is nothing to track. Leave the state
-            %% alone rather than discarding age history.
+            %% gun is not running. Keep the state rather than discarding ages.
             State1;
         LivePids ->
             NowSeconds = erlang:monotonic_time(second),
             State2 = forget_closed_connections(LivePids, State1),
             State3 = track_new_connections(LivePids, NowSeconds, State2),
-            %% Published before recycling, so the count reflects the pool as it
-            %% stood at sample time rather than mid-teardown.
+            %% Published before recycling, so the count is the pool as sampled.
             publish_stats(NowSeconds, length(LivePids), State3),
             recycle_due_connections(NowSeconds, LivePids, State3)
     end.
 
-%% Deadlines are absolute, assigned when a connection is first seen, so a change
-%% to max_age would otherwise only reach connections established afterwards --
-%% meaning enabling recycling on a running node did nothing at all until the pool
-%% happened to churn. Reassign on change instead, spreading the new deadlines
-%% because a pool of uniform age would otherwise come due all at once.
+%% Deadlines are absolute, so a config change has to rewrite them or it would
+%% only ever affect connections established afterwards. Spread them, since a pool
+%% of uniform age would otherwise all come due together.
 reassign_deadlines_if_max_age_changed(State = #state{max_age_seconds = Previous, conns = Conns}) ->
     case max_age_seconds() of
         Previous ->
@@ -230,10 +184,8 @@ track_new_connections(LivePids, NowSeconds, State) ->
             State#state{conns = maps:merge(Tracked, Added)}
     end.
 
-%% A single new connection is a replacement and gets a full lifetime. Several
-%% appearing at once are a cohort -- at boot, or after the proxy dropped
-%% everything -- and their deadlines must be spread, or they expire together on
-%% every subsequent cycle for the life of the node.
+%% One new connection is a replacement and gets a full lifetime. Several at once
+%% are a cohort and must be spread, or they expire together on every cycle.
 deadline_mode_for_batch([_Single]) -> full_lifetime;
 deadline_mode_for_batch(_Cohort) -> spread_across_period.
 
@@ -266,15 +218,13 @@ recycle_due_connections(NowSeconds, LivePids, State) ->
         true ->
             recycle_oldest_due(NowSeconds, recycle_budget_per_tick(), State);
         false ->
-            %% Pool is short: something we closed has not come back, or the
-            %% endpoint is unreachable. Pause rather than close more.
+            %% Only recycle a whole pool, so one that cannot reconnect degrades by
+            %% a single connection rather than to zero.
             State
     end.
 
-%% A pool of N connections with a lifetime of MaxAge needs N * Interval / MaxAge
-%% recycles per tick to hold that age. Hardcoding this silently stops honouring
-%% max_age as the pool grows -- at 350 connections and 600s it needs 3 per tick,
-%% and at 1 per tick the pool would instead settle at an age of ~1750s.
+%% Scaled to the pool: N connections with a lifetime of MaxAge need
+%% N * Interval / MaxAge recycles per tick, or max_age stops being honoured.
 recycle_budget_per_tick() ->
     case max_age_seconds() of
         0 ->
@@ -294,10 +244,8 @@ recycle_oldest_due(NowSeconds, Remaining, State) ->
             recycle_oldest_due(NowSeconds, Remaining - 1, close_and_reconnect(Pid, State))
     end.
 
-%% gun:close/1 is supervisor:terminate_child on gun_conns_sup, so the connection
-%% is gone once this returns and grpc_client sees the DOWN. It re-dials only on
-%% its next request though, which is not good enough at a low rollout percentage,
-%% so trigger the reconnect explicitly.
+%% grpc_client re-dials only on its next request, so trigger the reconnect here.
+%% Without it an idle pool would be closed connection by connection and stay down.
 close_and_reconnect(Pid, State = #state{conns = Conns}) ->
     OwningClient = owning_grpc_client(Pid),
     _ =
@@ -313,17 +261,20 @@ close_and_reconnect(Pid, State = #state{conns = Conns}) ->
     State#state{conns = maps:remove(Pid, Conns)}.
 
 %% The gun process's owner is the grpc_client worker that dialled it. Read it
-%% while that process is still alive to answer.
+%% before closing, while it can still answer.
 owning_grpc_client(GunPid) ->
     try
         maps:get(owner, gun:info(GunPid))
     catch
-        _:_ -> undefined
+        Class:Reason ->
+            %% No owner means no reconnect is triggered; the whole-pool guard then
+            %% pauses recycling, so this stays contained but should be traceable.
+            lager:debug("gun:info/1 on ~p failed: ~p:~p", [GunPid, Class, Reason]),
+            undefined
     end.
 
-%% Off this process: health_check/2 is a call into a worker that may be mid
-%% request, and the ticker must not block behind it. The explicit timeout matters
-%% because grpc_client defaults connect_timeout to infinity.
+%% Off-process: health_check/2 may queue behind an in-flight request. The
+%% explicit timeout matters because grpc_client defaults it to infinity.
 trigger_reconnect_async(undefined) ->
     ok;
 trigger_reconnect_async(Owner) ->
