@@ -152,29 +152,29 @@ auth_on_publish(User, SubscriberId, QoS, Topic, _, _, _SessionId) ->
             end
     end.
 
-auth_on_subscribe_m5(User, SubscriberId, Topics, Props) ->
-    V3Topics = [{Topic, QoS} || {Topic, {QoS, _SubOpts}} <- Topics],
-    case auth_on_subscribe(User, SubscriberId, V3Topics, undefined) of
-        {ok, Modifiers} ->
-            V5Topics = lists:zipwith(
-                fun
-                    ({_Topic, {_QoS, _SubOpts}}, {MTopic, not_allowed, _AclMatch}) ->
-                        {MTopic, not_allowed};
-                    ({_Topic, {_QoS, SubOpts}}, {MTopic, MQoS, _AclMatch}) ->
-                        {MTopic, {MQoS, SubOpts}}
-                end,
-                Topics,
-                Modifiers
-            ),
-            UserProps = maps:get(p_user_property, Props, []),
-            ResponseProps =
-                case UserProps of
-                    [] -> #{};
-                    _ -> #{p_user_property => UserProps}
-                end,
-            {ok, #{topics => V5Topics, properties => ResponseProps}};
-        Other ->
-            Other
+auth_on_subscribe_m5(User, SubscriberId, Topics, _Props) ->
+    SubOptsByTopic = [{Topic, QoS, SubOpts} || {Topic, {QoS, SubOpts}} <- Topics],
+    case length(SubOptsByTopic) =:= length(Topics) of
+        false ->
+            {error, ?UNSPECIFIED_ERROR};
+        true ->
+            V3Topics = [{Topic, QoS} || {Topic, QoS, _SubOpts} <- SubOptsByTopic],
+            case auth_on_subscribe(User, SubscriberId, V3Topics, undefined) of
+                {ok, Modifiers} ->
+                    V5Topics = lists:zipwith(
+                        fun
+                            ({_Topic, _QoS, SubOpts}, {MTopic, not_allowed, _AclMatch}) ->
+                                {MTopic, {not_allowed, SubOpts}};
+                            ({_Topic, _QoS, SubOpts}, {MTopic, MQoS, _AclMatch}) ->
+                                {MTopic, {MQoS, SubOpts}}
+                        end,
+                        SubOptsByTopic,
+                        Modifiers
+                    ),
+                    {ok, #{topics => V5Topics, properties => #{}}};
+                Other ->
+                    Other
+            end
     end.
 
 auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, Properties) ->
@@ -204,14 +204,40 @@ auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, Properties
     end.
 
 auth_on_register(
-    _Peer,
-    _SubscriberId,
+    {_IpAddr, _Port} = _Peer,
+    {_MountPoint, _ClientId} = _SubscriberId,
     UserName,
     Password,
     _CleanSession,
     _SessionId
 ) ->
-    auth_on_register_jwt(UserName, Password).
+    %% do whatever you like with the params, all that matters
+    %% is the return value of this function
+    %%
+    %% 1. return 'ok' -> CONNECT is authenticated
+    %% 2. return 'next' -> leave it to other plugins to decide
+    %% 3. return {ok, [{ModifierKey, NewVal}...]} -> CONNECT is authenticated, but we might want to set some options used throughout the client session:
+    %%      - {mountpoint, NewMountPoint::string}
+    %%      - {clean_session, NewCleanSession::boolean}
+    %% 4. return {error, invalid_credentials} -> CONNACK_CREDENTIALS is sent
+    %% 5. return {error, Error} -> CONNACK_AUTH is sent
+
+    %% we return 'ok'
+    D = is_auth_on_register_disabled(),
+    if
+        D ->
+            next;
+        true ->
+            {Result, Claims} = verify(Password, ?SecretKey),
+            if
+                Result =:= ok ->
+                    check_rid(Claims, UserName);
+                %else block
+                true ->
+                    vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?INVALID_SIGNATURE}),
+                    {error, ?INVALID_SIGNATURE}
+            end
+    end.
 
 auth_on_register_m5(
     _Peer,
@@ -219,14 +245,12 @@ auth_on_register_m5(
     UserName,
     Password,
     _CleanStart,
-    Properties
+    _Properties
 ) ->
-    Token =
-        case maps:get(p_authentication_data, Properties, undefined) of
-            undefined -> Password;
-            AuthData -> AuthData
-        end,
-    auth_on_register_jwt(UserName, Token).
+    case auth_on_register_jwt(UserName, Password) of
+        {error, Reason} -> {error, #{reason_code => reason_code(Reason)}};
+        Other -> Other
+    end.
 
 auth_on_register_jwt(UserName, Token) ->
     case is_auth_on_register_disabled() of
@@ -241,6 +265,11 @@ auth_on_register_jwt(UserName, Token) ->
                     {error, ?INVALID_SIGNATURE}
             end
     end.
+
+reason_code(?INVALID_SIGNATURE) -> ?BAD_USERNAME_OR_PASSWORD;
+reason_code(?MISSING_RID) -> ?NOT_AUTHORIZED;
+reason_code(?USERNAME_RID_MISMATCH) -> ?NOT_AUTHORIZED;
+reason_code(_) -> ?BAD_USERNAME_OR_PASSWORD.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal+
@@ -1060,23 +1089,51 @@ mqtt5_subscribe_test(_) ->
         <<"topic x/y/z label simple_read\n">>
     ],
     load_from_list(ACL),
-    Topics = [{[<<"x">>, <<"y">>, <<"z">>], {1, #{}}}],
+    SubOpts = #{no_local => false, rap => false, retain_handling => send_retain},
+    Topic = [<<"x">>, <<"y">>, <<"z">>],
+    Topics = [{Topic, {1, SubOpts}}],
+    Denied = [{[<<"a">>, <<"b">>], {2, SubOpts}} | Topics],
     [
+        %% SubOpts have to survive the ACL check untouched
         ?_assertEqual(
-            {ok, #{topics => [{[<<"x">>, <<"y">>, <<"z">>], {1, #{}}}], properties => #{}}},
+            {ok, #{topics => [{Topic, {1, SubOpts}}], properties => #{}}},
             auth_on_subscribe_m5(<<"test">>, {"", <<"client-id">>}, Topics, #{})
         ),
+        %% A denied topic keeps the v5 subinfo shape so that
+        %% vmq_reg:subscribe_op/2 and vmq_mqtt5_fsm:topic_to_qos/1
+        %% can both destructure it
         ?_assertEqual(
             {ok, #{
-                topics => [{[<<"x">>, <<"y">>, <<"z">>], not_allowed}],
-                properties => #{p_user_property => [{<<"k">>, <<"v">>}]}
+                topics => [{[<<"x">>, <<"y">>, <<"z">>], {not_allowed, SubOpts}}],
+                properties => #{}
             }},
+            auth_on_subscribe_m5(<<"invalid-user">>, {"", <<"client-id">>}, Topics, #{})
+        ),
+        %% Inbound user properties are not echoed back into the SUBACK
+        ?_assertEqual(
+            {ok, #{topics => [{Topic, {1, SubOpts}}], properties => #{}}},
             auth_on_subscribe_m5(
-                <<"invalid-user">>,
+                <<"test">>,
                 {"", <<"client-id">>},
                 Topics,
                 #{p_user_property => [{<<"k">>, <<"v">>}]}
             )
+        ),
+        %% Partial denial: allowed topics keep their QoS
+        ?_assertEqual(
+            {ok, #{
+                topics => [
+                    {[<<"a">>, <<"b">>], {not_allowed, SubOpts}},
+                    {Topic, {1, SubOpts}}
+                ],
+                properties => #{}
+            }},
+            auth_on_subscribe_m5(<<"test">>, {"", <<"client-id">>}, Denied, #{})
+        ),
+        %% A non-v5 topic shape is refused instead of being dropped
+        ?_assertEqual(
+            {error, ?UNSPECIFIED_ERROR},
+            auth_on_subscribe_m5(<<"test">>, {"", <<"client-id">>}, [{Topic, 1}], #{})
         )
     ].
 

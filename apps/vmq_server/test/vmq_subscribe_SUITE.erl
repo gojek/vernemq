@@ -20,6 +20,7 @@ init_per_group(redis_disabled, Config) ->
     application:set_env(vmq_server, redis_enabled, false),
     vmq_test_utils:setup(),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5,131"}]),
+    ok = vmq_test_utils:wait_until_ready(),
     enable_on_subscribe(),
     enable_on_publish(),
     Config;
@@ -27,6 +28,7 @@ init_per_group(_Group, _Config) ->
     application:set_env(vmq_server, redis_enabled, true),
     vmq_test_utils:setup(),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5,131"}]),
+    ok = vmq_test_utils:wait_until_ready(),
     enable_on_subscribe(),
     enable_on_publish(),
     _Config.
@@ -81,7 +83,10 @@ groups() ->
     TestsMqttV5 =
         [subscribe_no_local_test,
         subscribe_illegal_opt,
-        subscription_ids],
+        subscription_ids,
+        suback_with_nack_v5_test,
+        subnack_v5_test,
+        suback_with_nack_v5_native_test],
 
     %% Only include tests that are safe to run with Redis disabled (noop backend)
     RedisDisabled =
@@ -94,7 +99,10 @@ groups() ->
          unsubscribe_qos0_test,
          unsubscribe_qos1_test,
          unsubscribe_qos2_test,
-         shared_subscription_local_caching_false_noop_test
+         shared_subscription_local_caching_false_noop_test,
+         suback_with_nack_v5_test,
+         subnack_v5_test,
+         suback_with_nack_v5_native_test
         ],
 
     [
@@ -106,6 +114,76 @@ groups() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+suback_with_nack_v5_test(Cfg) ->
+    %% Per-topic denial over MQTT 5 where the plugin uses the MQTTv4
+    %% denial shape {Topic, not_allowed} rather than the v5
+    %% {Topic, {not_allowed, SubOpts}} one. Both reach the v5 SUBACK
+    %% path - vmq_plugin_compat_m5 forwards whatever a v3 hook returns
+    %% verbatim, and vmq_webhooks emits the bare atom too. MQTT 5 has no
+    %% not_allowed reason code, so the denied topic has to come back as
+    %% 0x87 while the others keep their granted QoS.
+    disable_on_subscribe(),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_subscribe_m5, ?MODULE, hook_auth_on_subscribe_m5_v4shape, 4),
+    try
+        ClientId = vmq_cth:ustr(Cfg),
+        Connect = packetv5:gen_connect(ClientId, [{keepalive,60}]),
+        Connack = packetv5:gen_connack(),
+        {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+        Topics = [packetv5:gen_subtopic("allowed/topic", 1),
+                  packetv5:gen_subtopic("denied/topic", 2)],
+        Subscribe = packetv5:gen_subscribe(22, Topics, #{}),
+        ok = gen_tcp:send(Socket, Subscribe),
+        Suback = packetv5:gen_suback(22, [1, ?M5_NOT_AUTHORIZED], #{}),
+        ok = packetv5:expect_frame(Socket, Suback),
+        ok = gen_tcp:close(Socket)
+    after
+        catch vmq_plugin_mgr:disable_module_plugin(
+                auth_on_subscribe_m5, ?MODULE, hook_auth_on_subscribe_m5_v4shape, 4),
+        enable_on_subscribe()
+    end.
+
+subnack_v5_test(_) ->
+    %% A hook that rejects the whole SUBSCRIBE denies every topic.
+    Connect = packetv5:gen_connect("subscribe-multi2-test", [{keepalive,60}]),
+    Connack = packetv5:gen_connack(),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+    Topics = [packetv5:gen_subtopic("qos0/test", 0),
+              packetv5:gen_subtopic("qos1/test", 1),
+              packetv5:gen_subtopic("qos2/test", 2)],
+    Subscribe = packetv5:gen_subscribe(3, Topics, #{}),
+    ok = gen_tcp:send(Socket, Subscribe),
+    Suback = packetv5:gen_suback(3, [?M5_NOT_AUTHORIZED,
+                                     ?M5_NOT_AUTHORIZED,
+                                     ?M5_NOT_AUTHORIZED], #{}),
+    ok = packetv5:expect_frame(Socket, Suback),
+    ok = gen_tcp:close(Socket).
+
+suback_with_nack_v5_native_test(Cfg) ->
+    %% Same, but for a native auth_on_subscribe_m5 hook, which denies a
+    %% topic with the v5 subinfo shape {Topic, {not_allowed, SubOpts}}
+    %% - the shape vmq_enhanced_auth produces.
+    disable_on_subscribe(),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_subscribe_m5, ?MODULE, hook_auth_on_subscribe_m5, 4),
+    try
+        ClientId = vmq_cth:ustr(Cfg),
+        Connect = packetv5:gen_connect(ClientId, [{keepalive,60}]),
+        Connack = packetv5:gen_connack(),
+        {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+        Topics = [packetv5:gen_subtopic("allowed/topic", 1),
+                  packetv5:gen_subtopic("denied/topic", 2)],
+        Subscribe = packetv5:gen_subscribe(21, Topics, #{}),
+        ok = gen_tcp:send(Socket, Subscribe),
+        Suback = packetv5:gen_suback(21, [1, ?M5_NOT_AUTHORIZED], #{}),
+        ok = packetv5:expect_frame(Socket, Suback),
+        ok = gen_tcp:close(Socket)
+    after
+        catch vmq_plugin_mgr:disable_module_plugin(
+                auth_on_subscribe_m5, ?MODULE, hook_auth_on_subscribe_m5, 4),
+        enable_on_subscribe()
+    end.
 
 bridge_protocol_retain_as_publish_test(Cfg) ->
     SubClientId = vmq_cth:ustr(Cfg) ++ "-subscriber",
@@ -581,6 +659,26 @@ hook_auth_on_subscribe(_,{"", <<"shared-sub-not-allowed-test">>},
                        [{[<<"$share">>,_,<<"shared-topic-not-allowed">>] = Topic, _}], _) ->
     {ok, [{Topic, not_allowed}]};
 hook_auth_on_subscribe(_,_,_, _) -> ok.
+
+%% Native MQTT 5 hook: denies "denied/topic" only, keeping the v5
+%% subinfo shape for both the allowed and the denied topics.
+hook_auth_on_subscribe_m5(_, _, Topics, _) ->
+    Modified =
+        [case T of
+             [<<"denied">>, <<"topic">>] -> {T, {not_allowed, SubOpts}};
+             _ -> {T, {QoS, SubOpts}}
+         end || {T, {QoS, SubOpts}} <- Topics],
+    {ok, #{topics => Modified, properties => #{}}}.
+
+%% Same, but denying with the MQTTv4 shape: a bare not_allowed atom in
+%% place of the whole subinfo tuple.
+hook_auth_on_subscribe_m5_v4shape(_, _, Topics, _) ->
+    Modified =
+        [case T of
+             [<<"denied">>, <<"topic">>] -> {T, not_allowed};
+             _ -> {T, {QoS, SubOpts}}
+         end || {T, {QoS, SubOpts}} <- Topics],
+    {ok, #{topics => Modified, properties => #{}}}.
 
 hook_auth_on_publish(_, _, _, _, _, _, _) -> ok.
 

@@ -980,6 +980,13 @@ check_enhanced_auth(
                 [State#state.subscriber_id, RCN]
             ),
             connack_terminate(RCN, Props0, State);
+        {error, ?NO_MATCHING_HOOK_FOUND} ->
+            lager:warning(
+                "can't authenticate client ~p from ~s: "
+                "no on_auth_m5 hook for authentication method ~p",
+                [State#state.subscriber_id, peertoa(State#state.peer), AuthMethod]
+            ),
+            connack_terminate(?BAD_AUTHENTICATION_METHOD, State);
         {error, Reason} ->
             lager:warning(
                 "can't continue enhanced auth with client ~p due to ~p",
@@ -2238,13 +2245,23 @@ get_sub_id(#{p_subscription_id := [SubId]}) ->
 get_sub_id(_) ->
     undefined.
 
--spec topic_to_qos([subscription()]) -> [qos()].
+-spec topic_to_qos([subscription()]) -> [qos() | reason_code()].
 topic_to_qos(Topics) ->
     lists:map(
         fun
+            %% A plugin denied this single topic. MQTT 5 has no
+            %% dedicated 'not_allowed' SUBACK code, so it becomes a
+            %% per-topic 0x87 while the remaining topics still get
+            %% their granted QoS. Both the MQTTv4 shape ({T, atom})
+            %% and the MQTTv5 shape ({T, {atom, SubOpts}}) are
+            %% accepted, mirroring vmq_reg:subscribe_op/2.
+            ({_T, not_allowed}) ->
+                ?M5_NOT_AUTHORIZED;
+            ({_T, {not_allowed, _}}) ->
+                ?M5_NOT_AUTHORIZED;
             ({_T, QoS}) when is_integer(QoS) ->
                 QoS;
-            ({_T, {QoS, _}}) ->
+            ({_T, {QoS, _}}) when is_integer(QoS) ->
                 QoS
         end,
         Topics
