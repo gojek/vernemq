@@ -56,7 +56,11 @@ groups() ->
      enhanced_auth_new_auth_method_fails,
      reauthenticate,
      reauthenticate_server_rejects,
-     unsubscribe_hook
+     unsubscribe_hook,
+     jwt_auth,
+     jwt_auth_bad_token,
+     jwt_auth_rid_mismatch,
+     jwt_auth_method_not_supported
     ],
     [
      {mqtt, [shuffle], ConnectTests}
@@ -374,6 +378,96 @@ unsubscribe_hook(_Config) ->
         auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
 
     ets:delete(?MODULE).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% vmq_enhanced_auth JWT auth over MQTT 5
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+-define(JWT_KEY, "test-key").
+
+%% Wires the real vmq_enhanced_auth register hook into the broker for the
+%% duration of Fun, so these exercise the actual plugin rather than a
+%% stand in.
+with_jwt_plugin(Fun) ->
+    case whereis(vmq_enhanced_auth_metrics) of
+        undefined -> {ok, _} = vmq_enhanced_auth_metrics:start_link();
+        _ -> ok
+    end,
+    ok = application:set_env(vmq_enhanced_auth, secret_key, ?JWT_KEY),
+    ok = application:set_env(vmq_enhanced_auth, enable_jwt_auth, true),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_register_m5, vmq_enhanced_auth, auth_on_register_m5, 6),
+    %% Single node test broker: registration does not need to be
+    %% coordinated across the cluster, and coordinating it routes the
+    %% registration by client id hash over vmq_cluster_mon:nodes/0.
+    vmq_server_cmd:set_config(coordinate_registrations, false),
+    vmq_config:configure_node(),
+    try
+        Fun()
+    after
+        vmq_server_cmd:set_config(coordinate_registrations, true),
+        vmq_config:configure_node(),
+        catch vmq_plugin_mgr:disable_module_plugin(
+                auth_on_register_m5, vmq_enhanced_auth, auth_on_register_m5, 6),
+        application:unset_env(vmq_enhanced_auth, secret_key),
+        application:unset_env(vmq_enhanced_auth, enable_jwt_auth)
+    end.
+
+jwt(Rid) ->
+    jwerl:sign([{rid, Rid}], hs256, list_to_binary(?JWT_KEY)).
+
+jwt_connect(ClientId, User, Token) ->
+    packetv5:gen_connect(ClientId, [{keepalive, 10},
+                                    {username, User},
+                                    {password, Token}]).
+
+%% A v5 client authenticates exactly as a v3 one does: JWT in the CONNECT
+%% password, no Authentication Method involved.
+jwt_auth(_Config) ->
+    with_jwt_plugin(
+      fun() ->
+          Connect = jwt_connect("jwt-auth-test", "username", jwt(<<"username">>)),
+          Connack = packetv5:gen_connack(),
+          {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+          ok = gen_tcp:close(Socket)
+      end).
+
+jwt_auth_bad_token(_Config) ->
+    with_jwt_plugin(
+      fun() ->
+          Connect = jwt_connect("jwt-auth-bad-test", "username", <<"not-a-jwt">>),
+          Connack = packetv5:gen_connack(0, ?M5_BAD_USERNAME_OR_PASSWORD, #{}),
+          {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+          ok = gen_tcp:close(Socket)
+      end).
+
+%% This broker implements no on_auth_m5, so it supports no enhanced
+%% authentication method at all. A client that asks for one has to be
+%% told so with a CONNACK 0x8C [MQTT-4.12.0-1] - not left with a socket
+%% that closes for no stated reason, which it cannot tell apart from a
+%% network drop.
+jwt_auth_method_not_supported(_Config) ->
+    with_jwt_plugin(
+      fun() ->
+          Connect = packetv5:gen_connect("jwt-no-enh-auth-test",
+                                         [{keepalive, 10},
+                                          {username, "username"},
+                                          {properties,
+                                           auth_props(<<"SCRAM-SHA-1">>, <<"opaque">>)}]),
+          Connack = packetv5:gen_connack(0, ?M5_BAD_AUTHENTICATION_METHOD, #{}),
+          {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+          {error, closed} = gen_tcp:recv(Socket, 0, 100)
+      end).
+
+%% Well formed token, but its rid does not match the CONNECT username.
+jwt_auth_rid_mismatch(_Config) ->
+    with_jwt_plugin(
+      fun() ->
+          Connect = jwt_connect("jwt-auth-rid-test", "username", jwt(<<"someone-else">>)),
+          Connack = packetv5:gen_connack(0, ?M5_NOT_AUTHORIZED, #{}),
+          {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+          ok = gen_tcp:close(Socket)
+      end).
 
 %%%%% Helpers %%%%%
 auth_props(Method, Data) ->
