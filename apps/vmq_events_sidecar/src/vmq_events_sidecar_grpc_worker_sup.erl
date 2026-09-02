@@ -46,8 +46,12 @@ init([]) ->
     persistent_term:put(?GRPC_WORKER_NAMES, Names),
     persistent_term:put(?GRPC_MAX_QUEUE_LEN, MaxQueueLen),
 
-    maybe_new_atomics(?GRPC_RR_COUNTER, 1),
-    maybe_new_atomics(?GRPC_DEPTH_COUNTERS, PoolSize),
+    %% Unsigned, so the round-robin ticket wraps to 0 rather than to a negative
+    %% value: (Idx rem PoolSize) + 1 must stay a valid tuple index.
+    maybe_new_atomics(?GRPC_RR_COUNTER, 1, [{signed, false}]),
+    %% Signed, because a worker that dies mid-event leaves its slot transiently
+    %% negative until reconcile_lost_events/2 settles it.
+    maybe_new_atomics(?GRPC_DEPTH_COUNTERS, PoolSize, [{signed, true}]),
 
     SupFlags = #{strategy => one_for_one, intensity => PoolSize, period => 10},
 
@@ -69,10 +73,10 @@ init([]) ->
 %% Internal functions
 %%====================================================================
 
-maybe_new_atomics(Key, Arity) ->
+maybe_new_atomics(Key, Arity, Opts) ->
     case persistent_term:get(Key, undefined) of
         undefined ->
-            persistent_term:put(Key, atomics:new(Arity, [{signed, true}]));
+            persistent_term:put(Key, atomics:new(Arity, Opts));
         _ExistingRef ->
             ok
     end.

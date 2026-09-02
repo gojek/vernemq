@@ -270,6 +270,9 @@ grpc_worker_pool_started_test(_) ->
     %% add 0 reads the counter without disturbing round-robin ordering
     Counter = persistent_term:get(?GRPC_RR_COUNTER),
     true = is_integer(atomics:add_get(Counter, 1, 0)),
+    %% Must be unsigned: the ticket only grows, and on overflow it has to wrap to
+    %% 0, since a negative Idx makes (Idx rem PoolSize) + 1 a bad tuple index.
+    #{min := 0} = atomics:info(Counter),
     %% One depth slot per worker, and the array must be signed -- an unsigned
     %% array would wrap a transient negative into a huge value and wedge the
     %% worker as permanently full.
