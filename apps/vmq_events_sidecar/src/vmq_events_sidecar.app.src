@@ -9,7 +9,8 @@
         lager,
         clique,
         shackle,
-        grpc
+        grpc,
+        gun
     ]},
     {env, [
         {hostname, "127.0.0.1"},
