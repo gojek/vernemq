@@ -120,14 +120,16 @@ init([]) ->
     ],
     ok = shackle_pool:start(?APP, ?CLIENT, ClientOpts, PoolOtps),
 
-    %% The gRPC channel pool and the worker pool are both gated on grpc_endpoint,
-    %% so a deployment that has not enabled gRPC starts exactly the processes it
-    %% started before this path existed.
+    %% The gRPC path is opt-in through grpc_enabled, so a deployment that has not
+    %% turned it on starts exactly the processes it started before this path
+    %% existed.
     GrpcChildSpecs =
-        case grpc_endpoint() of
-            "" ->
+        case vmq_events_sidecar_grpc_client:enabled() of
+            false ->
+                warn_if_enabled_without_endpoint(),
                 [];
-            GrpcEndpoint ->
+            true ->
+                GrpcEndpoint = grpc_endpoint(),
                 GrpcPort = application:get_env(vmq_events_sidecar, grpc_port, 80),
                 GrpcPoolSize = application:get_env(vmq_events_sidecar, grpc_pool_size, 100),
                 ok = vmq_events_sidecar_grpc_client:start(#{
@@ -162,19 +164,32 @@ init([]) ->
 grpc_endpoint() ->
     application:get_env(vmq_events_sidecar, grpc_endpoint, "").
 
-%% Routing to gRPC without an endpoint would send every event to a pool that was
-%% never started. vmq_events_sidecar_cli already refuses this at runtime; boot
-%% config needs the same guard.
+%% grpc_enabled on with no endpoint is a misconfiguration rather than a way to
+%% switch the path off, so it is worth a boot-time error either way.
+warn_if_enabled_without_endpoint() ->
+    case application:get_env(vmq_events_sidecar, grpc_enabled, false) of
+        true ->
+            lager:error(
+                "grpc_enabled is on but grpc_endpoint is not configured, "
+                "the gRPC path stays disabled"
+            );
+        false ->
+            ok
+    end.
+
+%% Routing to gRPC while the path is disabled would send every event to a pool
+%% that was never started. vmq_events_sidecar_cli already refuses this at
+%% runtime; boot config needs the same guard.
 effective_grpc_percentage(0) ->
     0;
 effective_grpc_percentage(Percentage) ->
-    case grpc_endpoint() of
-        "" ->
+    case vmq_events_sidecar_grpc_client:enabled() of
+        false ->
             lager:warning(
-                "ignoring grpc_percentage=~p because grpc_endpoint is not configured",
+                "ignoring grpc_percentage=~p because the gRPC path is not enabled",
                 [Percentage]
             ),
             0;
-        _Endpoint ->
+        true ->
             Percentage
     end.

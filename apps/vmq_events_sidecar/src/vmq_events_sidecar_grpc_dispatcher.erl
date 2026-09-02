@@ -28,8 +28,8 @@
 dispatch(HookName, Timestamp, EventPayload) ->
     case persistent_term:get(?GRPC_WORKER_NAMES, undefined) of
         undefined ->
-            %% Reachable when grpc_percentage is non-zero but grpc_endpoint is
-            %% unset, so the worker supervisor was never started. Counted rather
+            %% Reachable when grpc_percentage is non-zero but grpc_enabled is
+            %% off, so the worker supervisor was never started. Counted rather
             %% than crashed.
             drop(HookName, no_workers);
         Names ->

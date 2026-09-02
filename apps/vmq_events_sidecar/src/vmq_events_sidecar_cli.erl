@@ -24,6 +24,7 @@ register_config() ->
             "vmq_events_sidecar.pool_size",
             "vmq_events_sidecar.backlog_size",
             "vmq_events_sidecar.user_type",
+            "vmq_events_sidecar.grpc_enabled",
             "vmq_events_sidecar.grpc_endpoint",
             "vmq_events_sidecar.grpc_port",
             "vmq_events_sidecar.grpc_pool_size",
@@ -186,6 +187,7 @@ rollout_show_cmd() ->
                 Port = application:get_env(vmq_events_sidecar, grpc_port, 80),
                 Table = [
                     [
+                        {grpc_enabled, vmq_events_sidecar_grpc_client:enabled()},
                         {percentage, P},
                         {grpc_endpoint, Endpoint},
                         {grpc_port, Port}
@@ -207,14 +209,14 @@ rollout_set_cmd() ->
             (_, [{percentage, P}], []) ->
                 case P > 0 of
                     true ->
-                        Endpoint = application:get_env(
-                            vmq_events_sidecar, grpc_endpoint, ""
-                        ),
-                        case Endpoint of
-                            "" ->
-                                Text = "grpc_endpoint is not configured",
+                        case vmq_events_sidecar_grpc_client:enabled() of
+                            false ->
+                                Text =
+                                    "the gRPC path is not enabled, set "
+                                    "vmq_events_sidecar.grpc_enabled = on and "
+                                    "vmq_events_sidecar.grpc_endpoint, then restart",
                                 [clique_status:alert([clique_status:text(Text)])];
-                            _ ->
+                            true ->
                                 vmq_events_sidecar_plugin:set_grpc_percentage(P),
                                 [clique_status:text("Done")]
                         end;
@@ -432,6 +434,6 @@ rollout_set_usage() ->
         "vmq-admin events rollout set percentage=<Percentage>\n\n",
         "  Sets the percentage of events routed to the gRPC endpoint (0-100).\n",
         "  0 = all events go to the local sidecar, 100 = all events go via gRPC.\n",
-        "  Requires grpc_endpoint to be configured for percentage > 0.",
+        "  Requires grpc_enabled and grpc_endpoint to be configured for percentage > 0.",
         "\n\n"
     ].

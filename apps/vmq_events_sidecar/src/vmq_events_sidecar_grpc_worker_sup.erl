@@ -3,9 +3,9 @@
 %%%-------------------------------------------------------------------
 %% @doc Supervisor for the fixed gRPC event forwarding worker pool.
 %%
-%% Started as a child of vmq_events_sidecar_sup, but only when grpc_endpoint is
-%% configured -- a broker that has not opted into gRPC runs exactly the processes
-%% it ran before this pool existed.
+%% Started as a child of vmq_events_sidecar_sup, but only when grpc_enabled is
+%% on -- a broker that has not opted into gRPC runs exactly the processes it ran
+%% before this pool existed.
 %% @end
 %%%-------------------------------------------------------------------
 

@@ -25,6 +25,7 @@ init_per_suite(Config) ->
     {ok, _} = application:ensure_all_started(grpc),
     events_sidecar_handler:start_grpc_server(),
 
+    application:set_env(vmq_events_sidecar, grpc_enabled, true),
     application:set_env(vmq_events_sidecar, grpc_endpoint, "127.0.0.1"),
     application:set_env(vmq_events_sidecar, grpc_port, 8891),
     application:set_env(vmq_events_sidecar, grpc_pool_size, 5),
@@ -93,7 +94,8 @@ all() ->
      grpc_connection_recycle_pauses_when_degraded_test,
      grpc_connection_recycle_rate_scales_with_pool_test,
      grpc_connection_recycle_disabled_by_default_test,
-     grpc_connection_recycle_enabled_at_runtime_test
+     grpc_connection_recycle_enabled_at_runtime_test,
+     grpc_disabled_unless_flag_and_endpoint_set_test
     ].
 
 
@@ -256,7 +258,7 @@ on_subscribe_grpc_test(_) ->
 %% real one because vmq_events_sidecar_metrics:met2idx/1 has no catch-all.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 grpc_worker_pool_started_test(_) ->
-    %% grpc_endpoint is set for this suite, so the conditional child must be there.
+    %% grpc_enabled is on for this suite, so the conditional child must be there.
     Children = [Id || {Id, _Pid, _Type, _Mods} <- supervisor:which_children(
         vmq_events_sidecar_sup
     )],
@@ -349,7 +351,7 @@ grpc_dispatch_no_workers_test(_) ->
     Before = metric_value(grpc_call_result, [{hook, "on_publish"}, {result, "no_workers"}]),
     persistent_term:erase(?GRPC_WORKER_NAMES),
     try
-        %% Reachable when grpc_percentage is non-zero but grpc_endpoint is unset.
+        %% Reachable when grpc_percentage is non-zero but grpc_enabled is off.
         %% Must be counted, not raised into the caller.
         ok = dispatch_probe(),
         After = metric_value(grpc_call_result, [{hook, "on_publish"}, {result, "no_workers"}]),
@@ -610,6 +612,26 @@ grpc_connection_recycle_enabled_at_runtime_test(_) ->
         application:set_env(vmq_events_sidecar, grpc_connection_max_age_seconds, 0)
     end,
     ok = wait_until(fun() -> length(conn_pids()) =:= Expected end),
+    ok.
+
+%% The flag is what gates every gRPC process at boot, so both halves of it have
+%% to hold: off means off even with an endpoint, and on with no endpoint must not
+%% count as enabled.
+grpc_disabled_unless_flag_and_endpoint_set_test(_) ->
+    true = vmq_events_sidecar_grpc_client:enabled(),
+    try
+        application:set_env(vmq_events_sidecar, grpc_enabled, false),
+        false = vmq_events_sidecar_grpc_client:enabled(),
+        application:set_env(vmq_events_sidecar, grpc_enabled, true),
+        application:set_env(vmq_events_sidecar, grpc_endpoint, ""),
+        false = vmq_events_sidecar_grpc_client:enabled(),
+        application:unset_env(vmq_events_sidecar, grpc_enabled),
+        false = vmq_events_sidecar_grpc_client:enabled()
+    after
+        application:set_env(vmq_events_sidecar, grpc_enabled, true),
+        application:set_env(vmq_events_sidecar, grpc_endpoint, "127.0.0.1")
+    end,
+    true = vmq_events_sidecar_grpc_client:enabled(),
     ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -61,8 +61,16 @@
  [{datatype, string},
   {default, "default"}]}.
 
-%% @doc Configure the gRPC endpoint hostname (bypasses the local sidecar).
-%% Leave empty to disable gRPC.
+%% @doc Forward events over gRPC instead of to the sidecar over TCP.
+%% Off by default. While off, no gRPC channel pool, worker pool or connection
+%% monitor is started, and grpc_percentage is ignored. Applied at boot only.
+{mapping, "vmq_events_sidecar.grpc_enabled", "vmq_events_sidecar.grpc_enabled",
+ [{default, off},
+  {datatype, flag},
+  hidden]}.
+
+%% @doc Configure the gRPC endpoint hostname. Required when grpc_enabled is on;
+%% the gRPC path stays off if this is empty.
 {mapping, "vmq_events_sidecar.grpc_endpoint", "vmq_events_sidecar.grpc_endpoint",
  [{datatype, string},
   hidden,

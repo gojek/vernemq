@@ -4,7 +4,7 @@
 -include_lib("vmq_proto/include/event_request_pb.hrl").
 -include_lib("vmq_proto/include/any_pb.hrl").
 
--export([start/1, stop/0, send_event/2]).
+-export([enabled/0, start/1, stop/0, send_event/2]).
 
 -define(SERVICE_PATH, <<"/webhook.v1beta1.PluginService/Event">>).
 
@@ -18,6 +18,13 @@
     http2_opts => #{keepalive => 30000, keepalive_tolerance => 2},
     tcp_opts => [{nodelay, true}, {send_timeout, 15000}, {send_timeout_close, true}]
 }).
+
+%% @doc Whether the gRPC path is configured to run. Both halves are required:
+%% grpc_enabled is the switch, and grpc_endpoint is what it switches on.
+-spec enabled() -> boolean().
+enabled() ->
+    application:get_env(?APP, grpc_enabled, false) =:= true andalso
+        application:get_env(?APP, grpc_endpoint, "") =/= "".
 
 -spec start(#{endpoint := string(), port := integer(), pool_size := integer()}) -> ok.
 start(#{endpoint := Endpoint, port := Port, pool_size := PoolSize}) ->
