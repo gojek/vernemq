@@ -54,7 +54,19 @@ start_link() ->
                             lager:error("Hook must be an atom.")
                     end,
                     SamplingHooks
-                )
+                ),
+
+                GrpcPercentage = application:get_env(
+                    vmq_events_sidecar, grpc_percentage, 0
+                ),
+                vmq_events_sidecar_plugin:set_grpc_percentage(
+                    effective_grpc_percentage(GrpcPercentage)
+                ),
+
+                UserType = application:get_env(vmq_events_sidecar, user_type, "default"),
+                persistent_term:put(?GRPC_USER_TYPE, list_to_binary(UserType)),
+                GrpcTimeout = application:get_env(vmq_events_sidecar, grpc_timeout, 500),
+                persistent_term:put(?GRPC_TIMEOUT, GrpcTimeout)
             end),
             Ret;
         E ->
@@ -67,10 +79,15 @@ start_link() ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
+    %% intensity 1 / period 5 would be too tight now that a child supervises a
+    %% whole worker pool: one transient blip there would escalate to killing the
+    %% metrics and plugin gen_servers, and with them the shackle path that still
+    %% carries production traffic during the rollout.
     SupFlags =
-        #{strategy => one_for_one, intensity => 1, period => 5},
+        #{strategy => one_for_one, intensity => 5, period => 10},
     ChildSpecs =
         [
+            %% Must start before the workers -- it owns the tables they write to.
             #{
                 id => vmq_events_sidecar_metrics,
                 start => {vmq_events_sidecar_metrics, start_link, []},
@@ -102,4 +119,77 @@ init([]) ->
         {pool_size, PoolSize}
     ],
     ok = shackle_pool:start(?APP, ?CLIENT, ClientOpts, PoolOtps),
-    {ok, {SupFlags, ChildSpecs}}.
+
+    %% The gRPC path is opt-in through grpc_enabled, so a deployment that has not
+    %% turned it on starts exactly the processes it started before this path
+    %% existed.
+    GrpcChildSpecs =
+        case vmq_events_sidecar_grpc_client:enabled() of
+            false ->
+                warn_if_enabled_without_endpoint(),
+                [];
+            true ->
+                GrpcEndpoint = grpc_endpoint(),
+                GrpcPort = application:get_env(vmq_events_sidecar, grpc_port, 80),
+                GrpcPoolSize = application:get_env(vmq_events_sidecar, grpc_pool_size, 100),
+                ok = vmq_events_sidecar_grpc_client:start(#{
+                    endpoint => GrpcEndpoint,
+                    port => GrpcPort,
+                    pool_size => GrpcPoolSize
+                }),
+                [
+                    #{
+                        id => vmq_events_sidecar_grpc_worker_sup,
+                        start => {vmq_events_sidecar_grpc_worker_sup, start_link, []},
+                        restart => permanent,
+                        type => supervisor,
+                        modules => [vmq_events_sidecar_grpc_worker_sup]
+                    },
+                    #{
+                        id => vmq_events_sidecar_grpc_conn_monitor,
+                        start => {vmq_events_sidecar_grpc_conn_monitor, start_link, []},
+                        restart => permanent,
+                        type => worker,
+                        modules => [vmq_events_sidecar_grpc_conn_monitor]
+                    }
+                ]
+        end,
+
+    {ok, {SupFlags, ChildSpecs ++ GrpcChildSpecs}}.
+
+%%====================================================================
+%% Internal functions
+%%====================================================================
+
+grpc_endpoint() ->
+    application:get_env(vmq_events_sidecar, grpc_endpoint, "").
+
+%% grpc_enabled on with no endpoint is a misconfiguration rather than a way to
+%% switch the path off, so it is worth a boot-time error either way.
+warn_if_enabled_without_endpoint() ->
+    case application:get_env(vmq_events_sidecar, grpc_enabled, false) of
+        true ->
+            lager:error(
+                "grpc_enabled is on but grpc_endpoint is not configured, "
+                "the gRPC path stays disabled"
+            );
+        false ->
+            ok
+    end.
+
+%% Routing to gRPC while the path is disabled would send every event to a pool
+%% that was never started. vmq_events_sidecar_cli already refuses this at
+%% runtime; boot config needs the same guard.
+effective_grpc_percentage(0) ->
+    0;
+effective_grpc_percentage(Percentage) ->
+    case vmq_events_sidecar_grpc_client:enabled() of
+        false ->
+            lager:warning(
+                "ignoring grpc_percentage=~p because the gRPC path is not enabled",
+                [Percentage]
+            ),
+            0;
+        true ->
+            Percentage
+    end.
