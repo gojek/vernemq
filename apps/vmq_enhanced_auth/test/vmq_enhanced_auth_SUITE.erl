@@ -16,7 +16,13 @@
   auth_on_register_rid_absent_test/1,
   auth_on_register_rid_different_test/1,
   auth_on_register_unparsable_token_test/1,
-  auth_on_register_disabled_test/1
+  auth_on_register_disabled_test/1,
+  auth_on_register_m5_test/1,
+  auth_on_register_m5_auth_data_ignored_test/1,
+  auth_on_register_m5_rid_absent_test/1,
+  auth_on_register_m5_rid_different_test/1,
+  auth_on_register_m5_unparsable_token_test/1,
+  auth_on_register_m5_disabled_test/1
 ]).
 
 all() ->
@@ -25,7 +31,13 @@ all() ->
     auth_on_register_rid_absent_test,
     auth_on_register_rid_different_test,
     auth_on_register_unparsable_token_test,
-    auth_on_register_disabled_test
+    auth_on_register_disabled_test,
+    auth_on_register_m5_test,
+    auth_on_register_m5_auth_data_ignored_test,
+    auth_on_register_m5_rid_absent_test,
+    auth_on_register_m5_rid_different_test,
+    auth_on_register_m5_unparsable_token_test,
+    auth_on_register_m5_disabled_test
   ].
 
 init_per_suite(_Config) ->
@@ -88,5 +100,65 @@ auth_on_register_disabled_test(_) ->
   %When username contains no colons
   Password = jwerl:sign([{rid, <<"username">>}], hs256, <<"test-key">>),
   next = vmq_enhanced_auth:auth_on_register({"",""}, {"",""}, <<"username">>, Password, false, <<"f8d91687-6438-425c-8abd-217d4aabcf8a">>),
+  application:unset_env(vmq_enhanced_auth, secret_key),
+  application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
+
+auth_on_register_m5_test(_) ->
+  ok = application:set_env(vmq_enhanced_auth, secret_key, "test-key"),
+  ok = application:set_env(vmq_enhanced_auth, enable_jwt_auth, true),
+  Password = jwerl:sign([{rid, <<"username">>}], hs256, <<"test-key">>),
+  ok = vmq_enhanced_auth:auth_on_register_m5({"",""}, {"",""}, <<"username">>, Password, true, #{}),
+  application:unset_env(vmq_enhanced_auth, secret_key),
+  application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
+
+%% p_authentication_data is not a credential channel: the JWT has to be
+%% in the CONNECT password, same as on the MQTT 3 path.
+auth_on_register_m5_auth_data_ignored_test(_) ->
+  ok = application:set_env(vmq_enhanced_auth, secret_key, "test-key"),
+  ok = application:set_env(vmq_enhanced_auth, enable_jwt_auth, true),
+  Token = jwerl:sign([{rid, <<"username">>}], hs256, <<"test-key">>),
+  {error, #{reason_code := bad_username_or_password}} = vmq_enhanced_auth:auth_on_register_m5(
+    {"",""}, {"",""}, <<"username">>, <<>>, true,
+    #{p_authentication_data => Token}
+  ),
+  application:unset_env(vmq_enhanced_auth, secret_key),
+  application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
+
+auth_on_register_m5_rid_absent_test(_) ->
+  ok = application:set_env(vmq_enhanced_auth, secret_key, "test-key"),
+  ok = application:set_env(vmq_enhanced_auth, enable_jwt_auth, true),
+  Password = jwerl:sign([{norid, <<"username">>}], hs256, <<"test-key">>),
+  {error, #{reason_code := not_authorized}} = vmq_enhanced_auth:auth_on_register_m5(
+    {"",""}, {"",""}, <<"username">>, Password, true, #{}
+  ),
+  application:unset_env(vmq_enhanced_auth, secret_key),
+  application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
+
+auth_on_register_m5_rid_different_test(_) ->
+  ok = application:set_env(vmq_enhanced_auth, secret_key, "test-key"),
+  ok = application:set_env(vmq_enhanced_auth, enable_jwt_auth, true),
+  Password = jwerl:sign([{rid, <<"different_username">>}], hs256, <<"test-key">>),
+  {error, #{reason_code := not_authorized}} = vmq_enhanced_auth:auth_on_register_m5(
+    {"",""}, {"",""}, <<"username">>, Password, true, #{}
+  ),
+  application:unset_env(vmq_enhanced_auth, secret_key),
+  application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
+
+auth_on_register_m5_unparsable_token_test(_) ->
+  ok = application:set_env(vmq_enhanced_auth, secret_key, "test-key"),
+  ok = application:set_env(vmq_enhanced_auth, enable_jwt_auth, true),
+  {error, #{reason_code := bad_username_or_password}} = vmq_enhanced_auth:auth_on_register_m5(
+    {"",""}, {"",""}, <<"username">>, <<"Password">>, true, #{}
+  ),
+  application:unset_env(vmq_enhanced_auth, secret_key),
+  application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
+
+auth_on_register_m5_disabled_test(_) ->
+  ok = application:set_env(vmq_enhanced_auth, secret_key, "test-key"),
+  ok = application:set_env(vmq_enhanced_auth, enable_jwt_auth, false),
+  Password = jwerl:sign([{rid, <<"username">>}], hs256, <<"test-key">>),
+  next = vmq_enhanced_auth:auth_on_register_m5(
+    {"",""}, {"",""}, <<"username">>, Password, true, #{}
+  ),
   application:unset_env(vmq_enhanced_auth, secret_key),
   application:unset_env(vmq_enhanced_auth, enable_jwt_auth).
