@@ -280,8 +280,6 @@ connected(
     case Ret of
         {error, not_allowed} ->
             terminate(?PUBLISH_AUTH_ERROR, State);
-        {error, rate_limit_exceeded} ->
-            {State, []};
         Out when is_list(Out) ->
             case do_throttle(#{}, State) of
                 false ->
@@ -1168,8 +1166,7 @@ on_publish_hook(Other, _, _SubscriberId) ->
     list()
     | {list(), session_ctrl()}
     | {state(), list(), session_ctrl()}
-    | {error, not_allowed}
-    | {error, rate_limit_exceeded}.
+    | {error, not_allowed}.
 dispatch_publish(Qos, MessageId, Msg, State) ->
     dispatch_publish_(Qos, MessageId, Msg, State).
 
@@ -1177,8 +1174,7 @@ dispatch_publish(Qos, MessageId, Msg, State) ->
     list()
     | {list(), session_ctrl()}
     | {state(), list(), session_ctrl()}
-    | {error, not_allowed}
-    | {error, rate_limit_exceeded}.
+    | {error, not_allowed}.
 dispatch_publish_(0, MessageId, Msg, State) ->
     dispatch_publish_qos0(MessageId, Msg, State);
 dispatch_publish_(1, MessageId, Msg, State) ->
@@ -1189,8 +1185,7 @@ dispatch_publish_(2, MessageId, Msg, State) ->
 -spec dispatch_publish_qos0(msg_id(), msg(), state()) ->
     list()
     | {list(), session_ctrl()}
-    | {error, not_allowed}
-    | {error, rate_limit_exceeded}.
+    | {error, not_allowed}.
 dispatch_publish_qos0(_MessageId, Msg, State) ->
     #state{
         username = User,
@@ -1219,8 +1214,7 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
 -spec dispatch_publish_qos1(msg_id(), msg(), state()) ->
     list()
     | {list(), session_ctrl()}
-    | {error, not_allowed}
-    | {error, rate_limit_exceeded}.
+    | {error, not_allowed}.
 dispatch_publish_qos1(MessageId, Msg, State) ->
     #state{
         username = User,
@@ -1266,8 +1260,7 @@ maybe_send_immediate_puback(AclName, MessageId) ->
 -spec dispatch_publish_qos2(msg_id(), msg(), state()) ->
     list()
     | {state(), list(), session_ctrl()}
-    | {error, not_allowed}
-    | {error, rate_limit_exceeded}.
+    | {error, not_allowed}.
 dispatch_publish_qos2(MessageId, Msg, State) ->
     #state{
         username = User,
