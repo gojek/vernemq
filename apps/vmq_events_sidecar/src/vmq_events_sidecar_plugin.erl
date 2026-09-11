@@ -48,8 +48,7 @@
     disable_sampling/2,
     list_sampling_conf/1,
 
-    set_grpc_percentage/1,
-    get_grpc_percentage/0
+    transport/0
 ]).
 
 %% gen_server callbacks
@@ -122,13 +121,10 @@ all_hooks() ->
 list_sampling_conf(Hook) ->
     ets:match(?SAMPLER_TBL, {{Hook, '$1'}, '$2'}).
 
--spec set_grpc_percentage(0..100) -> ok.
-set_grpc_percentage(P) when is_integer(P), P >= 0, P =< 100 ->
-    gen_server:call(?MODULE, {set_grpc_percentage, P}).
-
--spec get_grpc_percentage() -> 0..100.
-get_grpc_percentage() ->
-    persistent_term:get(?GRPC_ROLLOUT_PERCENTAGE, 0).
+%% @doc The transport events are forwarded over. Set at boot; tcp until then.
+-spec transport() -> tcp | grpc.
+transport() ->
+    persistent_term:get(?EVENTS_TRANSPORT, tcp).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -206,10 +202,7 @@ handle_call({disable_sampling, Hook, Criterion}, _From, State) ->
                 ets:delete(?SAMPLER_TBL, {Hook, Criterion}),
                 ok
         end,
-    {reply, Reply, State};
-handle_call({set_grpc_percentage, P}, _From, State) ->
-    persistent_term:put(?GRPC_ROLLOUT_PERCENTAGE, P),
-    {reply, ok, State}.
+    {reply, Reply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -524,16 +517,11 @@ from_internal_qos({QoS, Opts}) when
 -spec process_event(Hook :: hook_name(), EventPayload :: any()) -> ok.
 process_event(HookName, EventPayload) ->
     V1 = vmq_util:ts(),
-    case persistent_term:get(?GRPC_ROLLOUT_PERCENTAGE, 0) of
-        0 ->
-            shackle_send(HookName, EventPayload);
-        P ->
-            case (P =:= 100) orelse (rand:uniform(100) =< P) of
-                true ->
-                    grpc_send(HookName, EventPayload);
-                false ->
-                    shackle_send(HookName, EventPayload)
-            end
+    case persistent_term:get(?EVENTS_TRANSPORT, tcp) of
+        grpc ->
+            grpc_send(HookName, EventPayload);
+        tcp ->
+            shackle_send(HookName, EventPayload)
     end,
     V2 = vmq_util:ts(),
     vmq_metrics:pretimed_measurement({vmq_events_sidecar, call_latency}, V2 - V1).
