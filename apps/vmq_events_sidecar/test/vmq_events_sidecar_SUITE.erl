@@ -21,7 +21,7 @@ init_per_suite(Config) ->
     %% Start TCP server for shackle (default) path
     ListenSock = start_tcp_server(),
 
-    %% Start gRPC server for rollout path
+    %% Start gRPC server for the gRPC transport
     {ok, _} = application:ensure_all_started(grpc),
     events_sidecar_handler:start_grpc_server(),
 
@@ -95,7 +95,8 @@ all() ->
      grpc_connection_recycle_rate_scales_with_pool_test,
      grpc_connection_recycle_disabled_by_default_test,
      grpc_connection_recycle_enabled_at_runtime_test,
-     grpc_disabled_unless_flag_and_endpoint_set_test
+     grpc_disabled_unless_flag_and_endpoint_set_test,
+     transport_defaults_to_tcp_test
     ].
 
 
@@ -212,9 +213,9 @@ on_register_failed_test(_) ->
     ok = exp_response(on_register_failed_ok),
     disable_hook(on_register_failed).
 
-%% Test gRPC path (percentage=100)
+%% Test gRPC path (transport = grpc)
 on_register_grpc_test(_) ->
-    vmq_events_sidecar_plugin:set_grpc_percentage(100),
+    use_transport(grpc),
     enable_hook(on_register),
     Self = pid_to_bin(self()),
     UserProps = [{"k1", "v1"}, {"k2","v2"}, {"k3","v3"}],
@@ -222,20 +223,20 @@ on_register_grpc_test(_) ->
                             [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, #{?P_USER_PROPERTY => UserProps}, ?SESSION_ID]),
     ok = exp_response(on_register_ok),
     disable_hook(on_register),
-    vmq_events_sidecar_plugin:set_grpc_percentage(0).
+    use_transport(tcp).
 
 on_publish_grpc_test(_) ->
-    vmq_events_sidecar_plugin:set_grpc_percentage(100),
+    use_transport(grpc),
     enable_hook(on_publish),
     Self = pid_to_bin(self()),
     [ok,ok] = vmq_plugin:all(on_publish,
                            [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, ?SESSION_ID]),
     ok = exp_response(on_publish_ok),
     disable_hook(on_publish),
-    vmq_events_sidecar_plugin:set_grpc_percentage(0).
+    use_transport(tcp).
 
 on_subscribe_grpc_test(_) ->
-    vmq_events_sidecar_plugin:set_grpc_percentage(100),
+    use_transport(grpc),
     enable_hook(on_subscribe),
     Self = pid_to_bin(self()),
     [ok,ok] = vmq_plugin:all(on_subscribe,
@@ -243,13 +244,13 @@ on_subscribe_grpc_test(_) ->
                                                                        {?TOPIC, not_allowed, #matched_acl{}}], ?SESSION_ID]),
     ok = exp_response(on_subscribe_ok),
     disable_hook(on_subscribe),
-    vmq_events_sidecar_plugin:set_grpc_percentage(0).
+    use_transport(tcp).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% gRPC worker pool
 %%
 %% These drive vmq_events_sidecar_grpc_dispatcher:dispatch/3 directly rather than
-%% through the hooks, so they do not depend on the rollout percentage. Workers are
+%% through the hooks, so they do not depend on the selected transport. Workers are
 %% suspended so mailbox depths stay put long enough to assert on.
 %%
 %% The probe payload is deliberately unencodable ({} does not match any
@@ -354,7 +355,7 @@ grpc_dispatch_no_workers_test(_) ->
     Before = metric_value(grpc_call_result, [{hook, "on_publish"}, {result, "no_workers"}]),
     persistent_term:erase(?GRPC_WORKER_NAMES),
     try
-        %% Reachable when grpc_percentage is non-zero but grpc_enabled is off.
+        %% Reachable if the worker supervisor was never started.
         %% Must be counted, not raised into the caller.
         ok = dispatch_probe(),
         After = metric_value(grpc_call_result, [{hook, "on_publish"}, {result, "no_workers"}]),
@@ -518,7 +519,7 @@ grpc_connection_recycle_test(_) ->
 %% Regression: recycling must not depend on traffic to reconnect, or an idle pool
 %% is closed connection by connection and stays down.
 grpc_connection_recycle_without_traffic_test(_) ->
-    0 = vmq_events_sidecar_plugin:get_grpc_percentage(),
+    tcp = vmq_events_sidecar_plugin:transport(),
     ok = vmq_events_sidecar_grpc_conn_monitor:sample_now(),
     Expected = length(conn_pids()),
     true = Expected > 0,
@@ -636,6 +637,23 @@ grpc_disabled_unless_flag_and_endpoint_set_test(_) ->
     end,
     true = vmq_events_sidecar_grpc_client:enabled(),
     ok.
+
+%% The transport is published once at boot. If it is ever absent, events must
+%% fall back to TCP rather than to a gRPC pool that was never started.
+transport_defaults_to_tcp_test(_) ->
+    Saved = vmq_events_sidecar_plugin:transport(),
+    try
+        persistent_term:erase(?EVENTS_TRANSPORT),
+        tcp = vmq_events_sidecar_plugin:transport()
+    after
+        persistent_term:put(?EVENTS_TRANSPORT, Saved)
+    end,
+    Saved = vmq_events_sidecar_plugin:transport(),
+    ok.
+
+%% The transport is fixed at boot, so tests set the published value directly.
+use_transport(Transport) ->
+    persistent_term:put(?EVENTS_TRANSPORT, Transport).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% helper functions

@@ -13,8 +13,7 @@ register_cli() ->
     show_sampling_cmd(),
     enable_sampling_cmd(),
     disable_sampling_cmd(),
-    rollout_show_cmd(),
-    rollout_set_cmd().
+    transport_show_cmd().
 
 register_config() ->
     ConfigKeys =
@@ -32,8 +31,7 @@ register_config() ->
             "vmq_events_sidecar.grpc_worker_pool_size",
             "vmq_events_sidecar.grpc_worker_max_queue_len",
             "vmq_events_sidecar.grpc_connection_max_age_seconds",
-            "vmq_events_sidecar.grpc_connection_age_jitter_seconds",
-            "vmq_events_sidecar.grpc_percentage"
+            "vmq_events_sidecar.grpc_connection_age_jitter_seconds"
         ],
     [
         clique:register_config([Key], fun register_config_callback/2)
@@ -177,68 +175,27 @@ disable_sampling_cmd() ->
         end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
-rollout_show_cmd() ->
-    Cmd = ["vmq-admin", "events", "rollout", "show"],
+%% Read-only: the transport is decided at boot, so there is nothing to set here.
+%% Worth its own command because grpc_enabled also requires an endpoint.
+transport_show_cmd() ->
+    Cmd = ["vmq-admin", "events", "transport", "show"],
     Callback =
         fun
             (_, [], []) ->
-                P = vmq_events_sidecar_plugin:get_grpc_percentage(),
-                Endpoint = application:get_env(vmq_events_sidecar, grpc_endpoint, ""),
-                Port = application:get_env(vmq_events_sidecar, grpc_port, 80),
                 Table = [
                     [
+                        {transport, vmq_events_sidecar_plugin:transport()},
                         {grpc_enabled, vmq_events_sidecar_grpc_client:enabled()},
-                        {percentage, P},
-                        {grpc_endpoint, Endpoint},
-                        {grpc_port, Port}
+                        {grpc_endpoint, application:get_env(vmq_events_sidecar, grpc_endpoint, "")},
+                        {grpc_port, application:get_env(vmq_events_sidecar, grpc_port, 80)}
                     ]
                 ],
                 [clique_status:table(Table)];
             (_, _, _) ->
-                Text = clique_status:text(rollout_show_usage()),
+                Text = clique_status:text(transport_show_usage()),
                 [clique_status:alert([Text])]
         end,
     clique:register_command(Cmd, [], [], Callback).
-
-rollout_set_cmd() ->
-    Cmd = ["vmq-admin", "events", "rollout", "set"],
-    KeySpecs = [rollout_percentage_keyspec()],
-    FlagSpecs = [],
-    Callback =
-        fun
-            (_, [{percentage, P}], []) ->
-                case P > 0 of
-                    true ->
-                        case vmq_events_sidecar_grpc_client:enabled() of
-                            false ->
-                                Text =
-                                    "the gRPC path is not enabled, set "
-                                    "vmq_events_sidecar.grpc_enabled = on and "
-                                    "vmq_events_sidecar.grpc_endpoint, then restart",
-                                [clique_status:alert([clique_status:text(Text)])];
-                            true ->
-                                vmq_events_sidecar_plugin:set_grpc_percentage(P),
-                                [clique_status:text("Done")]
-                        end;
-                    false ->
-                        vmq_events_sidecar_plugin:set_grpc_percentage(0),
-                        [clique_status:text("Done")]
-                end;
-            (_, _, _) ->
-                Text = clique_status:text(rollout_set_usage()),
-                [clique_status:alert([Text])]
-        end,
-    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
-rollout_percentage_keyspec() ->
-    {percentage, [
-        {typecast, fun(StrP) ->
-            case catch list_to_integer(StrP) of
-                P when (P >= 0) and (P =< 100) -> P;
-                _ -> {error, {invalid_args, [{percentage, StrP}]}}
-            end
-        end}
-    ]}.
 
 hook_keyspec() ->
     {hook, [
@@ -338,12 +295,8 @@ register_cli_usage() ->
     clique:register_usage(
         ["vmq-admin", "events", "sampling", "show"], show_sampling_usage()
     ),
-    clique:register_usage(["vmq-admin", "events", "rollout"], events_rollout_usage()),
     clique:register_usage(
-        ["vmq-admin", "events", "rollout", "show"], rollout_show_usage()
-    ),
-    clique:register_usage(
-        ["vmq-admin", "events", "rollout", "set"], rollout_set_usage()
+        ["vmq-admin", "events", "transport", "show"], transport_show_usage()
     ).
 
 events_usage() ->
@@ -355,7 +308,7 @@ events_usage() ->
         "    enable      Enable an event\n",
         "    disable     Disable an event\n",
         "    sampling    Allows sampling of enabled events\n",
-        "    rollout     Manage gRPC rollout percentage\n",
+        "    transport   Show the transport events are forwarded over\n",
         "  Use --help after a sub-command for more details.\n"
     ].
 
@@ -412,28 +365,11 @@ show_sampling_usage() ->
         "\n\n"
     ].
 
-events_rollout_usage() ->
+transport_show_usage() ->
     [
-        "vmq-admin events rollout <sub-command>\n\n",
-        "  Manage percentage-based rollout of gRPC (bypassing sidecar).\n\n",
-        "  Sub-commands:\n",
-        "    show        Show current rollout percentage and gRPC endpoint config\n",
-        "    set         Set the rollout percentage\n",
-        "  Use --help after a sub-command for more details.\n"
-    ].
-
-rollout_show_usage() ->
-    [
-        "vmq-admin events rollout show\n\n",
-        "  Shows the current gRPC rollout percentage and endpoint configuration.",
-        "\n\n"
-    ].
-
-rollout_set_usage() ->
-    [
-        "vmq-admin events rollout set percentage=<Percentage>\n\n",
-        "  Sets the percentage of events routed to the gRPC endpoint (0-100).\n",
-        "  0 = all events go to the local sidecar, 100 = all events go via gRPC.\n",
-        "  Requires grpc_enabled and grpc_endpoint to be configured for percentage > 0.",
+        "vmq-admin events transport show\n\n",
+        "  Shows which transport events are forwarded over, and the config it\n",
+        "  was derived from. Selected by vmq_events_sidecar.grpc_enabled,\n",
+        "  which is applied at boot only.",
         "\n\n"
     ].

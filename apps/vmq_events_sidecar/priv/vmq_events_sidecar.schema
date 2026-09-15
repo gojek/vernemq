@@ -56,14 +56,15 @@
   {default, 4096}]}.
 
 %% @doc Configure the user type sent as gRPC metadata header.
-%% Valid values: merchant, customer, driver, tokopedia-customer, clickstream
 {mapping, "vmq_events_sidecar.user_type", "vmq_events_sidecar.user_type",
  [{datatype, string},
   {default, "default"}]}.
 
 %% @doc Forward events over gRPC instead of to the sidecar over TCP.
-%% Off by default. While off, no gRPC channel pool, worker pool or connection
-%% monitor is started, and grpc_percentage is ignored. Applied at boot only.
+%% Off by default, and it replaces the TCP path rather than running beside it:
+%% when on, the sidecar connection pool is never created and every event goes
+%% over gRPC. When off, no gRPC channel pool, worker pool or connection monitor
+%% is started. Requires grpc_endpoint. Applied at boot only.
 {mapping, "vmq_events_sidecar.grpc_enabled", "vmq_events_sidecar.grpc_enabled",
  [{default, off},
   {datatype, flag},
@@ -126,13 +127,6 @@
  [{datatype, integer},
   hidden,
   {default, 10}]}.
-
-%% @doc Percentage of events routed to the gRPC endpoint (0-100).
-%% 0 = all events go to the local sidecar, 100 = all events go via gRPC.
-{mapping, "vmq_events_sidecar.grpc_percentage", "vmq_events_sidecar.grpc_percentage",
- [{datatype, integer},
-  hidden,
-  {default, 0}]}.
 
 %% @doc Configure the sampling for on_publish events based on ACL names
 {mapping, "sample.on_publish.$acl.percentage", "vmq_events_sidecar.sampler.on_publish", 

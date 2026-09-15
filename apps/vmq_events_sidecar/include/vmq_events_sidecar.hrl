@@ -3,7 +3,7 @@
 -define(APP, vmq_events_sidecar).
 -define(CLIENT, vmq_events_sidecar_client).
 -define(GRPC_CHANNEL, vmq_events_sidecar_grpc_channel).
--define(GRPC_ROLLOUT_PERCENTAGE, vmq_events_sidecar_grpc_rollout_percentage).
+-define(EVENTS_TRANSPORT, vmq_events_sidecar_events_transport).
 -define(GRPC_USER_TYPE, vmq_events_sidecar_grpc_user_type).
 -define(GRPC_TIMEOUT, vmq_events_sidecar_grpc_timeout).
 

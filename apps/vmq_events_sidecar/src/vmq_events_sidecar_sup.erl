@@ -56,13 +56,6 @@ start_link() ->
                     SamplingHooks
                 ),
 
-                GrpcPercentage = application:get_env(
-                    vmq_events_sidecar, grpc_percentage, 0
-                ),
-                vmq_events_sidecar_plugin:set_grpc_percentage(
-                    effective_grpc_percentage(GrpcPercentage)
-                ),
-
                 UserType = application:get_env(vmq_events_sidecar, user_type, "default"),
                 persistent_term:put(?GRPC_USER_TYPE, list_to_binary(UserType)),
                 GrpcTimeout = application:get_env(vmq_events_sidecar, grpc_timeout, 500),
@@ -81,8 +74,8 @@ start_link() ->
 init([]) ->
     %% intensity 1 / period 5 would be too tight now that a child supervises a
     %% whole worker pool: one transient blip there would escalate to killing the
-    %% metrics and plugin gen_servers, and with them the shackle path that still
-    %% carries production traffic during the rollout.
+    %% metrics and plugin gen_servers, and with them the transport that carries
+    %% events.
     SupFlags =
         #{strategy => one_for_one, intensity => 5, period => 10},
     ChildSpecs =
@@ -118,15 +111,14 @@ init([]) ->
         {backlog_size, BacklogSize},
         {pool_size, PoolSize}
     ],
-    ok = shackle_pool:start(?APP, ?CLIENT, ClientOpts, PoolOtps),
-
-    %% The gRPC path is opt-in through grpc_enabled, so a deployment that has not
-    %% turned it on starts exactly the processes it started before this path
-    %% existed.
+    %% grpc_enabled is the only switch: gRPC replaces the TCP path rather than
+    %% running beside it, so exactly one of the two is ever created.
     GrpcChildSpecs =
         case vmq_events_sidecar_grpc_client:enabled() of
             false ->
                 warn_if_enabled_without_endpoint(),
+                ok = shackle_pool:start(?APP, ?CLIENT, ClientOpts, PoolOtps),
+                persistent_term:put(?EVENTS_TRANSPORT, tcp),
                 [];
             true ->
                 GrpcEndpoint = grpc_endpoint(),
@@ -137,6 +129,7 @@ init([]) ->
                     port => GrpcPort,
                     pool_size => GrpcPoolSize
                 }),
+                persistent_term:put(?EVENTS_TRANSPORT, grpc),
                 [
                     #{
                         id => vmq_events_sidecar_grpc_worker_sup,
@@ -175,21 +168,4 @@ warn_if_enabled_without_endpoint() ->
             );
         false ->
             ok
-    end.
-
-%% Routing to gRPC while the path is disabled would send every event to a pool
-%% that was never started. vmq_events_sidecar_cli already refuses this at
-%% runtime; boot config needs the same guard.
-effective_grpc_percentage(0) ->
-    0;
-effective_grpc_percentage(Percentage) ->
-    case vmq_events_sidecar_grpc_client:enabled() of
-        false ->
-            lager:warning(
-                "ignoring grpc_percentage=~p because the gRPC path is not enabled",
-                [Percentage]
-            ),
-            0;
-        true ->
-            Percentage
     end.
