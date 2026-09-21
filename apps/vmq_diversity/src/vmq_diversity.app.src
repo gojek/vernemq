@@ -49,6 +49,7 @@
             {vmq_diversity_plugin, on_subscribe_m5, 5, []},
             {vmq_diversity_plugin, on_unsubscribe_m5, 5, []},
             {vmq_diversity_plugin, on_deliver_m5, 10, []},
+            {vmq_diversity_plugin, on_delivery_complete_m5, 10, []},
             {vmq_diversity_plugin, on_auth_m5, 4, []},
 
             {vmq_diversity_plugin, on_offline_message, 6, []},
