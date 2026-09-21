@@ -179,9 +179,9 @@ enhanced_authentication(_Config) ->
     %% Reason Code of 0x18 (Continue authentication) [MQTT-4.12.0-3].
 
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
+           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 7),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 3),
+           on_auth_m5, ?MODULE, on_auth_hook, 4),
 
     ClientId = "client-enhanced-auth",
     Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
@@ -199,9 +199,9 @@ enhanced_authentication(_Config) ->
     ok = gen_tcp:close(Socket),
 
     ok = vmq_plugin_mgr:disable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 3),
+           on_auth_m5, ?MODULE, on_auth_hook, 4),
     ok = vmq_plugin_mgr:disable_module_plugin(
-           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6).
+           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 7).
 
 enhanced_auth_no_other_packets(_Config) ->
     %% If a Client sets an Authentication Method in the CONNECT, the
@@ -209,9 +209,9 @@ enhanced_auth_no_other_packets(_Config) ->
     %% packets until it has received a CONNACK packet [MQTT-3.1.2-30].
 
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
+           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 7),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 3),
+           on_auth_m5, ?MODULE, on_auth_hook, 4),
 
     ClientId = "client-enh-auth-wrong-packet",
     Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
@@ -225,9 +225,9 @@ enhanced_auth_no_other_packets(_Config) ->
     {error, closed} = gen_tcp:recv(Socket, 0, 1000),
 
     ok = vmq_plugin_mgr:disable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 3),
+           on_auth_m5, ?MODULE, on_auth_hook, 4),
     ok = vmq_plugin_mgr:disable_module_plugin(
-           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6).
+           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 7).
 
 enhanced_auth_method_not_supported(_Config) ->
     %% If the Server does not support the Authentication Method
@@ -237,9 +237,9 @@ enhanced_auth_method_not_supported(_Config) ->
     %% Network Connection [MQTT-4.12.0-1].
 
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
+           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 7),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_bad_method_hook, 3),
+           on_auth_m5, ?MODULE, on_auth_bad_method_hook, 4),
 
     ClientId = "client-enh-auth-bad-auth",
     Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
@@ -249,9 +249,9 @@ enhanced_auth_method_not_supported(_Config) ->
     {error, closed} = gen_tcp:recv(Socket, 0,100),
 
     ok = vmq_plugin_mgr:disable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_bad_method_hook, 3),
+           on_auth_m5, ?MODULE, on_auth_bad_method_hook, 4),
     ok = vmq_plugin_mgr:disable_module_plugin(
-           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6).
+           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 7).
 
 
 enhanced_auth_server_rejects(_Config) ->
@@ -268,9 +268,9 @@ enhanced_auth_new_auth_method_fails(_Config) ->
     %% same value as in the CONNECT packet [MQTT-4.12.0-5].
 
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
+           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 7),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 3),
+           on_auth_m5, ?MODULE, on_auth_hook, 4),
 
     ClientId = "client-enhanced-auth-wrong-method",
     Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
@@ -284,9 +284,9 @@ enhanced_auth_new_auth_method_fails(_Config) ->
     {error, closed} = gen_tcp:recv(Socket, 0, 100),
 
     ok = vmq_plugin_mgr:disable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 3),
+           on_auth_m5, ?MODULE, on_auth_hook, 4),
     ok = vmq_plugin_mgr:disable_module_plugin(
-           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6).
+           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 7).
 
 reauthenticate(_Config) ->
     %% If the Client supplied an Authentication Method in the CONNECT
@@ -298,11 +298,11 @@ reauthenticate(_Config) ->
     %% Network Connection [MQTT-4.12.1-1]
 
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
+           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 7),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 3),
+           on_auth_m5, ?MODULE, on_auth_hook, 4),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_publish_m5, ?MODULE, auth_on_publish_after_reauth, 7),
+           auth_on_publish_m5, ?MODULE, auth_on_publish_after_reauth, 8),
 
     ClientId = "client-enhanced-re-auth",
     Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
@@ -332,11 +332,11 @@ reauthenticate(_Config) ->
     ok = gen_tcp:close(Socket),
 
     ok = vmq_plugin_mgr:disable_module_plugin(
-           auth_on_publish_m5, ?MODULE, auth_on_publish_after_reauth, 7),
+           auth_on_publish_m5, ?MODULE, auth_on_publish_after_reauth, 8),
     ok = vmq_plugin_mgr:disable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 3),
+           on_auth_m5, ?MODULE, on_auth_hook, 4),
     ok = vmq_plugin_mgr:disable_module_plugin(
-           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6).
+           auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 7).
 
 reauthenticate_server_rejects(_Config) ->
     %% If the re-authentication fails, the Client or Server SHOULD
@@ -351,9 +351,9 @@ unsubscribe_hook(_Config) ->
     ok = vmq_plugin_mgr:enable_module_plugin(
         on_topic_unsubscribed, ?MODULE, hook_on_topic_unsubscribed, 2),
     ok = vmq_plugin_mgr:enable_module_plugin(
-        auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
+        auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 7),
     ok = vmq_plugin_mgr:enable_module_plugin(
-        auth_on_subscribe_m5, ?MODULE, auth_on_subscribe_ok_hook, 4),
+        auth_on_subscribe_m5, ?MODULE, auth_on_subscribe_ok_hook, 5),
 
     Connect = packetv5:gen_connect("unsubscribe-hook-test", []),
     Connack = packetv5:gen_connack(),
@@ -373,9 +373,9 @@ unsubscribe_hook(_Config) ->
     ok = vmq_plugin_mgr:disable_module_plugin(
         on_topic_unsubscribed, ?MODULE, hook_on_topic_unsubscribed, 2),
     ok = vmq_plugin_mgr:disable_module_plugin(
-        auth_on_subscribe_m5, ?MODULE, auth_on_subscribe_ok_hook, 4),
+        auth_on_subscribe_m5, ?MODULE, auth_on_subscribe_ok_hook, 5),
     ok = vmq_plugin_mgr:disable_module_plugin(
-        auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
+        auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 7),
 
     ets:delete(?MODULE).
 
@@ -396,7 +396,7 @@ with_jwt_plugin(Fun) ->
     ok = application:set_env(vmq_enhanced_auth, secret_key, ?JWT_KEY),
     ok = application:set_env(vmq_enhanced_auth, enable_jwt_auth, true),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_register_m5, vmq_enhanced_auth, auth_on_register_m5, 6),
+           auth_on_register_m5, vmq_enhanced_auth, auth_on_register_m5, 7),
     %% Single node test broker: registration does not need to be
     %% coordinated across the cluster, and coordinating it routes the
     %% registration by client id hash over vmq_cluster_mon:nodes/0.
@@ -408,7 +408,7 @@ with_jwt_plugin(Fun) ->
         vmq_server_cmd:set_config(coordinate_registrations, true),
         vmq_config:configure_node(),
         catch vmq_plugin_mgr:disable_module_plugin(
-                auth_on_register_m5, vmq_enhanced_auth, auth_on_register_m5, 6),
+                auth_on_register_m5, vmq_enhanced_auth, auth_on_register_m5, 7),
         application:unset_env(vmq_enhanced_auth, secret_key),
         application:unset_env(vmq_enhanced_auth, enable_jwt_auth)
     end.
@@ -476,32 +476,32 @@ auth_props(Method, Data) ->
 
 %%%%%% Hooks implementations %%%%%
 
-auth_on_register_ok_hook(_,_,_,_,_,_) ->
+auth_on_register_ok_hook(_,_,_,_,_,_,_) ->
     ok.
 
-on_auth_bad_method_hook(_, _, #{p_authentication_method := _, p_authentication_data := _}) ->
+on_auth_bad_method_hook(_, _, #{p_authentication_method := _, p_authentication_data := _}, _) ->
     {error, #{reason_code => ?BAD_AUTHENTICATION_METHOD}}.
 
-on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client1">>}) ->
+on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client1">>}, _) ->
     {ok, #{reason_code => ?CONTINUE_AUTHENTICATION,
            properties => #{?P_AUTHENTICATION_METHOD => ?AUTH_METHOD,
                            ?P_AUTHENTICATION_DATA =><<"Server1">>}}};
-on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client2">>}) ->
+on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client2">>}, _) ->
     {ok, #{reason_code => ?CONTINUE_AUTHENTICATION,
            properties => #{?P_AUTHENTICATION_METHOD => ?AUTH_METHOD,
                            ?P_AUTHENTICATION_DATA =><<"Server2">>}}};
-on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client3">>}) ->
+on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client3">>}, _) ->
     %% return ok which will trigger the connack being sent to the
     %% client *or* an AUTH ok
     {ok, #{reason_code => ?SUCCESS,
            properties => #{?P_AUTHENTICATION_METHOD => ?AUTH_METHOD,
                            ?P_AUTHENTICATION_DATA =><<"ServerFinal">>}}};
-on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Reauth">>}) ->
+on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Reauth">>}, _) ->
     {ok, #{reason_code => ?SUCCESS,
            properties => #{?P_AUTHENTICATION_METHOD => ?AUTH_METHOD,
                            ?P_AUTHENTICATION_DATA =><<"ReauthOK">>}}}.
 
-auth_on_publish_after_reauth(undefined, _, 1, [<<"some">>, <<"topic">>], <<"some payload">>, false, _) ->
+auth_on_publish_after_reauth(undefined, _, 1, [<<"some">>, <<"topic">>], <<"some payload">>, false, _, _) ->
     ok.
 
 hook_on_topic_unsubscribed({"", <<"unsubscribe-hook-test">>}, [[<<"some">>,<<"topic">>]]) ->
@@ -509,5 +509,5 @@ hook_on_topic_unsubscribed({"", <<"unsubscribe-hook-test">>}, [[<<"some">>,<<"to
 hook_on_topic_unsubscribed(_, _) ->
     ok.
 
-auth_on_subscribe_ok_hook(_, _, _, _) ->
+auth_on_subscribe_ok_hook(_, _, _, _, _) ->
     ok.

@@ -25,7 +25,8 @@
     to_vmq_subtopics/2,
     peertoa/1,
     terminate_reason/1,
-    terminate_proto_reason/1
+    terminate_proto_reason/1,
+    generate_session_id/0
 ]).
 
 -define(TO_SESSION, to_session_fsm).
@@ -126,6 +127,18 @@ to_vmq_subtopics(Topics, SubId) ->
                 end
         end,
         Topics
+    ).
+
+%% Shared by both protocol FSMs: every session gets a UUIDv4 the hooks
+%% can correlate on.
+-spec generate_session_id() -> session_id().
+generate_session_id() ->
+    <<A:32, B:16, C:16, D:16, E:48>> = crypto:strong_rand_bytes(16),
+    iolist_to_binary(
+        io_lib:format(
+            "~8.16.0b-~4.16.0b-4~3.16.0b-~4.16.0b-~12.16.0b",
+            [A, B, C band 16#0fff, (D band 16#3fff) bor 16#8000, E]
+        )
     ).
 
 -spec peertoa(peer()) -> string().

@@ -86,7 +86,8 @@ groups() ->
         subscription_ids,
         suback_with_nack_v5_test,
         subnack_v5_test,
-        suback_with_nack_v5_native_test],
+        suback_with_nack_v5_native_test,
+        suback_with_matched_acl_v5_test],
 
     %% Only include tests that are safe to run with Redis disabled (noop backend)
     RedisDisabled =
@@ -111,6 +112,8 @@ groups() ->
      {redis_disabled, [sequence], RedisDisabled}
     ].
 
+-define(SUB_ACL_SRV, vmq_subscribe_acl_event_server).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -125,7 +128,7 @@ suback_with_nack_v5_test(Cfg) ->
     %% 0x87 while the others keep their granted QoS.
     disable_on_subscribe(),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_subscribe_m5, ?MODULE, hook_auth_on_subscribe_m5_v4shape, 4),
+           auth_on_subscribe_m5, ?MODULE, hook_auth_on_subscribe_m5_v4shape, 5),
     try
         ClientId = vmq_cth:ustr(Cfg),
         Connect = packetv5:gen_connect(ClientId, [{keepalive,60}]),
@@ -140,7 +143,7 @@ suback_with_nack_v5_test(Cfg) ->
         ok = gen_tcp:close(Socket)
     after
         catch vmq_plugin_mgr:disable_module_plugin(
-                auth_on_subscribe_m5, ?MODULE, hook_auth_on_subscribe_m5_v4shape, 4),
+                auth_on_subscribe_m5, ?MODULE, hook_auth_on_subscribe_m5_v4shape, 5),
         enable_on_subscribe()
     end.
 
@@ -160,13 +163,72 @@ subnack_v5_test(_) ->
     ok = packetv5:expect_frame(Socket, Suback),
     ok = gen_tcp:close(Socket).
 
+suback_with_matched_acl_v5_test(Cfg) ->
+    %% A native auth_on_subscribe_m5 hook may hand back the ACL each
+    %% topic matched, using the same {Topic, SubInfo, MatchedAcl} shape
+    %% the MQTTv4 hook accepts - vmq_enhanced_auth does. The v5 FSM has
+    %% to split the two apart like the MQTTv4 one: vmq_reg:subscribe_op/2
+    %% takes plain subscriptions and its fold would otherwise treat every
+    %% topic carrying an ACL as not_allowed and subscribe to nothing
+    %% while still SUBACKing the granted QoS - so publishing to the topic
+    %% afterwards is what proves the subscription is real - while the
+    %% on_subscribe_m5 hook gets the ACLs.
+    disable_on_subscribe(),
+    true = register(?SUB_ACL_SRV, self()),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_subscribe_m5, ?MODULE, hook_auth_on_subscribe_m5_acl, 5),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           on_subscribe_m5, ?MODULE, hook_on_subscribe_m5_acl, 5),
+    try
+        ClientId = vmq_cth:ustr(Cfg),
+        Connect = packetv5:gen_connect(ClientId, [{keepalive,60}]),
+        Connack = packetv5:gen_connack(),
+        {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+        Topics = [packetv5:gen_subtopic("allowed/topic", 0),
+                  packetv5:gen_subtopic("denied/topic", 0)],
+        Subscribe = packetv5:gen_subscribe(23, Topics, #{}),
+        ok = gen_tcp:send(Socket, Subscribe),
+        Suback = packetv5:gen_suback(23, [0, ?M5_NOT_AUTHORIZED], #{}),
+        ok = packetv5:expect_frame(Socket, Suback),
+
+        %% the ACLs reach the on_subscribe_m5 hook, the denied topic
+        %% carrying the empty one
+        AllowedAcl = #matched_acl{name = <<"test_acl">>, pattern = <<"allowed/#">>},
+        receive
+            {on_subscribe_m5, SubTopics} ->
+                [{[<<"allowed">>, <<"topic">>], {0, _}, AllowedAcl},
+                 {[<<"denied">>, <<"topic">>], {not_allowed, _}, #matched_acl{name = undefined}}] =
+                    SubTopics
+        after 1000 ->
+            throw(on_subscribe_m5_hook_not_called)
+        end,
+
+        %% the granted topic is really subscribed
+        Publish = packetv5:gen_publish("allowed/topic", 0, <<"msg">>, []),
+        ok = gen_tcp:send(Socket, Publish),
+        ok = packetv5:expect_frame(Socket, Publish),
+
+        %% the denied one is not
+        PublishDenied = packetv5:gen_publish("denied/topic", 0, <<"msg">>, []),
+        ok = gen_tcp:send(Socket, PublishDenied),
+        {error, timeout} = gen_tcp:recv(Socket, 0, 100),
+        ok = gen_tcp:close(Socket)
+    after
+        catch vmq_plugin_mgr:disable_module_plugin(
+                on_subscribe_m5, ?MODULE, hook_on_subscribe_m5_acl, 5),
+        catch vmq_plugin_mgr:disable_module_plugin(
+                auth_on_subscribe_m5, ?MODULE, hook_auth_on_subscribe_m5_acl, 5),
+        catch unregister(?SUB_ACL_SRV),
+        enable_on_subscribe()
+    end.
+
 suback_with_nack_v5_native_test(Cfg) ->
     %% Same, but for a native auth_on_subscribe_m5 hook, which denies a
     %% topic with the v5 subinfo shape {Topic, {not_allowed, SubOpts}}
     %% - the shape vmq_enhanced_auth produces.
     disable_on_subscribe(),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_subscribe_m5, ?MODULE, hook_auth_on_subscribe_m5, 4),
+           auth_on_subscribe_m5, ?MODULE, hook_auth_on_subscribe_m5, 5),
     try
         ClientId = vmq_cth:ustr(Cfg),
         Connect = packetv5:gen_connect(ClientId, [{keepalive,60}]),
@@ -181,7 +243,7 @@ suback_with_nack_v5_native_test(Cfg) ->
         ok = gen_tcp:close(Socket)
     after
         catch vmq_plugin_mgr:disable_module_plugin(
-                auth_on_subscribe_m5, ?MODULE, hook_auth_on_subscribe_m5, 4),
+                auth_on_subscribe_m5, ?MODULE, hook_auth_on_subscribe_m5, 5),
         enable_on_subscribe()
     end.
 
@@ -662,7 +724,7 @@ hook_auth_on_subscribe(_,_,_, _) -> ok.
 
 %% Native MQTT 5 hook: denies "denied/topic" only, keeping the v5
 %% subinfo shape for both the allowed and the denied topics.
-hook_auth_on_subscribe_m5(_, _, Topics, _) ->
+hook_auth_on_subscribe_m5(_, _, Topics, _, _) ->
     Modified =
         [case T of
              [<<"denied">>, <<"topic">>] -> {T, {not_allowed, SubOpts}};
@@ -670,9 +732,27 @@ hook_auth_on_subscribe_m5(_, _, Topics, _) ->
          end || {T, {QoS, SubOpts}} <- Topics],
     {ok, #{topics => Modified, properties => #{}}}.
 
+%% Native MQTT 5 hook that also reports the matched ACL, the way
+%% vmq_enhanced_auth does: {Topic, SubInfo, MatchedAcl}.
+hook_auth_on_subscribe_m5_acl(_, _, Topics, _, _) ->
+    Modified =
+        [case T of
+             [<<"denied">>, <<"topic">>] ->
+                 {T, {not_allowed, SubOpts}, #matched_acl{}};
+             _ ->
+                 {T, {QoS, SubOpts},
+                  #matched_acl{name = <<"test_acl">>, pattern = <<"allowed/#">>}}
+         end || {T, {QoS, SubOpts}} <- Topics],
+    {ok, #{topics => Modified, properties => #{}}}.
+
+%% Captures what the FSM reports to the on_subscribe_m5 hook.
+hook_on_subscribe_m5_acl(_, _, Topics, _, _) ->
+    ?SUB_ACL_SRV ! {on_subscribe_m5, Topics},
+    ok.
+
 %% Same, but denying with the MQTTv4 shape: a bare not_allowed atom in
 %% place of the whole subinfo tuple.
-hook_auth_on_subscribe_m5_v4shape(_, _, Topics, _) ->
+hook_auth_on_subscribe_m5_v4shape(_, _, Topics, _, _) ->
     Modified =
         [case T of
              [<<"denied">>, <<"topic">>] -> {T, not_allowed};
@@ -691,25 +771,25 @@ enable_on_subscribe() ->
     ok = vmq_plugin_mgr:enable_module_plugin(
            auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 4,
            [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5,
-                     convert, 4}}]).
+                     convert, 5}}]).
 enable_on_publish() ->
     ok = vmq_plugin_mgr:enable_module_plugin(
            auth_on_publish, ?MODULE, hook_auth_on_publish, 7),
     ok = vmq_plugin_mgr:enable_module_plugin(
            auth_on_publish, ?MODULE, hook_auth_on_publish, 7,
            [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5,
-                    convert, 7}}]).
+                    convert, 8}}]).
 disable_on_subscribe() ->
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 4),
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 4,
            [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5,
-                      convert, 4}}]).
+                      convert, 5}}]).
 disable_on_publish() ->
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_publish, ?MODULE, hook_auth_on_publish, 7),
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_publish, ?MODULE, hook_auth_on_publish, 7,
            [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5,
-                      convert, 7}}]).
+                      convert, 8}}]).

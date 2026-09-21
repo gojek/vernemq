@@ -136,7 +136,7 @@ init(
     %% the client is allowed "grace" of a half a time period
     set_keepalive_check_timer(KeepAlive),
 
-    SessionId = generate_session_id(),
+    SessionId = vmq_mqtt_fsm_util:generate_session_id(),
 
     State = #state{
         peer = Peer,
@@ -280,8 +280,6 @@ connected(
     case Ret of
         {error, not_allowed} ->
             terminate(?PUBLISH_AUTH_ERROR, State);
-        {error, rate_limit_exceeded} ->
-            {State, []};
         Out when is_list(Out) ->
             case do_throttle(#{}, State) of
                 false ->
@@ -1168,8 +1166,7 @@ on_publish_hook(Other, _, _SubscriberId) ->
     list()
     | {list(), session_ctrl()}
     | {state(), list(), session_ctrl()}
-    | {error, not_allowed}
-    | {error, rate_limit_exceeded}.
+    | {error, not_allowed}.
 dispatch_publish(Qos, MessageId, Msg, State) ->
     dispatch_publish_(Qos, MessageId, Msg, State).
 
@@ -1177,8 +1174,7 @@ dispatch_publish(Qos, MessageId, Msg, State) ->
     list()
     | {list(), session_ctrl()}
     | {state(), list(), session_ctrl()}
-    | {error, not_allowed}
-    | {error, rate_limit_exceeded}.
+    | {error, not_allowed}.
 dispatch_publish_(0, MessageId, Msg, State) ->
     dispatch_publish_qos0(MessageId, Msg, State);
 dispatch_publish_(1, MessageId, Msg, State) ->
@@ -1189,8 +1185,7 @@ dispatch_publish_(2, MessageId, Msg, State) ->
 -spec dispatch_publish_qos0(msg_id(), msg(), state()) ->
     list()
     | {list(), session_ctrl()}
-    | {error, not_allowed}
-    | {error, rate_limit_exceeded}.
+    | {error, not_allowed}.
 dispatch_publish_qos0(_MessageId, Msg, State) ->
     #state{
         username = User,
@@ -1219,8 +1214,7 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
 -spec dispatch_publish_qos1(msg_id(), msg(), state()) ->
     list()
     | {list(), session_ctrl()}
-    | {error, not_allowed}
-    | {error, rate_limit_exceeded}.
+    | {error, not_allowed}.
 dispatch_publish_qos1(MessageId, Msg, State) ->
     #state{
         username = User,
@@ -1266,8 +1260,7 @@ maybe_send_immediate_puback(AclName, MessageId) ->
 -spec dispatch_publish_qos2(msg_id(), msg(), state()) ->
     list()
     | {state(), list(), session_ctrl()}
-    | {error, not_allowed}
-    | {error, rate_limit_exceeded}.
+    | {error, not_allowed}.
 dispatch_publish_qos2(MessageId, Msg, State) ->
     #state{
         username = User,
@@ -1976,13 +1969,3 @@ should_send_puback(undefined) ->
     false;
 should_send_puback(AclName) ->
     ets:member(?DELAYED_PUBACK_TBL, AclName).
-
--spec generate_session_id() -> binary().
-generate_session_id() ->
-    <<A:32, B:16, C:16, D:16, E:48>> = crypto:strong_rand_bytes(16),
-    iolist_to_binary(
-        io_lib:format(
-            "~8.16.0b-~4.16.0b-4~3.16.0b-~4.16.0b-~12.16.0b",
-            [A, B, C band 16#0fff, (D band 16#3fff) bor 16#8000, E]
-        )
-    ).

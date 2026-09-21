@@ -34,10 +34,10 @@
 -export([
     auth_on_subscribe/4,
     auth_on_publish/7,
-    auth_on_subscribe_m5/4,
-    auth_on_publish_m5/7,
+    auth_on_subscribe_m5/5,
+    auth_on_publish_m5/8,
     auth_on_register/6,
-    auth_on_register_m5/6,
+    auth_on_register_m5/7,
     change_config/1
 ]).
 
@@ -68,6 +68,7 @@
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-define(SESSION_ID, <<"test-session-id">>).
 -define(setup(F), {setup, fun setup/0, fun teardown/1, F}).
 -endif.
 
@@ -152,21 +153,18 @@ auth_on_publish(User, SubscriberId, QoS, Topic, _, _, _SessionId) ->
             end
     end.
 
-auth_on_subscribe_m5(User, SubscriberId, Topics, _Props) ->
+auth_on_subscribe_m5(User, SubscriberId, Topics, _Props, SessionId) ->
     SubOptsByTopic = [{Topic, QoS, SubOpts} || {Topic, {QoS, SubOpts}} <- Topics],
     case length(SubOptsByTopic) =:= length(Topics) of
         false ->
             {error, ?UNSPECIFIED_ERROR};
         true ->
             V3Topics = [{Topic, QoS} || {Topic, QoS, _SubOpts} <- SubOptsByTopic],
-            case auth_on_subscribe(User, SubscriberId, V3Topics, undefined) of
+            case auth_on_subscribe(User, SubscriberId, V3Topics, SessionId) of
                 {ok, Modifiers} ->
                     V5Topics = lists:zipwith(
-                        fun
-                            ({_Topic, _QoS, SubOpts}, {MTopic, not_allowed, _AclMatch}) ->
-                                {MTopic, {not_allowed, SubOpts}};
-                            ({_Topic, _QoS, SubOpts}, {MTopic, MQoS, _AclMatch}) ->
-                                {MTopic, {MQoS, SubOpts}}
+                        fun({_Topic, _QoS, SubOpts}, {MTopic, MQoS, MatchedAcl}) ->
+                            {MTopic, {MQoS, SubOpts}, MatchedAcl}
                         end,
                         SubOptsByTopic,
                         Modifiers
@@ -177,7 +175,7 @@ auth_on_subscribe_m5(User, SubscriberId, Topics, _Props) ->
             end
     end.
 
-auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, Properties) ->
+auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, Properties, _SessionId) ->
     D = is_acl_auth_disabled(),
     if
         D ->
@@ -245,7 +243,8 @@ auth_on_register_m5(
     UserName,
     Password,
     _CleanStart,
-    _Properties
+    _Properties,
+    _SessionId
 ) ->
     case auth_on_register_jwt(UserName, Password) of
         {error, Reason} -> {error, #{reason_code => reason_code(Reason)}};
@@ -268,8 +267,7 @@ auth_on_register_jwt(UserName, Token) ->
 
 reason_code(?INVALID_SIGNATURE) -> ?BAD_USERNAME_OR_PASSWORD;
 reason_code(?MISSING_RID) -> ?NOT_AUTHORIZED;
-reason_code(?USERNAME_RID_MISMATCH) -> ?NOT_AUTHORIZED;
-reason_code(_) -> ?BAD_USERNAME_OR_PASSWORD.
+reason_code(?USERNAME_RID_MISMATCH) -> ?NOT_AUTHORIZED.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal+
@@ -1093,47 +1091,58 @@ mqtt5_subscribe_test(_) ->
     Topic = [<<"x">>, <<"y">>, <<"z">>],
     Topics = [{Topic, {1, SubOpts}}],
     Denied = [{[<<"a">>, <<"b">>], {2, SubOpts}} | Topics],
+    %% The ACL x/y/z matched, as vmq_mqtt5_fsm and the on_subscribe
+    %% hooks get to see it
+    ReadAcl = #matched_acl{name = <<"simple_read">>, pattern = <<"x/y/z">>},
+    %% A denied topic matched no ACL
+    NoAcl = #matched_acl{},
     [
-        %% SubOpts have to survive the ACL check untouched
+        %% SubOpts have to survive the ACL check untouched, and the
+        %% matched ACL rides along with the subscription
         ?_assertEqual(
-            {ok, #{topics => [{Topic, {1, SubOpts}}], properties => #{}}},
-            auth_on_subscribe_m5(<<"test">>, {"", <<"client-id">>}, Topics, #{})
+            {ok, #{topics => [{Topic, {1, SubOpts}, ReadAcl}], properties => #{}}},
+            auth_on_subscribe_m5(<<"test">>, {"", <<"client-id">>}, Topics, #{}, ?SESSION_ID)
         ),
         %% A denied topic keeps the v5 subinfo shape so that
         %% vmq_reg:subscribe_op/2 and vmq_mqtt5_fsm:topic_to_qos/1
-        %% can both destructure it
+        %% can both destructure it once the FSM has stripped the ACL
         ?_assertEqual(
             {ok, #{
-                topics => [{[<<"x">>, <<"y">>, <<"z">>], {not_allowed, SubOpts}}],
+                topics => [{[<<"x">>, <<"y">>, <<"z">>], {not_allowed, SubOpts}, NoAcl}],
                 properties => #{}
             }},
-            auth_on_subscribe_m5(<<"invalid-user">>, {"", <<"client-id">>}, Topics, #{})
+            auth_on_subscribe_m5(
+                <<"invalid-user">>, {"", <<"client-id">>}, Topics, #{}, ?SESSION_ID
+            )
         ),
         %% Inbound user properties are not echoed back into the SUBACK
         ?_assertEqual(
-            {ok, #{topics => [{Topic, {1, SubOpts}}], properties => #{}}},
+            {ok, #{topics => [{Topic, {1, SubOpts}, ReadAcl}], properties => #{}}},
             auth_on_subscribe_m5(
                 <<"test">>,
                 {"", <<"client-id">>},
                 Topics,
-                #{p_user_property => [{<<"k">>, <<"v">>}]}
+                #{p_user_property => [{<<"k">>, <<"v">>}]},
+                ?SESSION_ID
             )
         ),
-        %% Partial denial: allowed topics keep their QoS
+        %% Partial denial: allowed topics keep their QoS and their ACL
         ?_assertEqual(
             {ok, #{
                 topics => [
-                    {[<<"a">>, <<"b">>], {not_allowed, SubOpts}},
-                    {Topic, {1, SubOpts}}
+                    {[<<"a">>, <<"b">>], {not_allowed, SubOpts}, NoAcl},
+                    {Topic, {1, SubOpts}, ReadAcl}
                 ],
                 properties => #{}
             }},
-            auth_on_subscribe_m5(<<"test">>, {"", <<"client-id">>}, Denied, #{})
+            auth_on_subscribe_m5(<<"test">>, {"", <<"client-id">>}, Denied, #{}, ?SESSION_ID)
         ),
         %% A non-v5 topic shape is refused instead of being dropped
         ?_assertEqual(
             {error, ?UNSPECIFIED_ERROR},
-            auth_on_subscribe_m5(<<"test">>, {"", <<"client-id">>}, [{Topic, 1}], #{})
+            auth_on_subscribe_m5(
+                <<"test">>, {"", <<"client-id">>}, [{Topic, 1}], #{}, ?SESSION_ID
+            )
         )
     ].
 
@@ -1145,7 +1154,9 @@ mqtt5_publish_rate_limit_test(_) ->
     load_from_list(ACL),
     ets:insert(?RATE_CONFIG_TBL, {<<"simple_write">>, 1}),
     Topic = [<<"x">>, <<"y">>, <<"z">>],
-    PublishArgs = [<<"test">>, {"", <<"client-id">>}, 1, Topic, <<"payload">>, false, #{}],
+    PublishArgs = [
+        <<"test">>, {"", <<"client-id">>}, 1, Topic, <<"payload">>, false, #{}, ?SESSION_ID
+    ],
     [
         ?_assertMatch({ok, #{matched_acl := _}}, apply(?MODULE, auth_on_publish_m5, PublishArgs)),
         ?_assertEqual(
