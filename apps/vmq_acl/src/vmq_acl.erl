@@ -31,8 +31,8 @@
 -export([
     auth_on_subscribe/4,
     auth_on_publish/7,
-    auth_on_subscribe_m5/4,
-    auth_on_publish_m5/7,
+    auth_on_subscribe_m5/5,
+    auth_on_publish_m5/8,
     change_config/1
 ]).
 
@@ -112,11 +112,11 @@ auth_on_subscribe_m5(User, SubscriberId, [{Topic, _Qos} | Rest]) ->
             next
     end.
 
-auth_on_subscribe_m5(User, SubscriberId, Topics, _Props) ->
+auth_on_subscribe_m5(User, SubscriberId, Topics, _Props, _SessionId) ->
     auth_on_subscribe_m5(User, SubscriberId, Topics).
 
-auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, _Props) ->
-    auth_on_publish(User, SubscriberId, QoS, Topic, Payload, IsRetain, undefined).
+auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, _Props, SessionId) ->
+    auth_on_publish(User, SubscriberId, QoS, Topic, Payload, IsRetain, SessionId).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal
