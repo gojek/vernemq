@@ -95,10 +95,10 @@ auth_on_publish_test(_) ->
 invalid_modifiers_test(_) ->
     {error,{invalid_modifiers,#{topic := 5}}} =
         vmq_plugin:all_till_ok(auth_on_publish_m5,
-                               [username(), {"", <<"invalid_topic_mod">>}, 1, topic(), payload(), false, props()]),
+                               [username(), {"", <<"invalid_topic_mod">>}, 1, topic(), payload(), false, props(), session_id()]),
     {error,{invalid_modifiers,#{unknown := 5}}} =
         vmq_plugin:all_till_ok(auth_on_publish_m5,
-                               [username(), {"", <<"unknown_mod">>}, 1, topic(), payload(), false, props()]).
+                               [username(), {"", <<"unknown_mod">>}, 1, topic(), payload(), false, props(), session_id()]).
 
 auth_on_subscribe_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_subscribe,
@@ -151,25 +151,25 @@ auth_on_register_undefined_creds_test(_) ->
 
 auth_on_publish_m5_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_publish_m5,
-                      [username(), allowed_subscriber_id(), 1, topic(), payload(), false, props()]),
+                      [username(), allowed_subscriber_id(), 1, topic(), payload(), false, props(), session_id()]),
     {error, not_authorized} = vmq_plugin:all_till_ok(auth_on_publish_m5,
-                      [username(), not_allowed_subscriber_id(), 1, topic(), payload(), false, props()]),
+                      [username(), not_allowed_subscriber_id(), 1, topic(), payload(), false, props(), session_id()]),
     {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(auth_on_publish_m5,
-                      [username(), ignored_subscriber_id(), 1, topic(), payload(), false, props()]),
+                      [username(), ignored_subscriber_id(), 1, topic(), payload(), false, props(), session_id()]),
     {ok, #{topic := [<<"hello">>, <<"world">>]}} = vmq_plugin:all_till_ok(auth_on_publish_m5,
-                      [username(), changed_subscriber_id(), 1, topic(), payload(), false, props()]).
+                      [username(), changed_subscriber_id(), 1, topic(), payload(), false, props(), session_id()]).
 
 auth_on_register_m5_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_register_m5,
-                      [peer(), allowed_subscriber_id(), username(), password(), true, props()]),
+                      [peer(), allowed_subscriber_id(), username(), password(), true, props(), session_id()]),
     {error,invalid_credentials} = vmq_plugin:all_till_ok(auth_on_register_m5,
-                      [peer(), not_allowed_subscriber_id(), username(), password(), true, #{}]),
+                      [peer(), not_allowed_subscriber_id(), username(), password(), true, #{}, session_id()]),
     {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(auth_on_register_m5,
-                      [peer(), ignored_subscriber_id(), username(), password(), true, #{}]),
+                      [peer(), ignored_subscriber_id(), username(), password(), true, #{}, session_id()]),
     {ok, #{subscriber_id := {"override-mountpoint", <<"override-client-id">>}}} = vmq_plugin:all_till_ok(auth_on_register_m5,
-                      [peer(), changed_subscriber_id(), username(), password(), true, #{}]),
+                      [peer(), changed_subscriber_id(), username(), password(), true, #{}, session_id()]),
     {ok, #{username := <<"override-username">>}} = vmq_plugin:all_till_ok(auth_on_register_m5,
-                      [peer(), changed_username(), username(), password(), true, #{}]).
+                      [peer(), changed_username(), username(), password(), true, #{}, session_id()]).
 
 auth_on_register_m5_modify_props_test(_) ->
     WantUserProps = [{<<"k1">>, <<"v1">>},
@@ -181,7 +181,8 @@ auth_on_register_m5_modify_props_test(_) ->
               ?P_TOPIC_ALIAS_MAX => 15,
               ?P_REQUEST_RESPONSE_INFO => true,
               ?P_REQUEST_PROBLEM_INFO => true,
-              ?P_USER_PROPERTY => WantUserProps}],
+              ?P_USER_PROPERTY => WantUserProps},
+            session_id()],
     {ok, #{properties :=
                #{?P_USER_PROPERTY :=
                      [{<<"k3">>, <<"v3">>}],
@@ -198,7 +199,8 @@ on_register_m5_test(_) ->
               ?P_TOPIC_ALIAS_MAX => 15,
               ?P_REQUEST_RESPONSE_INFO => true,
               ?P_REQUEST_PROBLEM_INFO => true,
-              ?P_USER_PROPERTY => UserProps}],
+              ?P_USER_PROPERTY => UserProps},
+            session_id()],
     [next] = vmq_plugin:all(on_register_m5, Args).
 
 auth_on_publish_m5_modify_props_test(_) ->
@@ -209,7 +211,8 @@ auth_on_publish_m5_modify_props_test(_) ->
               ?P_CORRELATION_DATA => <<"correlation_data">>,
               ?P_RESPONSE_TOPIC => [<<"response">>,<<"topic">>],
               ?P_PAYLOAD_FORMAT_INDICATOR => utf8,
-              ?P_CONTENT_TYPE => <<"content_type">>}],
+              ?P_CONTENT_TYPE => <<"content_type">>},
+            session_id()],
     ExpProps =
         #{?P_USER_PROPERTY =>
               [{<<"k1">>, <<"v1">>},
@@ -229,7 +232,8 @@ on_publish_m5_test(_) ->
               ?P_CORRELATION_DATA => <<"correlation_data">>,
               ?P_RESPONSE_TOPIC => [<<"response">>,<<"topic">>],
               ?P_PAYLOAD_FORMAT_INDICATOR => utf8,
-              ?P_CONTENT_TYPE => <<"content_type">>}],
+              ?P_CONTENT_TYPE => <<"content_type">>},
+            session_id(), matched_acl()],
     [next] = vmq_plugin:all(on_publish_m5, Args).
 
 on_deliver_m5_test(_) ->
@@ -240,7 +244,8 @@ on_deliver_m5_test(_) ->
               ?P_CORRELATION_DATA => <<"correlation_data">>,
               ?P_RESPONSE_TOPIC => [<<"response">>,<<"topic">>],
               ?P_PAYLOAD_FORMAT_INDICATOR => utf8,
-              ?P_CONTENT_TYPE => <<"content_type">>}],
+              ?P_CONTENT_TYPE => <<"content_type">>},
+            session_id(), matched_acl(), false],
     {ok, #{properties :=
           #{?P_USER_PROPERTY :=
                 [{<<"k1">>, <<"v1">>},
@@ -257,26 +262,28 @@ auth_on_subscribe_m5_test(_) ->
                   [{<<"k1">>, <<"v1">>}],
               ?P_SUBSCRIPTION_ID => [1,2,3]},
     ok = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
-                      [username(), allowed_subscriber_id(), [{topic(), {1, subopts()}}], Props]),
+                      [username(), allowed_subscriber_id(), [{topic(), {1, subopts()}}], Props, session_id()]),
     {error, not_authorized} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
-                      [username(), not_allowed_subscriber_id(), [{topic(), {1, subopts()}}], props()]),
+                      [username(), not_allowed_subscriber_id(), [{topic(), {1, subopts()}}], props(), session_id()]),
     {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
-                      [username(), ignored_subscriber_id(), [{topic(), {1, subopts()}}], props()]),
+                      [username(), ignored_subscriber_id(), [{topic(), {1, subopts()}}], props(), session_id()]),
     {ok, #{topics := [{[<<"hello">>, <<"world">>], {2, #{rap := true}}}]}} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
-                      [username(), changed_subscriber_id(), [{topic(), {1, subopts()}}], props()]).
+                      [username(), changed_subscriber_id(), [{topic(), {1, subopts()}}], props(), session_id()]).
 
 on_subscribe_m5_test(_) ->
     Props = #{?P_USER_PROPERTY =>
                   [{<<"k1">>, <<"v1">>}],
               ?P_SUBSCRIPTION_ID => [1,2,3]},
     [next] = vmq_plugin:all(on_subscribe_m5,
-                          [username(), allowed_subscriber_id(), [{topic(), {1, subopts()}}], Props]).
+                          [username(), allowed_subscriber_id(),
+                           [{topic(), {1, subopts()}, matched_acl()}], Props, session_id()]).
 
 
 on_unsubscribe_m5_test(_) ->
     Args = [username(), changed_subscriber_id(), [topic()],
             #{?P_USER_PROPERTY =>
-                  [{<<"k1">>, <<"v1">>}]}],
+                  [{<<"k1">>, <<"v1">>}]},
+            session_id()],
     {ok, #{topics := [[<<"hello">>, <<"world">>]]}}
         = vmq_plugin:all_till_ok(on_unsubscribe_m5, Args).
 
@@ -286,7 +293,7 @@ on_auth_m5_test(_) ->
         = vmq_plugin:all_till_ok(on_auth_m5,
                                  [username(), allowed_subscriber_id(),
                                   #{?P_AUTHENTICATION_METHOD => <<"AUTH_METHOD">>,
-                                    ?P_AUTHENTICATION_DATA => <<"AUTH_DATA0">>}]).
+                                    ?P_AUTHENTICATION_DATA => <<"AUTH_DATA0">>}, session_id()]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%% helpers %%%%%%%%%%%%%%%%%%%%%%%%%
 peer() -> {{192, 168, 123, 123}, 12345}.
