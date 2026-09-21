@@ -483,6 +483,17 @@ on_delivery_complete(#{username := BinPid,
   Pid ! on_delivery_complete_ok,
   {200, #{}}.
 
+on_delivery_complete_m5(#{username := BinPid,
+  mountpoint := ?MOUNTPOINT_BIN,
+  client_id := ?ALLOWED_CLIENT_ID,
+  qos := 1,
+  topic := ?TOPIC,
+  payload := ?PAYLOAD,
+  retain := false}) ->
+  Pid = list_to_pid(binary_to_list(BinPid)),
+  Pid ! on_delivery_complete_m5_ok,
+  {200, #{}}.
+
 on_auth_m5(#{properties :=
                  #{?P_AUTHENTICATION_METHOD := <<"AUTH_METHOD">>,
                    ?P_AUTHENTICATION_DATA := <<"QVVUSF9EQVRBMA==">>}, %% b64(<<"AUTH_DATA0">>)
@@ -527,6 +538,8 @@ process_hook(<<"on_session_expired">>, Body) ->
     on_session_expired(Body);
 process_hook(<<"on_delivery_complete">>, Body) ->
   on_delivery_complete(Body);
+process_hook(<<"on_delivery_complete_m5">>, Body) ->
+  on_delivery_complete_m5(Body);
 
 process_hook(<<"auth_on_register_m5">>, Body) ->
     auth_on_register_m5(Body);
