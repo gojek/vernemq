@@ -39,6 +39,7 @@
 -behaviour(auth_on_subscribe_m5_hook).
 -behaviour(on_subscribe_m5_hook).
 -behaviour(on_auth_m5_hook).
+-behaviour(on_delivery_complete_m5_hook).
 
 -export([
     auth_on_register/6,
@@ -60,6 +61,7 @@
     auth_on_publish_m5/8,
     on_publish_m5/9,
     on_deliver_m5/10,
+    on_delivery_complete_m5/10,
     auth_on_subscribe_m5/5,
     on_subscribe_m5/5,
     on_unsubscribe_m5/5,
@@ -621,6 +623,22 @@ on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _
         {topic, unword(Topic)},
         {payload, Payload},
         {retain, IsRetain},
+        {session_id, SessionId}
+    ]).
+
+on_delivery_complete_m5(
+    UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _, SessionId, Props
+) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all(on_delivery_complete_m5, [
+        {username, nilify(UserName)},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {qos, QoS},
+        {topic, unword(Topic)},
+        {payload, Payload},
+        {retain, IsRetain},
+        {properties, conv_args_props(Props)},
         {session_id, SessionId}
     ]).
 
