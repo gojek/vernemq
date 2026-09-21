@@ -99,7 +99,10 @@
     def_opts :: map(),
 
     %% TODO
-    trace_fun :: undefined | any()
+    trace_fun :: undefined | any(),
+
+    %% correlates every hook call of this session
+    session_id :: undefined | session_id()
 }).
 
 -define(COORDINATE_REGISTRATIONS, true).
@@ -170,6 +173,8 @@ init(
     ),
     set_request_problem_information(RequestProblemInformation),
 
+    SessionId = vmq_mqtt_fsm_util:generate_session_id(),
+
     State = #state{
         peer = Peer,
         upgrade_qos = UpgradeQoS,
@@ -188,7 +193,8 @@ init(
         trace_fun = TraceFun,
         fc_receive_max_client = FcReceiveMaxClient,
         fc_receive_max_broker = FcReceiveMaxBroker,
-        last_time_active = erlang:monotonic_time(microsecond)
+        last_time_active = erlang:monotonic_time(microsecond),
+        session_id = SessionId
     },
 
     case lists:member(ProtoVer, AllowedProtocolVersions) of
@@ -353,7 +359,8 @@ pre_connect_auth(
             data = ConnectFrame
         },
         subscriber_id = SubscriberId,
-        username = UserName
+        username = UserName,
+        session_id = SessionId
     } = State
 ) ->
     FilterProps =
@@ -368,7 +375,7 @@ pre_connect_auth(
             )
         end,
     _ = vmq_metrics:incr({?MQTT5_AUTH_RECEIVED, rc2rcn(RC)}),
-    case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId, Props]) of
+    case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId, Props, SessionId]) of
         {ok, #{
             reason_code := ?SUCCESS,
             properties := #{?P_AUTHENTICATION_METHOD := AuthMethod} = Res
@@ -617,20 +624,24 @@ connected(#mqtt5_pubcomp{message_id = MessageId, reason_code = RC}, State) ->
 connected(#mqtt5_subscribe{message_id = MessageId, topics = Topics, properties = Props0}, State) ->
     #state{
         subscriber_id = SubscriberId,
-        username = User
+        username = User,
+        session_id = SessionId
     } = State,
     _ = vmq_metrics:incr(?MQTT5_SUBSCRIBE_RECEIVED),
     SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, get_sub_id(Props0)),
     OnAuthSuccess =
         fun(_User, _SubscriberId, MaybeChangedTopics, Props1) ->
-            case vmq_reg:subscribe(SubscriberId, MaybeChangedTopics) of
+            {Subscriptions, TopicsWithAcl} = split_matched_acls(MaybeChangedTopics),
+            case vmq_reg:subscribe(SubscriberId, Subscriptions) of
                 {ok, _QoSs} ->
-                    vmq_plugin:all(on_subscribe_m5, [User, SubscriberId, MaybeChangedTopics, Props1]);
+                    vmq_plugin:all(on_subscribe_m5, [
+                        User, SubscriberId, TopicsWithAcl, Props1, SessionId
+                    ]);
                 Res ->
                     Res
             end
         end,
-    case auth_on_subscribe(User, SubscriberId, SubTopics, Props0, OnAuthSuccess) of
+    case auth_on_subscribe(User, SubscriberId, SubTopics, Props0, SessionId, OnAuthSuccess) of
         {ok, Modifiers} ->
             QoSs = topic_to_qos(maps:get(topics, Modifiers, [])),
             Props1 = maps:with(
@@ -668,7 +679,8 @@ connected(#mqtt5_subscribe{message_id = MessageId, topics = Topics, properties =
 connected(#mqtt5_unsubscribe{message_id = MessageId, topics = Topics, properties = Props0}, State) ->
     #state{
         subscriber_id = SubscriberId,
-        username = User
+        username = User,
+        session_id = SessionId
     } = State,
     _ = vmq_metrics:incr(?MQTT5_UNSUBSCRIBE_RECEIVED),
     OnSuccess =
@@ -681,7 +693,7 @@ connected(#mqtt5_unsubscribe{message_id = MessageId, topics = Topics, properties
                     V
             end
         end,
-    case unsubscribe(User, SubscriberId, Topics, Props0, OnSuccess) of
+    case unsubscribe(User, SubscriberId, Topics, Props0, SessionId, OnSuccess) of
         {ok, Props1} ->
             ReasonCodes = [?M5_SUCCESS || _ <- Topics],
             Frame = #mqtt5_unsuback{
@@ -703,7 +715,8 @@ connected(
     #state{
         enhanced_auth = #auth_data{method = AuthMethod},
         subscriber_id = SubscriberId,
-        username = UserName
+        username = UserName,
+        session_id = SessionId
     } = State
 ) ->
     FilterProps =
@@ -718,7 +731,7 @@ connected(
             )
         end,
     _ = vmq_metrics:incr({?MQTT5_AUTH_RECEIVED, rc2rcn(RC)}),
-    case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId, Props]) of
+    case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId, Props, SessionId]) of
         {ok, #{
             reason_code := ?SUCCESS,
             properties :=
@@ -936,7 +949,8 @@ check_enhanced_auth(
     #mqtt5_connect{properties = #{?P_AUTHENTICATION_METHOD := AuthMethod} = Props} = Frame0,
     #state{
         subscriber_id = SubscriberId,
-        username = UserName
+        username = UserName,
+        session_id = SessionId
     } = State
 ) ->
     FilterProps =
@@ -950,7 +964,7 @@ check_enhanced_auth(
                 M
             )
         end,
-    case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId, Props]) of
+    case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId, Props, SessionId]) of
         {ok, #{
             reason_code := ?SUCCESS,
             properties :=
@@ -980,6 +994,13 @@ check_enhanced_auth(
                 [State#state.subscriber_id, RCN]
             ),
             connack_terminate(RCN, Props0, State);
+        {error, ?NO_MATCHING_HOOK_FOUND} ->
+            lager:warning(
+                "can't authenticate client ~p from ~s: "
+                "no on_auth_m5 hook for authentication method ~p",
+                [State#state.subscriber_id, peertoa(State#state.peer), AuthMethod]
+            ),
+            connack_terminate(?BAD_AUTHENTICATION_METHOD, State);
         {error, Reason} ->
             lager:warning(
                 "can't continue enhanced auth with client ~p due to ~p",
@@ -1122,7 +1143,8 @@ register_subscriber(
                 Peer,
                 SubscriberId,
                 User,
-                OutProps0
+                OutProps0,
+                State#state.session_id
             ]),
             OutProps1 = maybe_set_receive_maximum(OutProps0, ReceiveMax),
             check_will(
@@ -1220,6 +1242,7 @@ maybe_apply_topic_alias_in(
                     User,
                     SubscriberId,
                     remove_property(p_topic_alias, Msg#vmq_msg{routing_key = AliasedTopic}),
+                    State#state.session_id,
                     Fun
                 )
             of
@@ -1240,7 +1263,11 @@ maybe_apply_topic_alias_in(
     Fun,
     #state{topic_aliases_in = TA} = State
 ) ->
-    case auth_on_publish(User, SubscriberId, remove_property(p_topic_alias, Msg), Fun) of
+    case
+        auth_on_publish(
+            User, SubscriberId, remove_property(p_topic_alias, Msg), State#state.session_id, Fun
+        )
+    of
         {ok, #vmq_msg{routing_key = MaybeChangedTopic} = NewMsg, SessCtrl} ->
             %% TODOv5: Should we check here that the topic isn't empty?
             {ok, NewMsg, SessCtrl, State#state{
@@ -1268,7 +1295,11 @@ maybe_apply_topic_alias_in(
     State
 ) ->
     %% normal publish
-    case auth_on_publish(User, SubscriberId, remove_property(p_topic_alias, Msg), Fun) of
+    case
+        auth_on_publish(
+            User, SubscriberId, remove_property(p_topic_alias, Msg), State#state.session_id, Fun
+        )
+    of
         {ok, NewMsg, SessCtrl} ->
             {ok, NewMsg, SessCtrl, State};
         {error, _} = E ->
@@ -1310,9 +1341,10 @@ auth_on_register(Password, Props, State) ->
         clean_start = CleanStart,
         peer = Peer,
         subscriber_id = SubscriberId,
-        username = User
+        username = User,
+        session_id = SessionId
     } = State,
-    HookArgs = [Peer, SubscriberId, User, Password, CleanStart, Props],
+    HookArgs = [Peer, SubscriberId, User, Password, CleanStart, Props, SessionId],
     case vmq_plugin:all_till_ok(auth_on_register_m5, HookArgs) of
         ok ->
             {ok, queue_opts([], Props, State), #{}, State};
@@ -1371,28 +1403,34 @@ set_sock_opts(Opts) ->
     subscriber_id(),
     [{topic(), qos()}],
     mqtt5_properties(),
+    session_id(),
     fun(
-        (username(), subscriber_id(), [{topic(), subinfo()}], mqtt5_properties()) ->
-            {ok, [qos() | not_allowed]} | {error, atom()}
+        (
+            username(),
+            subscriber_id(),
+            [subscription() | {topic(), subinfo(), matched_acl()}],
+            mqtt5_properties()
+        ) -> {ok, [qos() | not_allowed]} | {error, atom()}
     )
 ) ->
     {ok, auth_on_subscribe_m5_hook:sub_modifiers()}
     | {error, atom()}.
-auth_on_subscribe(User, SubscriberId, Topics, Props0, AuthSuccess) ->
+auth_on_subscribe(User, SubscriberId, Topics, Props0, SessionId, AuthSuccess) ->
     case
         vmq_plugin:all_till_ok(
             auth_on_subscribe_m5,
-            [User, SubscriberId, Topics, Props0]
+            [User, SubscriberId, Topics, Props0, SessionId]
         )
     of
         ok ->
             AuthSuccess(User, SubscriberId, Topics, Props0),
             {ok, #{topics => Topics}};
         {ok, Modifiers} ->
-            NewTopics = maps:get(topics, Modifiers, []),
+            ModTopics = maps:get(topics, Modifiers, []),
             NewProps = maps:get(properties, Modifiers, #{}),
-            AuthSuccess(User, SubscriberId, NewTopics, NewProps),
-            {ok, Modifiers};
+            AuthSuccess(User, SubscriberId, ModTopics, NewProps),
+            {Subscriptions, _TopicsWithAcl} = split_matched_acls(ModTopics),
+            {ok, Modifiers#{topics => Subscriptions}};
         {error, Error} ->
             {error, Error}
     end.
@@ -1405,12 +1443,17 @@ auth_on_subscribe(User, SubscriberId, Topics, Props0, AuthSuccess) ->
     subscriber_id(),
     [topic()],
     mqtt5_properties(),
+    session_id(),
     unsubsuccessfun()
 ) ->
     {ok, mqtt5_properties()} | {error, _}.
-unsubscribe(User, SubscriberId, Topics0, Props0, UnsubFun) ->
+unsubscribe(User, SubscriberId, Topics0, Props0, SessionId, UnsubFun) ->
     {Topics2, Props2} =
-        case vmq_plugin:all_till_ok(on_unsubscribe_m5, [User, SubscriberId, Topics0, Props0]) of
+        case
+            vmq_plugin:all_till_ok(on_unsubscribe_m5, [
+                User, SubscriberId, Topics0, Props0, SessionId
+            ])
+        of
             ok ->
                 {Topics0, #{}};
             {ok, #{topics := [[W | _] | _] = Topics1} = Mods} when is_binary(W) ->
@@ -1433,7 +1476,7 @@ unsubscribe(User, SubscriberId, Topics0, Props0, UnsubFun) ->
             {ok, Props2}
     end.
 
--spec auth_on_publish(username(), subscriber_id(), msg(), aop_success_fun()) ->
+-spec auth_on_publish(username(), subscriber_id(), msg(), session_id(), aop_success_fun()) ->
     {ok, msg()}
     | {ok, msg(), session_ctrl()}
     | {error, atom() | {reason_code_name(), properties()}}.
@@ -1447,12 +1490,24 @@ auth_on_publish(
         retain = IsRetain,
         properties = Properties
     } = Msg,
+    SessionId,
     AuthSuccess
 ) ->
-    HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain), Properties],
+    HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain), Properties, SessionId],
     case vmq_plugin:all_till_ok(auth_on_publish_m5, HookArgs) of
         ok ->
-            AuthSuccess(Msg, HookArgs, #{});
+            HookArgs1 = [
+                User,
+                SubscriberId,
+                QoS,
+                Topic,
+                Payload,
+                unflag(IsRetain),
+                Properties,
+                SessionId,
+                #matched_acl{}
+            ],
+            AuthSuccess(Msg, HookArgs1, #{});
         {ok, Args0} when is_map(Args0) ->
             #vmq_msg{mountpoint = MP} = Msg,
             ChangedTopic = maps:get(topic, Args0, Topic),
@@ -1461,6 +1516,10 @@ auth_on_publish(
             ChangedIsRetain = maps:get(retain, Args0, IsRetain),
             ChangedMountpoint = maps:get(mountpoint, Args0, MP),
             ChangedProperties = maps:get(properties, Args0, Properties),
+            #matched_acl{name = AclName} =
+                MatchedAcl = maps:get(
+                    matched_acl, Args0, #matched_acl{}
+                ),
             HookArgs1 = [
                 User,
                 SubscriberId,
@@ -1468,7 +1527,9 @@ auth_on_publish(
                 ChangedTopic,
                 ChangedPayload,
                 ChangedIsRetain,
-                ChangedProperties
+                ChangedProperties,
+                SessionId,
+                MatchedAcl
             ],
             SessCtrl = session_ctrl(Args0),
             AuthSuccess(
@@ -1478,7 +1539,8 @@ auth_on_publish(
                     qos = ChangedQoS,
                     retain = ChangedIsRetain,
                     properties = ChangedProperties,
-                    mountpoint = ChangedMountpoint
+                    mountpoint = ChangedMountpoint,
+                    acl_name = AclName
                 },
                 HookArgs1,
                 SessCtrl
@@ -1532,10 +1594,20 @@ publish(RegView, User, {_, ClientId} = SubscriberId, Msg, State) ->
 ) -> ok | {error, _}.
 on_publish_hook({ok, {0, 0}}, HookParams, SubscriberId) ->
     _ = vmq_plugin:all(on_publish_m5, HookParams),
-    [_User, _SubscriberId, QoS, Topic, Payload, IsRetain | _Rest] = HookParams,
+    [
+        _User,
+        _SubscriberId,
+        QoS,
+        Topic,
+        Payload,
+        IsRetain,
+        _Properties,
+        _SessionId,
+        MatchedAcl
+    ] = HookParams,
     _ = vmq_plugin:all(on_message_drop, [
         SubscriberId,
-        fun() -> {Topic, QoS, Payload, #{is_retain => IsRetain}, #matched_acl{}} end,
+        fun() -> {Topic, QoS, Payload, #{is_retain => IsRetain}, MatchedAcl} end,
         no_matching_subscribers
     ]),
     ok;
@@ -1802,7 +1874,12 @@ handle_messages([], Frames, PubCnt, State, Waiting) ->
     {State, Frames, Waiting}.
 
 prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State0) ->
-    #state{username = User, subscriber_id = SubscriberId, waiting_acks = WAcks} = State0,
+    #state{
+        username = User,
+        subscriber_id = SubscriberId,
+        waiting_acks = WAcks,
+        session_id = SessionId
+    } = State0,
     #vmq_msg{
         routing_key = Topic0,
         payload = Payload0,
@@ -1810,11 +1887,26 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State0) ->
         dup = IsDup,
         qos = MsgQoS,
         properties = Props0,
-        expiry_ts = ExpiryTS
+        expiry_ts = ExpiryTS,
+        acl_name = AclName,
+        persisted = Persisted
     } = Msg,
     NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State0),
     {Topic1, Payload1, Props2} =
-        case on_deliver_hook(User, SubscriberId, QoS, Topic0, Payload0, IsRetained, Props0) of
+        case
+            on_deliver_hook(
+                User,
+                SubscriberId,
+                QoS,
+                Topic0,
+                Payload0,
+                IsRetained,
+                Props0,
+                SessionId,
+                #matched_acl{name = AclName},
+                Persisted
+            )
+        of
             {error, _} ->
                 %% no on_deliver hook specified... that's ok
                 {Topic0, Payload0, Props0};
@@ -1859,11 +1951,24 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State0) ->
             }}
     end.
 
-on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
+on_deliver_hook(
+    User, SubscriberId, QoS, Topic, Payload, IsRetain, Props, SessionId, MatchedAcl, Persisted
+) ->
     HookArgs0 = [User, SubscriberId, Topic, Payload, Props],
     case vmq_plugin:all_till_ok(on_deliver_m5, HookArgs0) of
         {error, _} ->
-            HookArgs1 = [User, SubscriberId, QoS, Topic, Payload, IsRetain, Props],
+            HookArgs1 = [
+                User,
+                SubscriberId,
+                QoS,
+                Topic,
+                Payload,
+                IsRetain,
+                Props,
+                SessionId,
+                MatchedAcl,
+                Persisted
+            ],
             vmq_plugin:all_till_ok(on_deliver_m5, HookArgs1);
         Other ->
             Other
@@ -1891,12 +1996,30 @@ schedule_last_will_msg(#state{
     will_msg = Msg,
     reg_view = RegView,
     queue_pid = QueuePid,
-    session_expiry_interval = SessionExpiryInterval
+    session_expiry_interval = SessionExpiryInterval,
+    session_id = SessionId
 }) ->
     LastWillFun =
         fun() ->
-            #vmq_msg{qos = QoS, routing_key = Topic, payload = Payload, retain = IsRetain} = Msg,
-            HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
+            #vmq_msg{
+                qos = QoS,
+                routing_key = Topic,
+                payload = Payload,
+                retain = IsRetain,
+                properties = Properties,
+                acl_name = AclName
+            } = Msg,
+            HookArgs = [
+                User,
+                SubscriberId,
+                QoS,
+                Topic,
+                Payload,
+                IsRetain,
+                Properties,
+                SessionId,
+                #matched_acl{name = AclName}
+            ],
             _ = on_publish_hook(
                 vmq_reg:publish(
                     RegView,
@@ -2238,13 +2361,37 @@ get_sub_id(#{p_subscription_id := [SubId]}) ->
 get_sub_id(_) ->
     undefined.
 
--spec topic_to_qos([subscription()]) -> [qos()].
+-spec split_matched_acls([subscription() | {topic(), subinfo(), matched_acl()}]) ->
+    {[subscription()], [{topic(), subinfo(), matched_acl()}]}.
+split_matched_acls(Topics) ->
+    lists:foldr(
+        fun
+            ({Topic, SubInfo, MatchedAcl}, {Subs, WithAcl}) ->
+                {[{Topic, SubInfo} | Subs], [{Topic, SubInfo, MatchedAcl} | WithAcl]};
+            ({Topic, SubInfo} = Subscription, {Subs, WithAcl}) ->
+                {[Subscription | Subs], [{Topic, SubInfo, #matched_acl{}} | WithAcl]}
+        end,
+        {[], []},
+        Topics
+    ).
+
+-spec topic_to_qos([subscription()]) -> [qos() | reason_code()].
 topic_to_qos(Topics) ->
     lists:map(
         fun
+            %% A plugin denied this single topic. MQTT 5 has no
+            %% dedicated 'not_allowed' SUBACK code, so it becomes a
+            %% per-topic 0x87 while the remaining topics still get
+            %% their granted QoS. Both the MQTTv4 shape ({T, atom})
+            %% and the MQTTv5 shape ({T, {atom, SubOpts}}) are
+            %% accepted, mirroring vmq_reg:subscribe_op/2.
+            ({_T, not_allowed}) ->
+                ?M5_NOT_AUTHORIZED;
+            ({_T, {not_allowed, _}}) ->
+                ?M5_NOT_AUTHORIZED;
             ({_T, QoS}) when is_integer(QoS) ->
                 QoS;
-            ({_T, {QoS, _}}) ->
+            ({_T, {QoS, _}}) when is_integer(QoS) ->
                 QoS
         end,
         Topics

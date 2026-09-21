@@ -55,15 +55,15 @@
     on_client_gone/4,
     on_session_expired/2,
     on_delivery_complete/9,
-    auth_on_register_m5/6,
-    on_register_m5/4,
-    auth_on_publish_m5/7,
-    on_publish_m5/7,
-    on_deliver_m5/7,
-    auth_on_subscribe_m5/4,
-    on_subscribe_m5/4,
-    on_unsubscribe_m5/4,
-    on_auth_m5/3
+    auth_on_register_m5/7,
+    on_register_m5/5,
+    auth_on_publish_m5/8,
+    on_publish_m5/9,
+    on_deliver_m5/10,
+    auth_on_subscribe_m5/5,
+    on_subscribe_m5/5,
+    on_unsubscribe_m5/5,
+    on_auth_m5/4
 ]).
 
 %% API functions
@@ -238,7 +238,7 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession, SessionId
     ]),
     conv_res(auth_on_reg, Res).
 
-auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) ->
+auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props, SessionId) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
     Res = all_till_ok(auth_on_register_m5, [
@@ -249,11 +249,12 @@ auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) -
         {username, nilify(UserName)},
         {password, nilify(Password)},
         {clean_start, CleanStart},
-        {properties, conv_args_props(Props)}
+        {properties, conv_args_props(Props)},
+        {session_id, SessionId}
     ]),
     conv_res(auth_on_reg, Res).
 
-on_register_m5(Peer, SubscriberId, Username, Props) ->
+on_register_m5(Peer, SubscriberId, Username, Props, SessionId) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_register_m5, [
@@ -262,7 +263,8 @@ on_register_m5(Peer, SubscriberId, Username, Props) ->
         {mountpoint, MP},
         {client_id, ClientId},
         {username, nilify(Username)},
-        {properties, conv_args_props(Props)}
+        {properties, conv_args_props(Props)},
+        {session_id, SessionId}
     ]).
 
 auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, SessionId) ->
@@ -291,7 +293,7 @@ auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, SessionId
             conv_res(auth_on_pub, Res)
     end.
 
-auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
+auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     case vmq_diversity_cache:match_publish_acl(MP, ClientId, QoS, Topic, Payload, IsRetain) of
         true ->
@@ -312,12 +314,13 @@ auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props)
                 {topic, unword(Topic)},
                 {payload, Payload},
                 {retain, IsRetain},
+                {session_id, SessionId},
                 {properties, conv_args_props(Props)}
             ]),
             conv_res(auth_on_pub, Res)
     end.
 
-on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
+on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props, SessionId, _) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_publish_m5, [
         {username, nilify(UserName)},
@@ -327,10 +330,11 @@ on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
         {topic, unword(Topic)},
         {payload, Payload},
         {retain, IsRetain},
-        {properties, conv_args_props(Props)}
+        {properties, conv_args_props(Props)},
+        {session_id, SessionId}
     ]).
 
-on_deliver_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
+on_deliver_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props, SessionId, _, _) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver_m5, [
         {username, nilify(UserName)},
@@ -340,7 +344,8 @@ on_deliver_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
         {topic, unword(Topic)},
         {payload, Payload},
         {retain, IsRetain},
-        {properties, conv_args_props(Props)}
+        {properties, conv_args_props(Props)},
+        {session_id, SessionId}
     ]).
 
 auth_on_subscribe(UserName, SubscriberId, Topics, SessionId) ->
@@ -388,7 +393,7 @@ auth_on_subscribe(UserName, SubscriberId, Topics, SessionId) ->
             conv_res(auth_on_sub, Res)
     end.
 
-auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
+auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     CacheRet =
         lists:foldl(
@@ -432,12 +437,13 @@ auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
                     [unword(T), [QoS, Unmap(SubOpts)]]
                  || {T, {QoS, SubOpts}} <- Topics
                 ]},
-                {properties, conv_args_props(Props)}
+                {properties, conv_args_props(Props)},
+                {session_id, SessionId}
             ]),
             conv_res(auth_on_sub, Res)
     end.
 
-on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
+on_subscribe_m5(UserName, SubscriberId, Topics, Props, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     Unmap = fun(SubOpts) ->
         vmq_diversity_utils:unmap(SubOpts)
@@ -448,12 +454,13 @@ on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
         {client_id, ClientId},
         {topics, [
             [unword(T), [QoS, Unmap(SubOpts)]]
-         || {T, {QoS, SubOpts}} <- Topics
+         || {T, {QoS, SubOpts}, _MatchedAcl} <- Topics
         ]},
-        {properties, conv_args_props(Props)}
+        {properties, conv_args_props(Props)},
+        {session_id, SessionId}
     ]).
 
-on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
+on_unsubscribe_m5(UserName, SubscriberId, Topics, Props, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     CacheRet =
         lists:foldl(
@@ -493,17 +500,19 @@ on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
                     unword(T)
                  || T <- Topics
                 ]},
-                {properties, conv_args_props(Props)}
+                {properties, conv_args_props(Props)},
+                {session_id, SessionId}
             ])
     end.
 
-on_auth_m5(Username, SubscriberId, Props) ->
+on_auth_m5(Username, SubscriberId, Props, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_auth_m5, [
         {username, nilify(Username)},
         {mountpoint, MP},
         {client_id, ClientId},
-        {properties, conv_args_props(Props)}
+        {properties, conv_args_props(Props)},
+        {session_id, SessionId}
     ]).
 
 on_register(Peer, SubscriberId, UserName, UserProperties, SessionId) ->

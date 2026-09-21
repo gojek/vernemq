@@ -16,6 +16,7 @@
 -behaviour(auth_on_register_hook).
 -behaviour(auth_on_subscribe_hook).
 -behaviour(auth_on_publish_hook).
+-behaviour(auth_on_register_m5_hook).
 -behaviour(auth_on_subscribe_m5_hook).
 -behaviour(auth_on_publish_m5_hook).
 -behaviour(on_config_change_hook).
@@ -33,9 +34,10 @@
 -export([
     auth_on_subscribe/4,
     auth_on_publish/7,
-    auth_on_subscribe_m5/4,
-    auth_on_publish_m5/7,
+    auth_on_subscribe_m5/5,
+    auth_on_publish_m5/8,
     auth_on_register/6,
+    auth_on_register_m5/7,
     change_config/1
 ]).
 
@@ -66,6 +68,7 @@
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-define(SESSION_ID, <<"test-session-id">>).
 -define(setup(F), {setup, fun setup/0, fun teardown/1, F}).
 -endif.
 
@@ -150,20 +153,53 @@ auth_on_publish(User, SubscriberId, QoS, Topic, _, _, _SessionId) ->
             end
     end.
 
-auth_on_subscribe_m5(_, _, []) ->
-    ok;
-auth_on_subscribe_m5(User, SubscriberId, [{Topic, _Qos} | Rest]) ->
-    case check(read, Topic, User, SubscriberId) of
-        {true, _} ->
-            auth_on_subscribe(User, SubscriberId, Rest, undefined);
+auth_on_subscribe_m5(User, SubscriberId, Topics, _Props, SessionId) ->
+    SubOptsByTopic = [{Topic, QoS, SubOpts} || {Topic, {QoS, SubOpts}} <- Topics],
+    case length(SubOptsByTopic) =:= length(Topics) of
         false ->
-            next
+            {error, ?UNSPECIFIED_ERROR};
+        true ->
+            V3Topics = [{Topic, QoS} || {Topic, QoS, _SubOpts} <- SubOptsByTopic],
+            case auth_on_subscribe(User, SubscriberId, V3Topics, SessionId) of
+                {ok, Modifiers} ->
+                    V5Topics = lists:zipwith(
+                        fun({_Topic, _QoS, SubOpts}, {MTopic, MQoS, MatchedAcl}) ->
+                            {MTopic, {MQoS, SubOpts}, MatchedAcl}
+                        end,
+                        SubOptsByTopic,
+                        Modifiers
+                    ),
+                    {ok, #{topics => V5Topics, properties => #{}}};
+                Other ->
+                    Other
+            end
     end.
-auth_on_subscribe_m5(User, SubscriberId, Topics, _Props) ->
-    auth_on_subscribe_m5(User, SubscriberId, Topics).
 
-auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, _Props) ->
-    auth_on_publish(User, SubscriberId, QoS, Topic, Payload, IsRetain, undefined).
+auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, Properties, _SessionId) ->
+    D = is_acl_auth_disabled(),
+    if
+        D ->
+            next;
+        true ->
+            case check(write, Topic, User, SubscriberId) of
+                {true, #matched_acl{name = AclName} = MatchedAcl} ->
+                    case vmq_enhanced_auth_rate_limiter:check_publish_rate(AclName, QoS) of
+                        drop ->
+                            {error, #{reason_code => quota_exceeded}};
+                        allow ->
+                            {ok, #{
+                                topic => Topic,
+                                payload => Payload,
+                                qos => QoS,
+                                retain => IsRetain,
+                                properties => Properties,
+                                matched_acl => MatchedAcl
+                            }}
+                    end;
+                false ->
+                    next
+            end
+    end.
 
 auth_on_register(
     {_IpAddr, _Port} = _Peer,
@@ -200,6 +236,38 @@ auth_on_register(
                     {error, ?INVALID_SIGNATURE}
             end
     end.
+
+auth_on_register_m5(
+    _Peer,
+    _SubscriberId,
+    UserName,
+    Password,
+    _CleanStart,
+    _Properties,
+    _SessionId
+) ->
+    case auth_on_register_jwt(UserName, Password) of
+        {error, Reason} -> {error, #{reason_code => reason_code(Reason)}};
+        Other -> Other
+    end.
+
+auth_on_register_jwt(UserName, Token) ->
+    case is_auth_on_register_disabled() of
+        true ->
+            next;
+        false ->
+            case verify(Token, ?SecretKey) of
+                {ok, Claims} ->
+                    check_rid(Claims, UserName);
+                _ ->
+                    vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?INVALID_SIGNATURE}),
+                    {error, ?INVALID_SIGNATURE}
+            end
+    end.
+
+reason_code(?INVALID_SIGNATURE) -> ?BAD_USERNAME_OR_PASSWORD;
+reason_code(?MISSING_RID) -> ?NOT_AUTHORIZED;
+reason_code(?USERNAME_RID_MISMATCH) -> ?NOT_AUTHORIZED.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal+
@@ -633,7 +701,9 @@ acl_test_() ->
         {"Complex ACL Test - Delete complex topic",
             {setup, fun setup_vmq_reg_redis_trie/0, fun teardown/1, fun delete_complex_acl_test/1}},
         {"Complex ACL Test - Sub-topic whitelisting",
-            {setup, fun setup_vmq_reg_redis_trie/0, fun teardown/1, fun subtopic_subscribe_test/1}}
+            {setup, fun setup_vmq_reg_redis_trie/0, fun teardown/1, fun subtopic_subscribe_test/1}},
+        {"MQTT5 subscribe modifier shape", ?setup(fun mqtt5_subscribe_test/1)},
+        {"MQTT5 publish rate limit", ?setup(fun mqtt5_publish_rate_limit_test/1)}
     ].
 
 init_rate_limiter() ->
@@ -1011,6 +1081,90 @@ simple_acl(_) ->
             split_topic_label(<<"a/b label a b\n">>)
         )
     ].
+mqtt5_subscribe_test(_) ->
+    ACL = [
+        <<"user test\n">>,
+        <<"topic x/y/z label simple_read\n">>
+    ],
+    load_from_list(ACL),
+    SubOpts = #{no_local => false, rap => false, retain_handling => send_retain},
+    Topic = [<<"x">>, <<"y">>, <<"z">>],
+    Topics = [{Topic, {1, SubOpts}}],
+    Denied = [{[<<"a">>, <<"b">>], {2, SubOpts}} | Topics],
+    %% The ACL x/y/z matched, as vmq_mqtt5_fsm and the on_subscribe
+    %% hooks get to see it
+    ReadAcl = #matched_acl{name = <<"simple_read">>, pattern = <<"x/y/z">>},
+    %% A denied topic matched no ACL
+    NoAcl = #matched_acl{},
+    [
+        %% SubOpts have to survive the ACL check untouched, and the
+        %% matched ACL rides along with the subscription
+        ?_assertEqual(
+            {ok, #{topics => [{Topic, {1, SubOpts}, ReadAcl}], properties => #{}}},
+            auth_on_subscribe_m5(<<"test">>, {"", <<"client-id">>}, Topics, #{}, ?SESSION_ID)
+        ),
+        %% A denied topic keeps the v5 subinfo shape so that
+        %% vmq_reg:subscribe_op/2 and vmq_mqtt5_fsm:topic_to_qos/1
+        %% can both destructure it once the FSM has stripped the ACL
+        ?_assertEqual(
+            {ok, #{
+                topics => [{[<<"x">>, <<"y">>, <<"z">>], {not_allowed, SubOpts}, NoAcl}],
+                properties => #{}
+            }},
+            auth_on_subscribe_m5(
+                <<"invalid-user">>, {"", <<"client-id">>}, Topics, #{}, ?SESSION_ID
+            )
+        ),
+        %% Inbound user properties are not echoed back into the SUBACK
+        ?_assertEqual(
+            {ok, #{topics => [{Topic, {1, SubOpts}, ReadAcl}], properties => #{}}},
+            auth_on_subscribe_m5(
+                <<"test">>,
+                {"", <<"client-id">>},
+                Topics,
+                #{p_user_property => [{<<"k">>, <<"v">>}]},
+                ?SESSION_ID
+            )
+        ),
+        %% Partial denial: allowed topics keep their QoS and their ACL
+        ?_assertEqual(
+            {ok, #{
+                topics => [
+                    {[<<"a">>, <<"b">>], {not_allowed, SubOpts}, NoAcl},
+                    {Topic, {1, SubOpts}, ReadAcl}
+                ],
+                properties => #{}
+            }},
+            auth_on_subscribe_m5(<<"test">>, {"", <<"client-id">>}, Denied, #{}, ?SESSION_ID)
+        ),
+        %% A non-v5 topic shape is refused instead of being dropped
+        ?_assertEqual(
+            {error, ?UNSPECIFIED_ERROR},
+            auth_on_subscribe_m5(
+                <<"test">>, {"", <<"client-id">>}, [{Topic, 1}], #{}, ?SESSION_ID
+            )
+        )
+    ].
+
+mqtt5_publish_rate_limit_test(_) ->
+    ACL = [
+        <<"user test\n">>,
+        <<"topic write x/y/z label simple_write\n">>
+    ],
+    load_from_list(ACL),
+    ets:insert(?RATE_CONFIG_TBL, {<<"simple_write">>, 1}),
+    Topic = [<<"x">>, <<"y">>, <<"z">>],
+    PublishArgs = [
+        <<"test">>, {"", <<"client-id">>}, 1, Topic, <<"payload">>, false, #{}, ?SESSION_ID
+    ],
+    [
+        ?_assertMatch({ok, #{matched_acl := _}}, apply(?MODULE, auth_on_publish_m5, PublishArgs)),
+        ?_assertEqual(
+            {error, #{reason_code => quota_exceeded}},
+            apply(?MODULE, auth_on_publish_m5, PublishArgs)
+        )
+    ].
+
 delete_aged_acl_test(_) ->
     ACL = [
         <<"topic a/b/c label abc\n">>,

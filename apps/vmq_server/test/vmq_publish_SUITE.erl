@@ -155,7 +155,8 @@ groups() ->
             publish_c2b_topic_alias,
             publish_b2c_topic_alias,
             forward_properties,
-            max_packet_size
+            max_packet_size,
+            matched_acl_v5_test
             | V4V5Tests
         ],
     [
@@ -167,6 +168,7 @@ groups() ->
     ].
 
 -define(CLIENT_OFFLINE_EVENT_SRV, vmq_client_offline_event_server).
+-define(MATCHED_ACL_SRV, vmq_matched_acl_event_server).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -930,6 +932,55 @@ drop_dollar_topic_publish(Config) ->
     % receive a timeout instead of a PUBACk
     {error, timeout} = gen_tcp:recv(Socket, 0, 1000).
 
+%% The ACL an MQTT 5 PUBLISH matched has to end up on the message, like
+%% it does on the MQTTv4 path: everything reporting per ACL downstream -
+%% vmq_reg, vmq_queue, the retry metric, delayed pubacks - reads
+%% #vmq_msg.acl_name and never sees the auth_on_publish_m5 modifiers.
+%% Observed here through the on_message_drop hook the v5 FSM fires when
+%% a publish matches no subscriber.
+matched_acl_v5_test(_) ->
+    true = register(?MATCHED_ACL_SRV, self()),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+        auth_on_publish_m5, ?MODULE, hook_auth_on_publish_m5_acl, 8
+    ),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+        on_message_drop, ?MODULE, hook_on_message_drop_acl, 3
+    ),
+    try
+        Connect = packetv5:gen_connect("matched-acl-test", [
+            {keepalive, 60},
+            {clean_start, true}
+        ]),
+        Connack = packetv5:gen_connack(),
+        Topic = "test/topic/matched_acl",
+        Publish = packetv5:gen_publish(Topic, 1, <<"message">>, [{mid, 1}]),
+        Puback = packetv5:gen_puback(1),
+        {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+        ok = gen_tcp:send(Socket, Publish),
+        ok = packetv5:expect_frame(Socket, Puback),
+        receive
+            {on_message_drop, MatchedAcl} ->
+                %% The whole record survives, pattern included: the ACL
+                %% travels in the on_publish_m5 hook args rather than
+                %% being rebuilt from #vmq_msg.acl_name.
+                #matched_acl{
+                    name = <<"test_acl">>,
+                    pattern = <<"test/topic/#">>
+                } = MatchedAcl
+        after 1000 ->
+            throw(on_message_drop_hook_not_called)
+        end,
+        ok = gen_tcp:close(Socket)
+    after
+        catch vmq_plugin_mgr:disable_module_plugin(
+            on_message_drop, ?MODULE, hook_on_message_drop_acl, 3
+        ),
+        catch vmq_plugin_mgr:disable_module_plugin(
+            auth_on_publish_m5, ?MODULE, hook_auth_on_publish_m5_acl, 8
+        ),
+        catch unregister(?MATCHED_ACL_SRV)
+    end.
+
 not_allowed_publish_qos0_mqtt_5(_) ->
     Connect = packetv5:gen_connect("pattern-sub-test", [
         {keepalive, 60},
@@ -1644,6 +1695,21 @@ hook_on_message_drop(_, Promise, max_packet_size_exceeded, _) ->
 hook_on_message_drop({"", <<"message-expiry-sub">>}, _, expired, _) ->
     ok.
 
+hook_auth_on_publish_m5_acl(_, _, QoS, Topic, Payload, IsRetain, Props, _SessionId) ->
+    {ok, #{
+        topic => Topic,
+        payload => Payload,
+        qos => QoS,
+        retain => IsRetain,
+        properties => Props,
+        matched_acl => #matched_acl{name = <<"test_acl">>, pattern = <<"test/topic/#">>}
+    }}.
+
+hook_on_message_drop_acl(_SubscriberId, Promise, no_matching_subscribers) ->
+    {_Topic, _QoS, _Payload, _Props, MatchedAcl} = Promise(),
+    ?MATCHED_ACL_SRV ! {on_message_drop, MatchedAcl},
+    ok.
+
 hook_on_client_offline(SubscriberId, Reason, Username, SessionId) ->
     ?CLIENT_OFFLINE_EVENT_SRV ! {on_client_offline, SubscriberId, Reason, Username, SessionId}.
 
@@ -1659,7 +1725,7 @@ enable_on_subscribe() ->
         ?MODULE,
         hook_auth_on_subscribe,
         4,
-        [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5, convert, 4}}]
+        [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5, convert, 5}}]
     ).
 enable_on_publish() ->
     ok = vmq_plugin_mgr:enable_module_plugin(
@@ -1670,7 +1736,7 @@ enable_on_publish() ->
         ?MODULE,
         hook_auth_on_publish,
         7,
-        [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5, convert, 7}}]
+        [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5, convert, 8}}]
     ).
 enable_on_message_drop() ->
     ok = vmq_plugin_mgr:enable_module_plugin(
@@ -1686,7 +1752,7 @@ disable_on_subscribe() ->
         ?MODULE,
         hook_auth_on_subscribe,
         4,
-        [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5, convert, 4}}]
+        [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5, convert, 5}}]
     ).
 disable_on_publish() ->
     ok = vmq_plugin_mgr:disable_module_plugin(
@@ -1697,7 +1763,7 @@ disable_on_publish() ->
         ?MODULE,
         hook_auth_on_publish,
         7,
-        [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5, convert, 7}}]
+        [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5, convert, 8}}]
     ).
 disable_on_message_drop() ->
     ok = vmq_plugin_mgr:disable_module_plugin(

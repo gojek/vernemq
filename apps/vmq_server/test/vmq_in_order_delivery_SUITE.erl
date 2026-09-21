@@ -307,25 +307,25 @@ enable_on_subscribe() ->
     ok = vmq_plugin_mgr:enable_module_plugin(
            auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 4,
            [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5,
-                     convert, 4}}]).
+                     convert, 5}}]).
 enable_on_publish() ->
     ok = vmq_plugin_mgr:enable_module_plugin(
            auth_on_publish, ?MODULE, hook_auth_on_publish, 7),
     ok = vmq_plugin_mgr:enable_module_plugin(
            auth_on_publish, ?MODULE, hook_auth_on_publish, 7,
            [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5,
-                    convert, 7}}]).
+                    convert, 8}}]).
 disable_on_subscribe() ->
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 4),
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 4,
            [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5,
-                      convert, 4}}]).
+                      convert, 5}}]).
 disable_on_publish() ->
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_publish, ?MODULE, hook_auth_on_publish, 7),
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_publish, ?MODULE, hook_auth_on_publish, 7,
            [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5,
-                      convert, 7}}]).
+                      convert, 8}}]).

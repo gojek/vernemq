@@ -85,12 +85,12 @@ auth_cache_test(_) ->
            mountpoint := "override-mountpoint2"}} =
         vmq_plugin:all_till_ok(auth_on_publish_m5,
                                [username(), allowed_subscriber_id(), 0,
-                                [<<"modifiers">>], payload(), false, #{}]),
+                                [<<"modifiers">>], payload(), false, #{}, session_id()]),
 
     {ok, #{topics := [{[<<"hello">>,<<"world">>],2}]}} =
         vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                                [username(), allowed_subscriber_id(),
-                                [{[<<"modifiers">>], 0}], #{}]),
+                                [{[<<"modifiers">>], 0}], #{}, session_id()]),
     ok.
 
 auth_cache_reject_test(_) ->
@@ -164,3 +164,4 @@ username() -> <<"test-user">>.
 password() -> <<"test-password">>.
 payload() -> <<"hello world">>.
 reason() -> normal_disconnect.
+session_id() -> <<"test-session-id">>.

@@ -14,15 +14,15 @@
 
 %% API exports
 -export([
-    auth_on_register_m5/6,
-    on_register_m5/4,
-    auth_on_publish_m5/7,
-    on_publish_m5/7,
-    auth_on_subscribe_m5/4,
-    on_subscribe_m5/4,
-    on_unsubscribe_m5/4,
-    on_auth_m5/3,
-    on_deliver_m5/7
+    auth_on_register_m5/7,
+    on_register_m5/5,
+    auth_on_publish_m5/8,
+    on_publish_m5/9,
+    auth_on_subscribe_m5/5,
+    on_subscribe_m5/5,
+    on_unsubscribe_m5/5,
+    on_auth_m5/4,
+    on_deliver_m5/10
 ]).
 
 %%====================================================================
@@ -38,8 +38,17 @@ end).
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%% Register hooks %%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%
-auth_on_register_m5(Peer, SubscriberId, Username, Password, CleanStart, Properties) ->
-    ?LOG([auth_on_register_m5, Peer, SubscriberId, Username, Password, CleanStart, Properties]),
+auth_on_register_m5(Peer, SubscriberId, Username, Password, CleanStart, Properties, SessionId) ->
+    ?LOG([
+        auth_on_register_m5,
+        Peer,
+        SubscriberId,
+        Username,
+        Password,
+        CleanStart,
+        Properties,
+        SessionId
+    ]),
     auth_on_register_m5_(Peer, SubscriberId, Username, Password, CleanStart, Properties).
 
 auth_on_register_m5_(
@@ -88,15 +97,25 @@ auth_on_register_m5_(
 auth_on_register_m5_(_Peer, _SubscriberId, _Username, _Password, _CleanStart, _Properties) ->
     ok.
 
-on_register_m5(Peer, SubscriberId, Username, Properties) ->
-    ?LOG([on_register_m5, Peer, SubscriberId, Username, Properties]),
+on_register_m5(Peer, SubscriberId, Username, Properties, SessionId) ->
+    ?LOG([on_register_m5, Peer, SubscriberId, Username, Properties, SessionId]),
     ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%% Publish hooks %%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%
-auth_on_publish_m5(Username, SubscriberId, QoS, Topic, Payload, IsRetain, Properties) ->
-    ?LOG([auth_on_publish_m5, Username, SubscriberId, QoS, Topic, Payload, IsRetain, Properties]),
+auth_on_publish_m5(Username, SubscriberId, QoS, Topic, Payload, IsRetain, Properties, SessionId) ->
+    ?LOG([
+        auth_on_publish_m5,
+        Username,
+        SubscriberId,
+        QoS,
+        Topic,
+        Payload,
+        IsRetain,
+        Properties,
+        SessionId
+    ]),
     auth_on_publish_m5_(Username, SubscriberId, QoS, Topic, Payload, IsRetain, Properties).
 
 auth_on_publish_m5_(
@@ -146,15 +165,28 @@ auth_on_publish_m5_(
 auth_on_publish_m5_(_Username, _SubscriberId, _QoS, _Topic, _Payload, _IsRetain, _Properties) ->
     ok.
 
-on_publish_m5(Username, SubscriberId, QoS, Topic, Payload, IsRetain, Properties) ->
-    ?LOG([on_publish_m5, Username, SubscriberId, QoS, Topic, Payload, IsRetain, Properties]),
+on_publish_m5(
+    Username, SubscriberId, QoS, Topic, Payload, IsRetain, Properties, SessionId, MatchedAcl
+) ->
+    ?LOG([
+        on_publish_m5,
+        Username,
+        SubscriberId,
+        QoS,
+        Topic,
+        Payload,
+        IsRetain,
+        Properties,
+        SessionId,
+        MatchedAcl
+    ]),
     ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%% Subscribe hooks %%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
-auth_on_subscribe_m5(Username, SubscriberId, Topics, Properties) ->
-    ?LOG([auth_on_subscribe_m5, Username, SubscriberId, Topics, Properties]),
+auth_on_subscribe_m5(Username, SubscriberId, Topics, Properties, SessionId) ->
+    ?LOG([auth_on_subscribe_m5, Username, SubscriberId, Topics, Properties, SessionId]),
     auth_on_subscribe_m5_(Username, SubscriberId, Topics, Properties).
 
 auth_on_subscribe_m5_(
@@ -174,12 +206,12 @@ auth_on_subscribe_m5_(
 auth_on_subscribe_m5_(_Username, _SubscriberId, _Topics, _Properties) ->
     ok.
 
-on_subscribe_m5(Username, SubscriberId, Topics, Props) ->
-    ?LOG([on_subscribe_m5, Username, SubscriberId, Topics, Props]),
+on_subscribe_m5(Username, SubscriberId, Topics, Props, SessionId) ->
+    ?LOG([on_subscribe_m5, Username, SubscriberId, Topics, Props, SessionId]),
     ok.
 
-on_unsubscribe_m5(Username, SubscriberId, Topics, Properties) ->
-    ?LOG([on_unsubscribe_m5, Username, SubscriberId, Topics, Properties]),
+on_unsubscribe_m5(Username, SubscriberId, Topics, Properties, SessionId) ->
+    ?LOG([on_unsubscribe_m5, Username, SubscriberId, Topics, Properties, SessionId]),
     on_unsubscribe_m5_(Username, SubscriberId, Topics, Properties).
 
 on_unsubscribe_m5_(
@@ -202,8 +234,8 @@ on_unsubscribe_m5_(_Username, _SubscriberId, _Topics, _Properties) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%% Enh. Auth hooks %%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
-on_auth_m5(Username, SubscriberId, Properties) ->
-    ?LOG([on_auth_m5, Username, SubscriberId, Properties]),
+on_auth_m5(Username, SubscriberId, Properties, SessionId) ->
+    ?LOG([on_auth_m5, Username, SubscriberId, Properties, SessionId]),
     on_auth_m5_(Username, SubscriberId, Properties).
 
 on_auth_m5_(
@@ -257,8 +289,31 @@ on_auth_m5_(_Username, _SubscriberId, _Props) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%% Delivery hooks %%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%
-on_deliver_m5(Username, SubscriberId, QoS, Topic, Payload, IsRetain, Properties) ->
-    ?LOG([on_deliver_m5, Username, SubscriberId, QoS, Topic, Payload, IsRetain, Properties]),
+on_deliver_m5(
+    Username,
+    SubscriberId,
+    QoS,
+    Topic,
+    Payload,
+    IsRetain,
+    Properties,
+    SessionId,
+    MatchedAcl,
+    Persisted
+) ->
+    ?LOG([
+        on_deliver_m5,
+        Username,
+        SubscriberId,
+        QoS,
+        Topic,
+        Payload,
+        IsRetain,
+        Properties,
+        SessionId,
+        MatchedAcl,
+        Persisted
+    ]),
     on_deliver_m5_(Username, SubscriberId, QoS, Topic, Payload, IsRetain, Properties).
 
 on_deliver_m5_(
