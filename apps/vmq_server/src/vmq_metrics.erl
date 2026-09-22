@@ -671,10 +671,10 @@ publish_retry_metrics() ->
             fun({AclName, Count}, {DefsAcc, ValsAcc}) ->
                 LabelVal =
                     case AclName of
-                        <<>> -> <<"undefined">>;
-                        _ -> AclName
+                        <<>> -> "undefined";
+                        _ -> binary_to_list(AclName)
                     end,
-                UniqueId = {publish_retry, AclName},
+                UniqueId = {publish_retry, binary_to_atom(AclName)},
                 Def = m(
                     counter,
                     [{acl_name, LabelVal}],

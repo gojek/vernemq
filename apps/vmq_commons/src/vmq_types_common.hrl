@@ -40,7 +40,7 @@
     non_persistence = false :: flag(),
     acl_name :: binary() | 'undefined',
     pub_msg_id :: msg_id(),
-    pub_pid :: pid()
+    pub_pid :: pid() | 'undefined'
 }).
 -type msg() :: #vmq_msg{}.
 -record(matched_acl, {

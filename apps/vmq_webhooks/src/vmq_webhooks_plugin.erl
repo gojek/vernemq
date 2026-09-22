@@ -740,7 +740,10 @@ convert_subscriber_id(Modifiers) ->
         | 'retain'
         | 'topic'
         | 'topics'
-        | 'username',
+        | 'username'
+        | 'clean_session'
+        | 'reason'
+        | 'session_id',
         _
     },
     ...
@@ -768,7 +771,10 @@ all(HookName, Args) ->
             | 'retain'
             | 'topic'
             | 'topics'
-            | 'username',
+            | 'username'
+            | 'clean_session'
+            | 'reason'
+            | 'session_id',
             _
         },
         ...
