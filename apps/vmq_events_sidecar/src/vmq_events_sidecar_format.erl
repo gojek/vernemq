@@ -266,11 +266,26 @@ encode_envelope(Name, Value) ->
 convert_timestamp(Now) ->
     #'google.protobuf.Timestamp'{seconds = Now div 1000000000, nanos = Now rem 1000000000}.
 
-%% @doc Map internal registration failure reasons to protobuf enum values
--spec map_registration_failure_reason(atom() | binary()) -> atom().
+%% @doc Map internal registration failure reasons to protobuf enum values.
+%%
+%% The reasons reaching the on_register_failed hook come from three
+%% places: the authentication hooks, the last will authorization and
+%% the subscriber registration itself. MQTT 3.1.1 sessions report the
+%% internal reason an auth hook returned (e.g. invalid_signature),
+%% while MQTT 5 sessions report the MQTT 5 reason code name that hook
+%% mapped the reason to (e.g. bad_username_or_password), so both
+%% flavours are mapped here. Anything not listed stays unspecified.
+-spec map_registration_failure_reason(any()) -> atom().
+%% authentication
 map_registration_failure_reason(no_matching_hook_found) ->
     'REASON_NO_MATCHING_HOOK_FOUND';
+%% vmq_diversity has no callback registered for the hook
+map_registration_failure_reason(no_matching_callback_found) ->
+    'REASON_NO_MATCHING_HOOK_FOUND';
 map_registration_failure_reason(invalid_credentials) ->
+    'REASON_INVALID_CREDENTIALS';
+%% MQTT 5 reason code name for invalid credentials
+map_registration_failure_reason(bad_username_or_password) ->
     'REASON_INVALID_CREDENTIALS';
 map_registration_failure_reason(not_authorized) ->
     'REASON_NOT_AUTHORIZED';
@@ -278,7 +293,35 @@ map_registration_failure_reason(invalid_signature) ->
     'REASON_INVALID_SIGNATURE';
 map_registration_failure_reason(username_rid_mismatch) ->
     'REASON_USERNAME_RID_MISMATCH';
+map_registration_failure_reason(missing_rid) ->
+    'REASON_MISSING_RID';
+%% last will authorization
+map_registration_failure_reason(not_allowed) ->
+    'REASON_WILL_NOT_AUTHORIZED';
+map_registration_failure_reason(rate_limit_exceeded) ->
+    'REASON_RATE_LIMIT_EXCEEDED';
+%% MQTT 5 reason code name for a rate limited last will
+map_registration_failure_reason(quota_exceeded) ->
+    'REASON_RATE_LIMIT_EXCEEDED';
+%% subscriber registration
 map_registration_failure_reason(<<"ERR stale_request">>) ->
     'REASON_STALE_REQUEST';
+map_registration_failure_reason(register_subscriber_retry_exhausted) ->
+    'REASON_REGISTRATION_RETRY_EXHAUSTED';
+%% retries exhausted while the previous queue was still draining
+map_registration_failure_reason({register_subscriber_retry_exhausted, _}) ->
+    'REASON_REGISTRATION_RETRY_EXHAUSTED';
+map_registration_failure_reason(not_ready) ->
+    'REASON_REGISTRATION_SYNC_FAILED';
+map_registration_failure_reason(action_timeout) ->
+    'REASON_REGISTRATION_SYNC_FAILED';
+map_registration_failure_reason(action_shutdown) ->
+    'REASON_REGISTRATION_SYNC_FAILED';
+map_registration_failure_reason(action_not_alive) ->
+    'REASON_REGISTRATION_SYNC_FAILED';
+map_registration_failure_reason(no_connection) ->
+    'REASON_STATE_STORE_ERROR';
+map_registration_failure_reason(unwanted_redis_response) ->
+    'REASON_STATE_STORE_ERROR';
 map_registration_failure_reason(_) ->
     'REASON_UNSPECIFIED'.
