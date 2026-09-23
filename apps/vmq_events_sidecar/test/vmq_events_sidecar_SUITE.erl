@@ -76,7 +76,16 @@ all() ->
      on_client_offline_test,
      on_client_gone_test,
      on_message_drop_test,
+     on_register_m5_test,
+     on_publish_m5_test,
+     on_subscribe_m5_test,
+     on_subscribe_m5_v4_shape_topics_test,
+     on_unsubscribe_m5_test,
+     on_deliver_m5_test,
+     on_delivery_complete_m5_test,
+     on_publish_m5_sampling_test,
      on_register_grpc_test,
+     on_publish_m5_grpc_test,
      on_publish_grpc_test,
      on_subscribe_grpc_test,
      grpc_worker_pool_started_test,
@@ -162,6 +171,104 @@ on_delivery_complete_test(_) ->
   [ok,ok] = vmq_plugin:all(on_delivery_complete,[Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, true, ?SESSION_ID]),
   ok = exp_response(on_delivery_complete_ok),
   disable_hook(on_delivery_complete).
+
+%% MQTT 5 hooks. These encode into the same protobuf messages as their
+%% v4 counterparts, so the handler's existing assertions match and the
+%% response atom is the v4 one. That is unambiguous because each test
+%% enables exactly one hook, and the v4 and v5 hooks are dispatched
+%% under distinct {name, arity} pairs.
+%%
+%% vmq_metrics_plus registers no _m5 hooks, so these chains hold only
+%% the sidecar: vmq_plugin:all/2 returns a one-element list, and the
+%% all_till_ok hooks exhaust the chain because the sidecar returns next.
+on_register_m5_test(_) ->
+    enable_hook(on_register_m5),
+    Self = pid_to_bin(self()),
+    UserProps = [{"k1", "v1"}, {"k2","v2"}, {"k3","v3"}],
+    [ok] = vmq_plugin:all(on_register_m5,
+                          [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, #{?P_USER_PROPERTY => UserProps}, ?SESSION_ID]),
+    ok = exp_response(on_register_ok),
+    disable_hook(on_register_m5).
+
+on_publish_m5_test(_) ->
+    enable_hook(on_publish_m5),
+    Self = pid_to_bin(self()),
+    [ok] = vmq_plugin:all(on_publish_m5,
+                          [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #{}, ?SESSION_ID, #matched_acl{name = ?LABEL, pattern = ?PATTERN}]),
+    ok = exp_response(on_publish_ok),
+    disable_hook(on_publish_m5).
+
+%% an MQTT 5 subscription carries its options alongside the QoS, and a
+%% denied topic arrives as integer 128 (to_internal_qos_m5 has no
+%% not_allowed clause, unlike the v4 conversion)
+on_subscribe_m5_test(_) ->
+    enable_hook(on_subscribe_m5),
+    Self = pid_to_bin(self()),
+    [ok] = vmq_plugin:all(on_subscribe_m5,
+                          [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID},
+                           [{?TOPIC, {1, #{rap => false}}, #matched_acl{name = ?LABEL, pattern = ?PATTERN}},
+                            {?TOPIC, {128, #{}}, #matched_acl{}}], #{}, ?SESSION_ID]),
+    ok = exp_response(on_subscribe_ok),
+    disable_hook(on_subscribe_m5).
+
+%% a topic rewritten by an auth_on_subscribe_m5 modifier can come back
+%% in the v4 shape, with a bare QoS or not_allowed
+on_subscribe_m5_v4_shape_topics_test(_) ->
+    enable_hook(on_subscribe_m5),
+    Self = pid_to_bin(self()),
+    [ok] = vmq_plugin:all(on_subscribe_m5,
+                          [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID},
+                           [{?TOPIC, 1, #matched_acl{name = ?LABEL, pattern = ?PATTERN}},
+                            {?TOPIC, not_allowed, #matched_acl{}}], #{}, ?SESSION_ID]),
+    ok = exp_response(on_subscribe_ok),
+    disable_hook(on_subscribe_m5).
+
+on_unsubscribe_m5_test(_) ->
+    enable_hook(on_unsubscribe_m5),
+    Self = pid_to_bin(self()),
+    {error, plugin_chain_exhausted} =
+        vmq_plugin:all_till_ok(on_unsubscribe_m5,
+                               [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [?TOPIC], #{}, ?SESSION_ID]),
+    ok = exp_response(on_unsubscribe_ok),
+    disable_hook(on_unsubscribe_m5).
+
+on_deliver_m5_test(_) ->
+    enable_hook(on_deliver_m5),
+    Self = pid_to_bin(self()),
+    {error, plugin_chain_exhausted} =
+        vmq_plugin:all_till_ok(on_deliver_m5,
+                               [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #{}, ?SESSION_ID, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, true]),
+    ok = exp_response(on_deliver_ok),
+    disable_hook(on_deliver_m5).
+
+on_delivery_complete_m5_test(_) ->
+    enable_hook(on_delivery_complete_m5),
+    Self = pid_to_bin(self()),
+    [ok] = vmq_plugin:all(on_delivery_complete_m5,
+                          [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, true, ?SESSION_ID, #{}]),
+    ok = exp_response(on_delivery_complete_ok),
+    disable_hook(on_delivery_complete_m5).
+
+%% the v4 sampling configuration governs the _m5 hook too
+on_publish_m5_sampling_test(_) ->
+    enable_hook(on_publish_m5),
+    ok = vmq_events_sidecar_plugin:enable_sampling(on_publish, ?LABEL, 0),
+    Self = pid_to_bin(self()),
+    [ok] = vmq_plugin:all(on_publish_m5,
+                          [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #{}, ?SESSION_ID, #matched_acl{name = ?LABEL, pattern = ?PATTERN}]),
+    ok = exp_nothing(1000),
+    ok = vmq_events_sidecar_plugin:disable_sampling(on_publish, ?LABEL),
+    disable_hook(on_publish_m5).
+
+on_publish_m5_grpc_test(_) ->
+    use_transport(grpc),
+    enable_hook(on_publish_m5),
+    Self = pid_to_bin(self()),
+    [ok] = vmq_plugin:all(on_publish_m5,
+                          [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #{}, ?SESSION_ID, #matched_acl{name = ?LABEL, pattern = ?PATTERN}]),
+    ok = exp_response(on_publish_ok),
+    disable_hook(on_publish_m5),
+    use_transport(tcp).
 
 on_offline_message_test(_) ->
     enable_hook(on_offline_message),

@@ -253,6 +253,18 @@ encode(
             reason = map_registration_failure_reason(Reason)
         })
     );
+encode({on_register_m5, Timestamp, Event}) ->
+    encode({on_register, Timestamp, Event});
+encode({on_publish_m5, Timestamp, Event}) ->
+    encode({on_publish, Timestamp, Event});
+encode({on_subscribe_m5, Timestamp, Event}) ->
+    encode({on_subscribe, Timestamp, Event});
+encode({on_unsubscribe_m5, Timestamp, Event}) ->
+    encode({on_unsubscribe, Timestamp, Event});
+encode({on_deliver_m5, Timestamp, Event}) ->
+    encode({on_deliver, Timestamp, Event});
+encode({on_delivery_complete_m5, Timestamp, Event}) ->
+    encode({on_delivery_complete, Timestamp, Event});
 encode(_) ->
     <<>>.
 

@@ -217,7 +217,13 @@ hook_keyspec() ->
                             "on_client_gone",
                             "on_delivery_complete",
                             "on_session_expired",
-                            "on_message_drop"
+                            "on_message_drop",
+                            "on_register_m5",
+                            "on_publish_m5",
+                            "on_subscribe_m5",
+                            "on_unsubscribe_m5",
+                            "on_deliver_m5",
+                            "on_delivery_complete_m5"
                         ]
                     )
                 of
