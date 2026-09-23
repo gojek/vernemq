@@ -47,6 +47,11 @@
 
 -define(SERVER, ?MODULE).
 
+-define(COL_W_TIME, 12).
+-define(COL_W_PID, 15).
+-define(COL_W_DIR, 17).
+-define(COL_W_TYPE, 22).
+
 -record(state, {
     io_server :: pid(),
     max_rate :: {non_neg_integer(), non_neg_integer()},
@@ -115,6 +120,7 @@ init(#{
         end,
     Tracer = spawn_link(?SERVER, rate_tracer, [Max, Time, 0, os:timestamp()]),
     vmq_config:set_env(trace_fun, TraceFun, false),
+    io:format(IoServer, "~s~n~s~n", [table_header(), table_separator()]),
     {ok, #state{
         io_server = IoServer,
         max_rate = MaxRate,
@@ -585,95 +591,98 @@ format_trace(Trace, #state{
     prepf(lists:flatten(Unprepared)).
 
 format_all_till_ok(Hook, Pid, Timestamp, Args, Opts) ->
-    [ftimestamp(Timestamp), r(" "), fpid(Pid), r(" "), format_all_till_ok_(Hook, Args, Opts)].
+    Time = short_time(Timestamp),
+    PidStr = lists:flatten(io_lib:format("[~p]", [Pid])),
+    HookStr = atom_to_list(Hook),
+    Details = render_to_str(format_all_till_ok_(Hook, Args, Opts)),
+    [table_row(Time, PidStr, "[HOOK] CALL", HookStr, Details)].
 
 format_all_till_ok_(
-    auth_on_register = Hook,
+    auth_on_register,
     [Peer, SubscriberId, User, Password, CleanSession, _],
     _Opts
 ) ->
-    {"Calling ~p(~p,~p,~s,~s,~p) ~n", [Hook, Peer, SubscriberId, User, Password, CleanSession]};
+    {"peer=~p subscriber_id=~p username=~s password=~s clean_session=~p", [
+        Peer, SubscriberId, User, Password, CleanSession
+    ]};
 format_all_till_ok_(
-    auth_on_publish = Hook,
+    auth_on_publish,
     [User, SubscriberId, QoS, Topic, Payload, IsRetain, _],
     _Opts
 ) ->
-    {
-        "Calling ~p(~s,~p,~p,~s,~p) with payload:~n"
-        "    ~s~n",
-        [Hook, User, SubscriberId, QoS, jtopic(Topic), IsRetain, Payload]
-    };
-format_all_till_ok_(auth_on_subscribe = Hook, [User, SubscriberId, Topics, _], _Opts) ->
-    [{"Calling ~p(~s,~p) with topics:~n", [Hook, User, SubscriberId]}, ftopics(Topics)];
+    {"username=~s subscriber_id=~p qos=~p topic=\"~s\" retain=~p | payload: ~s", [
+        User, SubscriberId, QoS, jtopic(Topic), IsRetain, Payload
+    ]};
+format_all_till_ok_(auth_on_subscribe, [User, SubscriberId, Topics, _], _Opts) ->
+    [
+        {"username=~s subscriber_id=~p", [User, SubscriberId]},
+        ftopics(Topics)
+    ];
 format_all_till_ok_(
-    auth_on_register_m5 = Hook,
+    auth_on_register_m5,
     [Peer, SubscriberId, User, Password, CleanStart, Props],
     Opts
 ) ->
     [
-        {"Calling ~p(~p,~p,~s,~s,~p) ~n", [Hook, Peer, SubscriberId, User, Password, CleanStart]},
+        {"peer=~p subscriber_id=~p username=~s password=~s clean_start=~p", [
+            Peer, SubscriberId, User, Password, CleanStart
+        ]},
         format_props(Props, Opts)
     ];
 format_all_till_ok_(
-    auth_on_publish_m5 = Hook,
+    auth_on_publish_m5,
     [User, SubscriberId, QoS, Topic, Payload, IsRetain, Props],
     Opts
 ) ->
     [
-        {
-            "Calling ~p(~s,~p,~p,~s,~p) with payload:~n"
-            "    ~s~n",
-            [Hook, User, SubscriberId, QoS, jtopic(Topic), IsRetain, Payload]
-        },
+        {"username=~s subscriber_id=~p qos=~p topic=\"~s\" retain=~p | payload: ~s", [
+            User, SubscriberId, QoS, jtopic(Topic), IsRetain, Payload
+        ]},
         format_props(Props, Opts)
     ];
-format_all_till_ok_(auth_on_subscribe_m5 = Hook, [User, SubscriberId, Topics, Props], Opts) ->
+format_all_till_ok_(auth_on_subscribe_m5, [User, SubscriberId, Topics, Props], Opts) ->
     [
-        {"Calling ~p(~s,~p) with topics:~n", [Hook, User, SubscriberId]},
+        {"username=~s subscriber_id=~p", [User, SubscriberId]},
         ftopics(Topics),
         format_props(Props, Opts)
-    ].
+    ];
+format_all_till_ok_(_Hook, Args, _Opts) ->
+    {io_lib:format("args=~p", [Args]), []}.
 
 format_all_till_ok_ret(Ret, Pid, Timestamp, Opts) ->
-    [ftimestamp(Timestamp), r(" "), fpid(Pid), r(" "), format_all_till_ok_ret_(Ret, Opts)].
+    Time = short_time(Timestamp),
+    PidStr = lists:flatten(io_lib:format("[~p]", [Pid])),
+    Limit = maps:get(payload_limit, Opts, 200),
+    {TypeStr, DetailsParts} =
+        case Ret of
+            ok ->
+                {"ok", []};
+            {ok, []} ->
+                {"ok", []};
+            {ok, Payload} when is_binary(Payload) ->
+                {"ok", {" | modified payload: ~s", [trunc_payload(Payload, Limit)]}};
+            {ok, Modifiers} ->
+                {"ok", fmodifiers(Modifiers)};
+            Other ->
+                {"error", {io_lib:format("~p", [Other]), []}}
+        end,
+    Details = render_to_str(DetailsParts),
+    [table_row(Time, PidStr, "[HOOK] RETURN", TypeStr, Details)].
 
-format_all_till_ok_ret_(ok, _Opts) ->
-    {"Hook returned \"ok\"~n", []};
-format_all_till_ok_ret_({ok, []}, _Opts) ->
-    {"Hook returned \"ok\"~n", []};
-format_all_till_ok_ret_({ok, Payload}, #{payload_limit := Limit}) when is_binary(Payload) ->
-    {
-        "Hook returned \"ok\" with modified payload:~n"
-        "    ~s~n",
-        [trunc_payload(Payload, Limit)]
-    };
-format_all_till_ok_ret_({ok, Modifiers}, _Opts) ->
-    [
-        {"Hook returned \"ok\" with modifiers:~n", []},
-        fmodifiers(Modifiers)
-    ];
-format_all_till_ok_ret_(Other, _Opts) ->
-    {"Hook returned ~p~n", [Other]}.
-
-format_frame(Direction, Pid, Timestamp, SId, M, Opts) ->
-    [
-        ftimestamp(Timestamp),
-        r(" "),
-        fpid(Pid),
-        r(" "),
-        dir(Direction),
-        r(" "),
-        sid(SId),
-        r(" "),
-        format_frame_(M, Opts)
-    ].
+format_frame(Direction, Pid, Timestamp, _SId, M, Opts) ->
+    Time = short_time(Timestamp),
+    PidStr = lists:flatten(io_lib:format("[~p]", [Pid])),
+    DirStr = dir_str(Direction),
+    TypeStr = frame_type(M),
+    Details = render_to_str(format_frame_(M, Opts)),
+    [table_row(Time, PidStr, DirStr, TypeStr, Details)].
 
 format_props(#{} = M, _Opts) when map_size(M) =:= 0 ->
     [];
 format_props(undefined, _Opts) ->
     [];
 format_props(Props, _Opts) ->
-    {"    with properties: ~p~n", [Props]}.
+    {" | properties: ~p", [Props]}.
 
 format_lwt(undefined, _Opts) ->
     [];
@@ -695,18 +704,16 @@ format_lwt(Retain, _QoS, _Topic, _Msg, _Props, _Opts) when
     [];
 format_lwt(Retain, QoS, Topic, Msg, Props, #{payload_limit := Limit} = Opts) ->
     [
-        {
-            "    with LWT(wr: ~p, wq: ~p, wt: ~s) with payload:~n"
-            "    ~s~n",
-            [Retain, QoS, jtopic(Topic), trunc_payload(Msg, Limit)]
-        },
+        {" | lwt retain=~s qos=~p topic=\"~s\" | lwt payload: ~s", [
+            bool(Retain), QoS, jtopic(Topic), trunc_payload(Msg, Limit)
+        ]},
         format_props(Props, Opts)
     ].
 
 format_frame_(#mqtt_pingreq{}, _) ->
-    {"PINGREQ()~n", []};
+    {"PINGREQ", []};
 format_frame_(#mqtt_pingresp{}, _) ->
-    {"PINGRESP()~n", []};
+    {"PINGRESP", []};
 format_frame_(
     #mqtt_connect{
         proto_ver = Ver,
@@ -723,13 +730,14 @@ format_frame_(
     Opts
 ) ->
     [
-        {"CONNECT(c: ~s, v: ~p, u: ~s, p: ~s, cs: ~p, ka: ~p)~n", [
-            ClientId, Ver, Username, Password, CleanSession, KeepAlive
-        ]},
+        {
+            "CONNECT client_id=~s proto_ver=~p username=~s password=~s clean_session=~p keep_alive=~ps",
+            [ClientId, Ver, Username, Password, CleanSession, KeepAlive]
+        },
         format_lwt(WillRetain, WillQoS, WillTopic, WillMsg, undefined, Opts)
     ];
 format_frame_(#mqtt_connack{session_present = SP, return_code = RC}, _) ->
-    {"CONNACK(sp: ~p, rc: ~p)~n", [fflag(SP), RC]};
+    {"CONNACK session_present=~s return_code=~p", [bool(SP), RC]};
 format_frame_(
     #mqtt_publish{
         message_id = MId,
@@ -742,32 +750,31 @@ format_frame_(
     #{payload_limit := Limit}
 ) ->
     {
-        "PUBLISH(d~p, q~p, r~p, m~p, \"~s\") with payload:~n"
-        "    ~s~n",
-        [fflag(Dup), QoS, fflag(Retain), fmid(MId), jtopic(Topic), trunc_payload(Payload, Limit)]
+        "PUBLISH topic=\"~s\" qos=~p msg_id=~p dup=~s retain=~s | payload: ~s",
+        [jtopic(Topic), QoS, fmid(MId), bool(Dup), bool(Retain), trunc_payload(Payload, Limit)]
     };
 format_frame_(#mqtt_puback{message_id = MId}, _) ->
-    {"PUBACK(m~p)~n", [fmid(MId)]};
+    {"PUBACK msg_id=~p", [fmid(MId)]};
 format_frame_(#mqtt_pubrec{message_id = MId}, _) ->
-    {"PUBREC(m~p)~n", [fmid(MId)]};
+    {"PUBREC msg_id=~p", [fmid(MId)]};
 format_frame_(#mqtt_pubrel{message_id = MId}, _) ->
-    {"PUBREL(m~p)~n", [fmid(MId)]};
+    {"PUBREL msg_id=~p", [fmid(MId)]};
 format_frame_(#mqtt_pubcomp{message_id = MId}, _) ->
-    {"PUBCOMP(m~p)~n", [fmid(MId)]};
+    {"PUBCOMP msg_id=~p", [fmid(MId)]};
 format_frame_(#mqtt_subscribe{message_id = MId, topics = Topics}, _) ->
-    [{"SUBSCRIBE(m~p) with topics:~n", [fmid(MId)]}, ftopics(Topics)];
+    [{"SUBSCRIBE msg_id=~p", [fmid(MId)]}, ftopics(Topics)];
 format_frame_(#mqtt_suback{message_id = MId, qos_table = QoSTable}, _) ->
-    {"SUBACK(m~p, qt~p)~n", [fmid(MId), QoSTable]};
+    {"SUBACK msg_id=~p qos_table=~p", [fmid(MId), QoSTable]};
 format_frame_(#mqtt_unsubscribe{message_id = MId}, _) ->
-    {"UNSUBSCRIBE(m~p)~n", [fmid(MId)]};
+    {"UNSUBSCRIBE msg_id=~p", [fmid(MId)]};
 format_frame_(#mqtt_unsuback{message_id = MId}, _) ->
-    {"UNSUBACK(m~p)~n", [fmid(MId)]};
+    {"UNSUBACK msg_id=~p", [fmid(MId)]};
 format_frame_(#mqtt_disconnect{}, _) ->
-    {"DISCONNECT()~n", []};
+    {"DISCONNECT", []};
 format_frame_(#mqtt5_pingreq{}, _) ->
-    {"PINGREQ()~n", []};
+    {"PINGREQ", []};
 format_frame_(#mqtt5_pingresp{}, _) ->
-    {"PINGRESP()~n", []};
+    {"PINGRESP", []};
 format_frame_(
     #mqtt5_connect{
         proto_ver = Ver,
@@ -782,9 +789,10 @@ format_frame_(
     Opts
 ) ->
     [
-        {"CONNECT(c: ~s, v: ~p, u: ~s, p: ~s, cs: ~p, ka: ~p)~n", [
-            ClientId, Ver, Username, Password, CleanStart, KeepAlive
-        ]},
+        {
+            "CONNECT client_id=~s proto_ver=~p username=~s password=~s clean_start=~p keep_alive=~ps",
+            [ClientId, Ver, Username, Password, CleanStart, KeepAlive]
+        },
         format_props(Props, Opts),
         format_lwt(LWT, Opts)
     ];
@@ -796,7 +804,10 @@ format_frame_(
     },
     Opts
 ) ->
-    [{"CONNACK(sp: ~p, rc: ~p(~p))~n", [fflag(SP), rc2rcn(RC), RC]}, format_props(Props, Opts)];
+    [
+        {"CONNACK session_present=~s reason=~p (~p)", [bool(SP), rc2rcn(RC), RC]},
+        format_props(Props, Opts)
+    ];
 format_frame_(
     #mqtt5_publish{
         message_id = MId,
@@ -811,14 +822,13 @@ format_frame_(
 ) ->
     [
         {
-            "PUBLISH(d~p, q~p, r~p, m~p, \"~s\") with payload:~n"
-            "    ~s~n",
+            "PUBLISH topic=\"~s\" qos=~p msg_id=~p dup=~s retain=~s | payload: ~s",
             [
-                fflag(Dup),
-                QoS,
-                fflag(Retain),
-                fmid(MId),
                 jtopic(Topic),
+                QoS,
+                fmid(MId),
+                bool(Dup),
+                bool(Retain),
                 trunc_payload(Payload, Limit)
             ]
         },
@@ -826,58 +836,58 @@ format_frame_(
     ];
 format_frame_(#mqtt5_puback{message_id = MId, reason_code = RC, properties = Props}, Opts) ->
     [
-        {"PUBACK(m~p, rc: ~p(~p))~n", [fmid(MId), rc2rcn(RC), RC]},
+        {"PUBACK msg_id=~p reason=~p (~p)", [fmid(MId), rc2rcn(RC), RC]},
         format_props(Props, Opts)
     ];
 format_frame_(#mqtt5_pubrec{message_id = MId, reason_code = RC, properties = Props}, Opts) ->
     [
-        {"PUBREC(m~p), rc: ~p(~p))~n", [fmid(MId), rc2rcn(RC), RC]},
+        {"PUBREC msg_id=~p reason=~p (~p)", [fmid(MId), rc2rcn(RC), RC]},
         format_props(Props, Opts)
     ];
 format_frame_(#mqtt5_pubrel{message_id = MId, reason_code = RC, properties = Props}, Opts) ->
     [
-        {"PUBREL(m~p), rc: ~p(~p))~n", [fmid(MId), rc2rcn(RC), RC]},
+        {"PUBREL msg_id=~p reason=~p (~p)", [fmid(MId), rc2rcn(RC), RC]},
         format_props(Props, Opts)
     ];
 format_frame_(#mqtt5_pubcomp{message_id = MId, reason_code = RC, properties = Props}, Opts) ->
     [
-        {"PUBCOMP(m~p), rc: ~p(~p))~n", [fmid(MId), rc2rcn(RC), RC]},
+        {"PUBCOMP msg_id=~p reason=~p (~p)", [fmid(MId), rc2rcn(RC), RC]},
         format_props(Props, Opts)
     ];
 format_frame_(#mqtt5_subscribe{message_id = MId, topics = Topics, properties = Props}, Opts) ->
     [
-        {"SUBSCRIBE(m~p) with topics:~n", [fmid(MId)]},
+        {"SUBSCRIBE msg_id=~p", [fmid(MId)]},
         ftopics(Topics),
         format_props(Props, Opts)
     ];
 format_frame_(#mqtt5_suback{message_id = MId, reason_codes = RCs, properties = Props}, Opts) ->
     [
-        {"SUBACK(m~p, reason_codes:~p)~n", [fmid(MId), RCs]},
+        {"SUBACK msg_id=~p reason_codes=~p", [fmid(MId), RCs]},
         format_props(Props, Opts)
     ];
 format_frame_(#mqtt5_unsubscribe{message_id = MId, topics = Topics, properties = Props}, Opts) ->
     [
-        {"UNSUBSCRIBE(m~p) with topics:~n", [fmid(MId)]},
+        {"UNSUBSCRIBE msg_id=~p", [fmid(MId)]},
         ftopics(Topics),
         format_props(Props, Opts)
     ];
 format_frame_(#mqtt5_unsuback{message_id = MId, reason_codes = RCs, properties = Props}, Opts) ->
     [
-        {"UNSUBACK(m~p, reason_codes:~p)~n", [fmid(MId), RCs]},
+        {"UNSUBACK msg_id=~p reason_codes=~p", [fmid(MId), RCs]},
         format_props(Props, Opts)
     ];
 format_frame_(#mqtt5_disconnect{reason_code = RC, properties = Props}, Opts) ->
     [
-        {"DISCONNECT(rc:~p(~p))~n", [disconnectrc2rcn(RC), RC]},
+        {"DISCONNECT reason=~p (~p)", [disconnectrc2rcn(RC), RC]},
         format_props(Props, Opts)
     ];
 format_frame_(#mqtt5_auth{reason_code = RC, properties = Props}, Opts) ->
     [
-        {"AUTH(rc:~p(~p))~n", [rc2rcn(RC), RC]},
+        {"AUTH reason=~p (~p)", [rc2rcn(RC), RC]},
         format_props(Props, Opts)
     ];
 format_frame_(Unknown, _) ->
-    {io_lib:format("UNKNOWN: ~p~n", [Unknown]), []}.
+    {io_lib:format("UNKNOWN: ~p", [Unknown]), []}.
 
 trunc_payload(Payload, Limit) when byte_size(Payload) =< Limit ->
     Payload;
@@ -902,16 +912,13 @@ prepf(L) ->
         ),
     {lists:concat(lists:reverse(F)), lists:concat(lists:reverse(D))}.
 
-r(S) ->
-    {S, []}.
-
 fmid(undefined) -> 0;
 fmid(Mid) -> Mid.
 
-fflag(1) -> 1;
-fflag(0) -> 0;
-fflag(true) -> 1;
-fflag(false) -> 0.
+bool(1) -> "true";
+bool(0) -> "false";
+bool(true) -> "true";
+bool(false) -> "false".
 
 jtopic(T) when is_list(T) ->
     erlang:iolist_to_binary(vmq_topic:unword(T)).
@@ -920,17 +927,15 @@ ftopics(Topics) ->
     lists:foldl(
         fun
             ({Topic, QoS}, Acc) when is_integer(QoS), is_list(Topic) ->
-                [{"    q:~p, t: \"~s\"~n", [QoS, jtopic(Topic)]} | Acc];
+                [{" | qos=~p topic=\"~s\"", [QoS, jtopic(Topic)]} | Acc];
             ({Topic, {QoS, SubOpts}}, Acc) ->
                 NL = maps:get(no_local, SubOpts, undefined),
                 RAP = maps:get(rap, SubOpts, undefined),
                 RH = maps:get(retain_handling, SubOpts, undefined),
                 [
-                    {
-                        "    q:~p, no_local:~p, rap:~p, rh:~p~n"
-                        "    t: \"~s\"~n",
-                        [QoS, NL, RAP, RH, jtopic(Topic)]
-                    }
+                    {" | qos=~p no_local=~p rap=~p retain_handling=~p topic=\"~s\"", [
+                        QoS, NL, RAP, RH, jtopic(Topic)
+                    ]}
                     | Acc
                 ];
             (
@@ -943,11 +948,9 @@ ftopics(Topics) ->
                 Acc
             ) ->
                 [
-                    {
-                        "    q:~p, non_persistence:~p, non_retry:~p~n"
-                        "    t: \"~s\"~n",
-                        [QoS, NP, NR, jtopic(Topic)]
-                    }
+                    {" | qos=~p non_persistence=~p non_retry=~p topic=\"~s\"", [
+                        QoS, NP, NR, jtopic(Topic)
+                    ]}
                     | Acc
                 ];
             (
@@ -961,11 +964,9 @@ ftopics(Topics) ->
                 Acc
             ) ->
                 [
-                    {
-                        "    q:~p, no_local:~p, rap:~p, rh:~p~n"
-                        "    t: \"~s\"~n",
-                        [QoS, NL, RAP, RH, jtopic(Topic)]
-                    }
+                    {" | qos=~p no_local=~p rap=~p retain_handling=~p topic=\"~s\"", [
+                        QoS, NL, RAP, RH, jtopic(Topic)
+                    ]}
                     | Acc
                 ]
         end,
@@ -977,30 +978,32 @@ fmodifiers(Modifiers) ->
     lists:foldl(
         fun
             ({retry_interval, Val}, Acc) ->
-                [{"    retry_interval: ~pms~n", [Val]} | Acc];
+                [{" | retry_interval=~pms", [Val]} | Acc];
             ({upgrade_qos, Val}, Acc) ->
-                [{"    upgrade_qos: ~p~n", [Val]} | Acc];
+                [{" | upgrade_qos=~p", [Val]} | Acc];
             ({max_message_rate, Val}, Acc) ->
-                [{"    max_message_rate: ~p msgs/s~n", [Val]} | Acc];
+                [{" | max_message_rate=~p msgs/s", [Val]} | Acc];
             ({max_message_size, Val}, Acc) ->
-                [{"    max_message_size: ~p bytes~n", [Val]} | Acc];
+                [{" | max_message_size=~p bytes", [Val]} | Acc];
             ({max_inflight_messages, Val}, Acc) ->
-                [{"    max_inflight_messages: ~p msgs~n", [Val]} | Acc];
+                [{" | max_inflight_messages=~p msgs", [Val]} | Acc];
             ({clean_session, Val}, Acc) ->
-                [{"    clean_session: ~p~n", [Val]} | Acc];
+                [{" | clean_session=~p", [Val]} | Acc];
             (V, Acc) ->
-                [{"    ~p~n", [V]} | Acc]
+                [{" | ~p", [V]} | Acc]
         end,
         [],
         Modifiers
     ).
 
-fpid(Pid) ->
-    {"~p", [Pid]}.
+short_time({MegaSecs, Secs, MicroSecs}) ->
+    short_time(calendar:now_to_datetime({MegaSecs, Secs, MicroSecs}), MicroSecs);
+short_time({{_Y, _Mo, _D}, {H, Mn, S}}) ->
+    short_time({{0, 0, 0}, {H, Mn, S}}, 0).
 
-ftimestamp(Timestamp) ->
-    Iso8601Formatted = iso8601(Timestamp),
-    {"~s", [Iso8601Formatted]}.
+short_time({{_Y, _Mo, _D}, {H, Mn, S}}, MicroSecs) ->
+    Millis = MicroSecs div 1000,
+    lists:flatten(io_lib:format("~2.10.0B:~2.10.0B:~2.10.0B.~3.10.0B", [H, Mn, S, Millis])).
 
 %% @doc Convert a `os:timestamp()' or a calendar-style `{date(), time()}'
 %% tuple to an ISO 8601 formatted binary. Note that this function always
@@ -1020,16 +1023,100 @@ iso8601({{Y, Mo, D}, {H, Mn, S}}) ->
     IsoStr = io_lib:format(FmtStr, [Y, Mo, D, H, Mn, S]),
     list_to_binary(IsoStr).
 
-sid({"", CId}) ->
-    {"CID: \"~s\"", [CId]};
-sid({MP, CId}) ->
-    {"MP: \"~s\" CID: \"~s\"", [MP, CId]}.
+pad(S, W) when is_binary(S) -> pad(binary_to_list(S), W);
+pad(S, W) when is_list(S) ->
+    Flat = lists:flatten(S),
+    Len = length(Flat),
+    if
+        Len >= W -> Flat;
+        true -> Flat ++ lists:duplicate(W - Len, $\s)
+    end.
 
-dir(from) -> {"MQTT SEND:", []};
-dir(to) -> {"MQTT RECV:", []}.
+table_row(Time, Pid, Dir, Type, Details) ->
+    Row = lists:flatten([
+        pad(Time, ?COL_W_TIME),
+        " | ",
+        pad(Pid, ?COL_W_PID),
+        " | ",
+        pad(Dir, ?COL_W_DIR),
+        " | ",
+        pad(Type, ?COL_W_TYPE),
+        " | ",
+        Details
+    ]),
+    {"~s~n", [Row]}.
+
+table_header() ->
+    lists:flatten([
+        pad("TIME", ?COL_W_TIME),
+        " | ",
+        pad("PID", ?COL_W_PID),
+        " | ",
+        pad("DIRECTION", ?COL_W_DIR),
+        " | ",
+        pad("TYPE", ?COL_W_TYPE),
+        " | ",
+        "DETAILS"
+    ]).
+
+table_separator() ->
+    Sep = fun(W) -> lists:duplicate(W, $-) end,
+    lists:flatten([
+        Sep(?COL_W_TIME),
+        "-+-",
+        Sep(?COL_W_PID),
+        "-+-",
+        Sep(?COL_W_DIR),
+        "-+-",
+        Sep(?COL_W_TYPE),
+        "-+-",
+        Sep(20)
+    ]).
+
+render_to_str({F, D}) ->
+    lists:flatten(io_lib:format(F, D));
+render_to_str([]) ->
+    "";
+render_to_str(Parts) ->
+    {F, D} = prepf(lists:flatten(Parts)),
+    lists:flatten(io_lib:format(F, D)).
+
+frame_type(#mqtt_connect{}) -> "CONNECT";
+frame_type(#mqtt_connack{}) -> "CONNACK";
+frame_type(#mqtt_publish{}) -> "PUBLISH";
+frame_type(#mqtt_puback{}) -> "PUBACK";
+frame_type(#mqtt_pubrec{}) -> "PUBREC";
+frame_type(#mqtt_pubrel{}) -> "PUBREL";
+frame_type(#mqtt_pubcomp{}) -> "PUBCOMP";
+frame_type(#mqtt_subscribe{}) -> "SUBSCRIBE";
+frame_type(#mqtt_suback{}) -> "SUBACK";
+frame_type(#mqtt_unsubscribe{}) -> "UNSUBSCRIBE";
+frame_type(#mqtt_unsuback{}) -> "UNSUBACK";
+frame_type(#mqtt_pingreq{}) -> "PINGREQ";
+frame_type(#mqtt_pingresp{}) -> "PINGRESP";
+frame_type(#mqtt_disconnect{}) -> "DISCONNECT";
+frame_type(#mqtt5_connect{}) -> "CONNECT";
+frame_type(#mqtt5_connack{}) -> "CONNACK";
+frame_type(#mqtt5_publish{}) -> "PUBLISH";
+frame_type(#mqtt5_puback{}) -> "PUBACK";
+frame_type(#mqtt5_pubrec{}) -> "PUBREC";
+frame_type(#mqtt5_pubrel{}) -> "PUBREL";
+frame_type(#mqtt5_pubcomp{}) -> "PUBCOMP";
+frame_type(#mqtt5_subscribe{}) -> "SUBSCRIBE";
+frame_type(#mqtt5_suback{}) -> "SUBACK";
+frame_type(#mqtt5_unsubscribe{}) -> "UNSUBSCRIBE";
+frame_type(#mqtt5_unsuback{}) -> "UNSUBACK";
+frame_type(#mqtt5_pingreq{}) -> "PINGREQ";
+frame_type(#mqtt5_pingresp{}) -> "PINGRESP";
+frame_type(#mqtt5_disconnect{}) -> "DISCONNECT";
+frame_type(#mqtt5_auth{}) -> "AUTH";
+frame_type(_) -> "UNKNOWN".
+
+dir_str(from) -> "BROKER -> CLIENT";
+dir_str(to) -> "CLIENT -> BROKER".
 
 format_unknown_trace(V) ->
-    [{"~s Unknown trace! ~p~n", [iso8601(), V]}].
+    [{"~s Unknown trace! ~p~n", [short_time(os:timestamp()), V]}].
 
 sim_client() ->
     Connect = packetv5:gen_connect("simclient", [{keepalive, 60}]),
