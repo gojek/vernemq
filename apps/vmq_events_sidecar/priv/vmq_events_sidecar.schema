@@ -3,6 +3,9 @@
 
 %% @doc To register events sidecar webhooks, a list of hook names needs to be configured.
 %% Valid hook names: [on_register, on_register_failed, on_publish, on_subscribe, on_unsubscribe, on_deliver, on_offline_message, on_client_wakeup, on_client_offline, on_client_gone, on_delivery_complete, on_session_expired, on_message_drop]
+%% MQTT 5 sessions call the _m5 hooks instead of on_register, on_publish, on_subscribe,
+%% on_unsubscribe, on_deliver and on_delivery_complete, so enable both to cover both
+%% protocol versions: [on_register_m5, on_publish_m5, on_subscribe_m5, on_unsubscribe_m5, on_deliver_m5, on_delivery_complete_m5]
 {mapping, "vmq_events_sidecar.hooks", "vmq_events_sidecar.hooks",
  [
   {validators, ["hook_names"]},
@@ -23,7 +26,13 @@
                   on_client_gone,
                   on_delivery_complete,
                   on_session_expired,
-                  on_message_drop],
+                  on_message_drop,
+                  on_register_m5,
+                  on_publish_m5,
+                  on_subscribe_m5,
+                  on_unsubscribe_m5,
+                  on_deliver_m5,
+                  on_delivery_complete_m5],
     HooksList = vmq_schema_util:parse_list(Hooks),
     lists:all(fun(Hook) -> lists:member(Hook, ValidHooks) end, HooksList)
  end}.

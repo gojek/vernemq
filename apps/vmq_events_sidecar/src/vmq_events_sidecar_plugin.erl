@@ -21,6 +21,13 @@
 -behaviour(on_message_drop_hook).
 -behaviour(on_register_failed_hook).
 
+-behaviour(on_register_m5_hook).
+-behaviour(on_publish_m5_hook).
+-behaviour(on_subscribe_m5_hook).
+-behaviour(on_unsubscribe_m5_hook).
+-behaviour(on_deliver_m5_hook).
+-behaviour(on_delivery_complete_m5_hook).
+
 -export([
     on_register/5,
     on_publish/8,
@@ -34,7 +41,14 @@
     on_session_expired/2,
     on_delivery_complete/9,
     on_message_drop/4,
-    on_register_failed/5
+    on_register_failed/5,
+
+    on_register_m5/5,
+    on_publish_m5/9,
+    on_subscribe_m5/5,
+    on_unsubscribe_m5/5,
+    on_deliver_m5/10,
+    on_delivery_complete_m5/10
 ]).
 
 %% API
@@ -430,8 +444,153 @@ on_message_drop(SubscriberId, Fun, Reason, SessionId) ->
     end.
 
 %%%===================================================================
+%%% MQTT 5 hooks
+%%%
+%%% MQTT 5 sessions call these instead of the hooks above. Each one
+%%% normalises its arguments into the event its v4 counterpart produces,
+%%% so both protocol versions yield the same event on the wire. The
+%%% MQTT 5 properties are dropped, except for on_register_m5, whose
+%%% event already carries them.
+%%%===================================================================
+
+-spec on_register_m5(peer(), subscriber_id(), username(), properties(), session_id()) -> 'next'.
+on_register_m5(Peer, SubscriberId, UserName, Props, SessionId) ->
+    {PPeer, Port} = peer(Peer),
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    send_event(on_register_m5, {MP, ClientId, PPeer, Port, normalise(UserName), Props, SessionId}).
+
+-spec on_publish_m5(
+    username(),
+    subscriber_id(),
+    qos(),
+    topic(),
+    payload(),
+    flag(),
+    properties(),
+    session_id(),
+    matched_acl()
+) -> 'next'.
+on_publish_m5(
+    UserName,
+    SubscriberId,
+    QoS,
+    Topic,
+    Payload,
+    IsRetain,
+    _Props,
+    SessionId,
+    #matched_acl{name = ACL} = MatchedAcl
+) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    send_event(
+        on_publish_m5,
+        {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl,
+            SessionId},
+        ACL
+    ).
+
+-spec on_subscribe_m5(username(), subscriber_id(), [topic()], properties(), session_id()) ->
+    'next'.
+on_subscribe_m5(UserName, SubscriberId, Topics, _Props, SessionId) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    send_event(
+        on_subscribe_m5,
+        {MP, ClientId, normalise(UserName),
+            [
+                [unword(T), from_internal_qos(qos_from_subinfo(SubInfo)), MatchedAcl]
+             || {T, SubInfo, MatchedAcl} <- Topics
+            ],
+            SessionId}
+    ).
+
+-spec on_unsubscribe_m5(username(), subscriber_id(), [topic()], properties(), session_id()) ->
+    'next'.
+on_unsubscribe_m5(UserName, SubscriberId, Topics, _Props, SessionId) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    send_event(
+        on_unsubscribe_m5,
+        {MP, ClientId, normalise(UserName), [unword(T) || T <- Topics], SessionId}
+    ),
+    %% called as an all_till_ok hook: returning ok would stop the other
+    %% plugins in the chain from running
+    next.
+
+-spec on_deliver_m5(
+    username(),
+    subscriber_id(),
+    qos(),
+    topic(),
+    payload(),
+    flag(),
+    properties(),
+    session_id(),
+    matched_acl(),
+    flag()
+) -> 'next'.
+on_deliver_m5(
+    UserName,
+    SubscriberId,
+    QoS,
+    Topic,
+    Payload,
+    IsRetain,
+    _Props,
+    SessionId,
+    #matched_acl{name = ACL} = MatchedAcl,
+    Persisted
+) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    send_event(
+        on_deliver_m5,
+        {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl,
+            Persisted, SessionId},
+        ACL
+    ),
+    %% called as an all_till_ok hook, see on_unsubscribe_m5
+    next.
+
+-spec on_delivery_complete_m5(
+    username(),
+    subscriber_id(),
+    qos(),
+    topic(),
+    payload(),
+    flag(),
+    matched_acl(),
+    flag(),
+    session_id(),
+    properties()
+) -> 'next'.
+on_delivery_complete_m5(
+    UserName,
+    SubscriberId,
+    QoS,
+    Topic,
+    Payload,
+    IsRetain,
+    #matched_acl{name = ACL} = MatchedAcl,
+    Persisted,
+    SessionId,
+    _Props
+) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    send_event(
+        on_delivery_complete_m5,
+        {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl,
+            Persisted, SessionId},
+        ACL
+    ).
+
+%%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+%% An MQTT 5 subscription carries its options alongside the QoS, but a
+%% subscription rewritten by an auth_on_subscribe_m5 modifier can arrive
+%% as a bare QoS, and a denied one as not_allowed.
+-spec qos_from_subinfo({qos(), map()} | qos() | 'not_allowed') -> qos() | 'not_allowed'.
+qos_from_subinfo({QoS, SubOpts}) when is_map(SubOpts) -> QoS;
+qos_from_subinfo(QoS) -> QoS.
 
 -spec enable_hook(hook_name()) -> 'ok' | {'error', 'no_matching_callback_found'}.
 enable_hook(HookName) ->
@@ -544,19 +703,29 @@ grpc_send(HookName, EventPayload) ->
 sample(_Hook, undefined) ->
     true;
 sample(Hook, Criterion) ->
-    case Hook of
-        on_publish ->
-            check(Hook, Criterion);
-        on_deliver ->
-            check(Hook, Criterion);
-        on_delivery_complete ->
-            check(Hook, Criterion);
-        _ ->
-            true
+    case sampling_base(Hook) of
+        undefined ->
+            true;
+        BaseHook ->
+            check(Hook, BaseHook, Criterion)
     end.
 
-check(Hook, Criterion) ->
-    case ets:lookup(?SAMPLER_TBL, {Hook, Criterion}) of
+%% The MQTT 5 hooks are sampled by their v4 counterpart's configuration,
+%% so one setting covers both protocol versions.
+-spec sampling_base(hook_name()) -> hook_name() | undefined.
+sampling_base(on_publish) -> on_publish;
+sampling_base(on_publish_m5) -> on_publish;
+sampling_base(on_deliver) -> on_deliver;
+sampling_base(on_deliver_m5) -> on_deliver;
+sampling_base(on_delivery_complete) -> on_delivery_complete;
+sampling_base(on_delivery_complete_m5) -> on_delivery_complete;
+sampling_base(_) -> undefined.
+
+%% BaseHook keys the sampling configuration, so an MQTT 5 hook shares its
+%% v4 counterpart's setting, while Hook labels the metrics, so the two
+%% protocol versions stay distinguishable.
+check(Hook, BaseHook, Criterion) ->
+    case ets:lookup(?SAMPLER_TBL, {BaseHook, Criterion}) of
         [] ->
             true;
         [{_, P}] ->
