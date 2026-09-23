@@ -51,6 +51,15 @@
 -define(ON_SESSION_EXPIRED, on_session_expired).
 -define(ON_MESSAGE_DROP, on_message_drop).
 
+%% MQTT 5 sessions call the _m5 variants of the session hooks. They are
+%% counted separately so v5 traffic can be told apart from v4.
+-define(ON_REGISTER_M5, on_register_m5).
+-define(ON_PUBLISH_M5, on_publish_m5).
+-define(ON_SUBSCRIBE_M5, on_subscribe_m5).
+-define(ON_UNSUBSCRIBE_M5, on_unsubscribe_m5).
+-define(ON_DELIVER_M5, on_deliver_m5).
+-define(ON_DELIVERY_COMPLETE_M5, on_delivery_complete_m5).
+
 -record(state, {}).
 -record(metric_def, {
     type :: atom(),
@@ -353,7 +362,13 @@ metrics_defs() ->
         ?ON_CLIENT_OFFLINE,
         ?ON_CLIENT_GONE,
         ?ON_SESSION_EXPIRED,
-        ?ON_MESSAGE_DROP
+        ?ON_MESSAGE_DROP,
+        ?ON_REGISTER_M5,
+        ?ON_PUBLISH_M5,
+        ?ON_SUBSCRIBE_M5,
+        ?ON_UNSUBSCRIBE_M5,
+        ?ON_DELIVER_M5,
+        ?ON_DELIVERY_COMPLETE_M5
     ],
     [
         m(
@@ -445,4 +460,16 @@ met2idx({?SIDECAR_EVENTS_ERROR, ?ON_MESSAGE_DROP}) -> 26;
 met2idx(?GRPC_WORKER_CRASHED) -> 27;
 met2idx(?GRPC_EVENTS_LOST) -> 28;
 met2idx(?GRPC_CONNECTS) -> 29;
-met2idx(?GRPC_CONNECTIONS_RECYCLED) -> 30.
+met2idx(?GRPC_CONNECTIONS_RECYCLED) -> 30;
+met2idx({?SIDECAR_EVENTS, ?ON_REGISTER_M5}) -> 31;
+met2idx({?SIDECAR_EVENTS, ?ON_PUBLISH_M5}) -> 32;
+met2idx({?SIDECAR_EVENTS, ?ON_SUBSCRIBE_M5}) -> 33;
+met2idx({?SIDECAR_EVENTS, ?ON_UNSUBSCRIBE_M5}) -> 34;
+met2idx({?SIDECAR_EVENTS, ?ON_DELIVER_M5}) -> 35;
+met2idx({?SIDECAR_EVENTS, ?ON_DELIVERY_COMPLETE_M5}) -> 36;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_REGISTER_M5}) -> 37;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_PUBLISH_M5}) -> 38;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_SUBSCRIBE_M5}) -> 39;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_UNSUBSCRIBE_M5}) -> 40;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_DELIVER_M5}) -> 41;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_DELIVERY_COMPLETE_M5}) -> 42.
