@@ -403,12 +403,14 @@ pre_connect_auth(
                 "can't continue enhanced auth with client ~p due to ~p",
                 [State#state.subscriber_id, RCN]
             ),
+            _ = on_register_failed(UserName, RCN, clean_start(ConnectFrame), State),
             terminate(RCN, Props0, State);
         {error, Reason} = E ->
             lager:warning(
                 "can't continue enhanced auth with client ~p due to ~p",
                 [State#state.subscriber_id, Reason]
             ),
+            _ = on_register_failed(UserName, Reason, clean_start(ConnectFrame), State),
             terminate(E, State)
     end;
 pre_connect_auth(
@@ -909,6 +911,50 @@ connack_terminate(RCN, Properties, _State) ->
         })
     ]}.
 
+%% The reason is an MQTT 5 reason code name, an internal reason from an
+%% authentication hook, or whatever term the registration failed with.
+-spec on_register_failed(
+    username() | {preauth, string() | undefined}, any(), state()
+) -> ok.
+on_register_failed(User, Reason, #state{clean_start = CleanStart} = State) ->
+    on_register_failed(User, Reason, CleanStart, State).
+
+-spec on_register_failed(
+    username() | {preauth, string() | undefined},
+    any(),
+    flag(),
+    state()
+) -> ok.
+on_register_failed(
+    User,
+    Reason,
+    CleanStart,
+    #state{
+        peer = Peer,
+        subscriber_id = SubscriberId
+    }
+) ->
+    _ = vmq_plugin:all(on_register_failed, [
+        Peer,
+        SubscriberId,
+        normalise_username(User),
+        CleanStart,
+        Reason
+    ]),
+    ok.
+
+normalise_username({preauth, UserName}) -> UserName;
+normalise_username(UserName) -> UserName.
+
+clean_start(#mqtt5_connect{clean_start = CleanStart}) -> unflag(CleanStart).
+
+%% Authorizing the last will can fail with a plain reason, with an
+%% MQTT 5 reason code name and its properties, or with a numeric
+%% reason code. Report the reason itself in all three cases.
+will_failure_reason({RCN, Props}) when is_atom(RCN), is_map(Props) -> RCN;
+will_failure_reason(RC) when is_integer(RC) -> rc2rcn(RC);
+will_failure_reason(Reason) -> Reason.
+
 queue_down_terminate(shutdown, State) ->
     terminate(?NORMAL_DISCONNECT, State);
 queue_down_terminate(Reason, #state{queue_pid = QPid} = State) ->
@@ -1044,6 +1090,7 @@ check_enhanced_auth(
                 "can't continue enhanced auth with client ~p due to ~p",
                 [State#state.subscriber_id, RCN]
             ),
+            _ = on_register_failed(UserName, RCN, clean_start(Frame0), State),
             connack_terminate(RCN, Props0, State);
         {error, ?NO_MATCHING_HOOK_FOUND} ->
             lager:warning(
@@ -1051,12 +1098,16 @@ check_enhanced_auth(
                 "no on_auth_m5 hook for authentication method ~p",
                 [State#state.subscriber_id, peertoa(State#state.peer), AuthMethod]
             ),
+            _ = on_register_failed(
+                UserName, ?NO_MATCHING_HOOK_FOUND, clean_start(Frame0), State
+            ),
             connack_terminate(?BAD_AUTHENTICATION_METHOD, State);
         {error, Reason} ->
             lager:warning(
                 "can't continue enhanced auth with client ~p due to ~p",
                 [State#state.subscriber_id, Reason]
             ),
+            _ = on_register_failed(UserName, Reason, clean_start(Frame0), State),
             %% Without a specific reason code we don't send a connack
             %% message. This leaves this decision if a connack should
             %% be sent to the plugin developer
@@ -1128,6 +1179,7 @@ check_user(
                         "can't authenticate client ~p from ~s due to no_matching_hook_found",
                         [State#state.subscriber_id, peertoa(State#state.peer)]
                     ),
+                    _ = on_register_failed(User, ?NO_MATCHING_HOOK_FOUND, State),
                     connack_terminate(?BAD_USERNAME_OR_PASSWORD, State);
                 {error, Vals} when is_map(Vals) ->
                     RCN = maps:get(reason_code, Vals, ?BAD_USERNAME_OR_PASSWORD),
@@ -1142,6 +1194,7 @@ check_user(
                         "can't authenticate client ~p from ~s due to ~p",
                         [State#state.subscriber_id, peertoa(State#state.peer), RCN]
                     ),
+                    _ = on_register_failed(User, RCN, State),
                     connack_terminate(RCN, Props0, State);
                 {error, Error} ->
                     %% can't authenticate due to other reason
@@ -1149,6 +1202,7 @@ check_user(
                         "can't authenticate client ~p from ~s due to ~p",
                         [State#state.subscriber_id, peertoa(State#state.peer), Error]
                     ),
+                    _ = on_register_failed(User, Error, State),
                     connack_terminate(?BAD_USERNAME_OR_PASSWORD, State)
             end;
         true ->
@@ -1209,6 +1263,7 @@ register_subscriber(
                 "can't register client ~p with username ~p due to ~p",
                 [SubscriberId, User, Reason]
             ),
+            _ = on_register_failed(User, Reason, State),
             connack_terminate(?SERVER_UNAVAILABLE, State)
     end.
 
@@ -1270,6 +1325,7 @@ check_will(
                 "                          for client ~p due to ~p",
                 [SubscriberId, Reason]
             ),
+            _ = on_register_failed(User, will_failure_reason(Reason), State),
             connack_terminate(?NOT_AUTHORIZED, State)
     end.
 
