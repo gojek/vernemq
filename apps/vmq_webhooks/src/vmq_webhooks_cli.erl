@@ -213,6 +213,7 @@ hook_keyspec() ->
                             "on_subscribe_m5",
                             "on_unsubscribe_m5",
                             "on_deliver_m5",
+                            "on_delivery_complete_m5",
                             "on_auth_m5"
                         ]
                     )

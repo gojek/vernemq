@@ -526,12 +526,38 @@ connected(
         end,
     {NewState2, Out};
 connected(
-    #mqtt5_puback{message_id = MessageId, reason_code = RC}, #state{waiting_acks = WAcks} = State
+    #mqtt5_puback{message_id = MessageId, reason_code = RC},
+    #state{
+        waiting_acks = WAcks,
+        subscriber_id = SubscriberId,
+        username = Username,
+        session_id = SessionId
+    } = State
 ) ->
     %% qos1 flow
     _ = vmq_metrics:incr({?MQTT5_PUBACK_RECEIVED, rc2rcn(RC)}),
     case maps:get(MessageId, WAcks, not_found) of
-        #vmq_msg{} ->
+        #vmq_msg{
+            routing_key = Topic,
+            payload = Payload,
+            retain = IsRetain,
+            qos = QoS,
+            acl_name = Name,
+            persisted = Persisted,
+            properties = Properties
+        } ->
+            _ = vmq_plugin:all(on_delivery_complete_m5, [
+                Username,
+                SubscriberId,
+                QoS,
+                Topic,
+                Payload,
+                IsRetain,
+                #matched_acl{name = Name},
+                Persisted,
+                SessionId,
+                Properties
+            ]),
             Cnt = fc_decr_cnt(State#state.fc_send_cnt, puback),
             handle_waiting_msgs(State#state{
                 fc_send_cnt = Cnt, waiting_acks = maps:remove(MessageId, WAcks)
@@ -541,11 +567,36 @@ connected(
             {State, []}
     end;
 connected(#mqtt5_pubrec{message_id = MessageId, reason_code = RC}, State) when RC < 16#80 ->
-    #state{waiting_acks = WAcks} = State,
+    #state{
+        waiting_acks = WAcks,
+        subscriber_id = SubscriberId,
+        username = Username,
+        session_id = SessionId
+    } = State,
     %% qos2 flow
     _ = vmq_metrics:incr({?MQTT5_PUBREC_RECEIVED, rc2rcn(RC)}),
     case maps:get(MessageId, WAcks, not_found) of
-        #vmq_msg{} ->
+        #vmq_msg{
+            routing_key = Topic,
+            payload = Payload,
+            retain = IsRetain,
+            qos = QoS,
+            acl_name = Name,
+            persisted = Persisted,
+            properties = Properties
+        } ->
+            _ = vmq_plugin:all(on_delivery_complete_m5, [
+                Username,
+                SubscriberId,
+                QoS,
+                Topic,
+                Payload,
+                IsRetain,
+                #matched_acl{name = Name},
+                Persisted,
+                SessionId,
+                Properties
+            ]),
             PubRelFrame = #mqtt5_pubrel{
                 message_id = MessageId, reason_code = ?M5_SUCCESS, properties = #{}
             },
