@@ -932,19 +932,13 @@ drop_dollar_topic_publish(Config) ->
     % receive a timeout instead of a PUBACk
     {error, timeout} = gen_tcp:recv(Socket, 0, 1000).
 
-%% The ACL an MQTT 5 PUBLISH matched has to end up on the message, like
-%% it does on the MQTTv4 path: everything reporting per ACL downstream -
-%% vmq_reg, vmq_queue, the retry metric, delayed pubacks - reads
-%% #vmq_msg.acl_name and never sees the auth_on_publish_m5 modifiers.
-%% Observed here through the on_message_drop hook the v5 FSM fires when
-%% a publish matches no subscriber.
 matched_acl_v5_test(_) ->
     true = register(?MATCHED_ACL_SRV, self()),
     ok = vmq_plugin_mgr:enable_module_plugin(
         auth_on_publish_m5, ?MODULE, hook_auth_on_publish_m5_acl, 8
     ),
     ok = vmq_plugin_mgr:enable_module_plugin(
-        on_message_drop, ?MODULE, hook_on_message_drop_acl, 3
+        on_message_drop, ?MODULE, hook_on_message_drop_acl, 4
     ),
     try
         Connect = packetv5:gen_connect("matched-acl-test", [
@@ -973,7 +967,7 @@ matched_acl_v5_test(_) ->
         ok = gen_tcp:close(Socket)
     after
         catch vmq_plugin_mgr:disable_module_plugin(
-            on_message_drop, ?MODULE, hook_on_message_drop_acl, 3
+            on_message_drop, ?MODULE, hook_on_message_drop_acl, 4
         ),
         catch vmq_plugin_mgr:disable_module_plugin(
             auth_on_publish_m5, ?MODULE, hook_auth_on_publish_m5_acl, 8
@@ -1705,7 +1699,7 @@ hook_auth_on_publish_m5_acl(_, _, QoS, Topic, Payload, IsRetain, Props, _Session
         matched_acl => #matched_acl{name = <<"test_acl">>, pattern = <<"test/topic/#">>}
     }}.
 
-hook_on_message_drop_acl(_SubscriberId, Promise, no_matching_subscribers) ->
+hook_on_message_drop_acl(_SubscriberId, Promise, no_matching_subscribers, _SessionId) ->
     {_Topic, _QoS, _Payload, _Props, MatchedAcl} = Promise(),
     ?MATCHED_ACL_SRV ! {on_message_drop, MatchedAcl},
     ok.
