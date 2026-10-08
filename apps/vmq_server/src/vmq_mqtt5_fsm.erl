@@ -1069,6 +1069,7 @@ check_user(
                     register_subscriber(
                         F,
                         maps:merge(OutProps, OutProps0),
+                        Props,
                         QueueOpts,
                         NewState#state{session_expiry_interval = SessionExpiryInterval}
                     );
@@ -1106,6 +1107,7 @@ check_user(
             register_subscriber(
                 F,
                 OutProps,
+                Props,
                 QueueOpts,
                 State#state{session_expiry_interval = SessionExpiryInterval, username = User}
             )
@@ -1114,6 +1116,7 @@ check_user(
 register_subscriber(
     #mqtt5_connect{} = F,
     OutProps0,
+    ConnectProps,
     QueueOpts,
     #state{
         peer = Peer,
@@ -1143,7 +1146,7 @@ register_subscriber(
                 Peer,
                 SubscriberId,
                 User,
-                OutProps0,
+                ConnectProps,
                 State#state.session_id
             ]),
             OutProps1 = maybe_set_receive_maximum(OutProps0, ReceiveMax),

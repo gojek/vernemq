@@ -247,8 +247,23 @@ auth_on_register_m5(
     _SessionId
 ) ->
     case auth_on_register_jwt(UserName, Password) of
-        {error, Reason} -> {error, #{reason_code => reason_code(Reason)}};
-        Other -> Other
+        ok ->
+            {ok, #{
+                properties => #{
+                    ?P_MAX_QOS => 2,
+                    ?P_RETAIN_AVAILABLE => false,
+                    ?P_WILDCARD_SUBS_AVAILABLE => true,
+                    ?P_SUB_IDS_AVAILABLE => true,
+                    ?P_SHARED_SUBS_AVAILABLE => true
+                }
+            }};
+        {error, Reason} ->
+            {error, #{
+                reason_code => reason_code(Reason),
+                properties => #{?P_REASON_STRING => reason_string(Reason)}
+            }};
+        Other ->
+            Other
     end.
 
 auth_on_register_jwt(UserName, Token) ->
@@ -268,6 +283,10 @@ auth_on_register_jwt(UserName, Token) ->
 reason_code(?INVALID_SIGNATURE) -> ?BAD_USERNAME_OR_PASSWORD;
 reason_code(?MISSING_RID) -> ?NOT_AUTHORIZED;
 reason_code(?USERNAME_RID_MISMATCH) -> ?NOT_AUTHORIZED.
+
+reason_string(?INVALID_SIGNATURE) -> <<"Invalid JWT signature">>;
+reason_string(?MISSING_RID) -> <<"Missing rid claim in JWT">>;
+reason_string(?USERNAME_RID_MISMATCH) -> <<"Username does not match rid claim">>.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal+
