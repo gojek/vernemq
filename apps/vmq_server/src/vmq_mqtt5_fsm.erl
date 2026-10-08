@@ -1602,13 +1602,14 @@ on_publish_hook({ok, {0, 0}}, HookParams, SubscriberId) ->
         Payload,
         IsRetain,
         _Properties,
-        _SessionId,
+        SessionId,
         MatchedAcl
     ] = HookParams,
     _ = vmq_plugin:all(on_message_drop, [
         SubscriberId,
         fun() -> {Topic, QoS, Payload, #{is_retain => IsRetain}, MatchedAcl} end,
-        no_matching_subscribers
+        no_matching_subscribers,
+        SessionId
     ]),
     ok;
 on_publish_hook({ok, _NumMatched}, HookParams, _SubscriberId) ->
@@ -1936,7 +1937,8 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State0) ->
             vmq_plugin:all(on_message_drop, [
                 SubscriberId,
                 fun() -> {Topic1, NewQoS, Payload1, Props0} end,
-                Reason
+                Reason,
+                SessionId
             ]),
             {[], State2};
         _ when NewQoS == 0 ->
@@ -2146,7 +2148,11 @@ queue_opts_from_properties(Properties) ->
 
 queue_opts(Args, Properties, State) ->
     PropertiesOpts = queue_opts_from_properties(Properties),
-    Opts = maps:from_list([{upgrade_qos, State#state.upgrade_qos} | Args]),
+    Opts = maps:from_list([
+        {upgrade_qos, State#state.upgrade_qos},
+        {session_id, State#state.session_id}
+        | Args
+    ]),
     Opts1 = maps:merge(PropertiesOpts, Opts),
     maps:merge(vmq_queue:default_opts(), Opts1).
 
