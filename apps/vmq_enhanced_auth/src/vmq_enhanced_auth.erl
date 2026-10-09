@@ -153,7 +153,7 @@ auth_on_publish(User, SubscriberId, QoS, Topic, _, _, _SessionId) ->
             end
     end.
 
-auth_on_subscribe_m5(User, SubscriberId, Topics, _Props, SessionId) ->
+auth_on_subscribe_m5(User, SubscriberId, Topics, Props, SessionId) ->
     SubOptsByTopic = [{Topic, QoS, SubOpts} || {Topic, {QoS, SubOpts}} <- Topics],
     case length(SubOptsByTopic) =:= length(Topics) of
         false ->
@@ -169,7 +169,7 @@ auth_on_subscribe_m5(User, SubscriberId, Topics, _Props, SessionId) ->
                         SubOptsByTopic,
                         Modifiers
                     ),
-                    {ok, #{topics => V5Topics, properties => #{}}};
+                    {ok, #{topics => V5Topics, properties => Props}};
                 Other ->
                     Other
             end

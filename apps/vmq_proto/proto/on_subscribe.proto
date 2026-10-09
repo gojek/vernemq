@@ -14,6 +14,7 @@ message OnSubscribe {
     string username = 4;
     repeated TopicInfo topics = 5;
     string session_id = 6;
+    map<string, string> user_properties = 7;
 }
 
 message TopicInfo {

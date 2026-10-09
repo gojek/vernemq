@@ -13,4 +13,5 @@ message OnUnsubscribe {
     string mountpoint = 4;
     repeated string topics = 5;
     string session_id = 6;
+    map<string, string> user_properties = 7;
 }
