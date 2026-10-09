@@ -52,6 +52,7 @@ all() ->
       on_unsubscribe_m5_test,
       on_deliver_m5_test,
       on_deliver_m5_modify_props_test,
+      on_delivery_complete_m5_test,
       on_auth_m5_test,
 
       auth_on_register_test,
@@ -408,6 +409,14 @@ on_deliver_m5_test(_) ->
                                 [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #{}, ?SESSION_ID, #matched_acl{}, false]),
     ok = exp_response(on_deliver_m5_ok),
     deregister_hook(on_deliver_m5, ?ENDPOINT).
+
+on_delivery_complete_m5_test(_) ->
+    register_hook(on_delivery_complete_m5, ?ENDPOINT),
+    Self = pid_to_bin(self()),
+    [next] = vmq_plugin:all(on_delivery_complete_m5,
+                            [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}, false, ?SESSION_ID, #{}]),
+    ok = exp_response(on_delivery_complete_m5_ok),
+    deregister_hook(on_delivery_complete_m5, ?ENDPOINT).
 
 on_deliver_m5_modify_props_test(_) ->
     register_hook(on_deliver_m5, ?ENDPOINT),
