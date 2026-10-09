@@ -25,9 +25,9 @@ convert(
     auth_on_publish,
     Mod,
     Fun,
-    [User, SubscriberId, QoS, Topic, Payload, IsRetain, _Properties]
+    [User, SubscriberId, QoS, Topic, Payload, IsRetain, _Properties, SessionId]
 ) ->
-    case apply(Mod, Fun, [User, SubscriberId, QoS, Topic, Payload, IsRetain, undefined]) of
+    case apply(Mod, Fun, [User, SubscriberId, QoS, Topic, Payload, IsRetain, SessionId]) of
         {ok, Vals} when is_list(Vals) ->
             {ok, maps:from_list(Vals)};
         {error, Vals} when is_list(Vals) ->
@@ -40,11 +40,11 @@ convert(
     auth_on_register,
     Mod,
     Fun,
-    [Peer, SubscriberId, User, Password, CleanStart, _Properties]
+    [Peer, SubscriberId, User, Password, CleanStart, _Properties, SessionId]
 ) ->
     %% TODOv5, can we do better than having this caveat?
     CleanSession = CleanStart,
-    case apply(Mod, Fun, [Peer, SubscriberId, User, Password, CleanSession, undefined]) of
+    case apply(Mod, Fun, [Peer, SubscriberId, User, Password, CleanSession, SessionId]) of
         {ok, Vals} when is_list(Vals) ->
             M0 = maps:from_list(Vals),
             case maps:take(clean_session, M0) of
@@ -63,16 +63,21 @@ convert(
     on_publish,
     Mod,
     Fun,
-    [User, SubscriberId, QoS, Topic, Payload, IsRetain, _Properties]
+    [User, SubscriberId, QoS, Topic, Payload, IsRetain, _Properties, SessionId, MatchedAcl]
 ) ->
-    apply(Mod, Fun, [User, SubscriberId, QoS, Topic, Payload, IsRetain, undefined, undefined]);
-convert(auth_on_subscribe, Mod, Fun, [Username, SubscriberId, Topics, _Properties]) ->
-    case apply(Mod, Fun, [Username, SubscriberId, conv_m5_topics(Topics), undefined]) of
+    apply(Mod, Fun, [User, SubscriberId, QoS, Topic, Payload, IsRetain, MatchedAcl, SessionId]);
+convert(auth_on_subscribe, Mod, Fun, [Username, SubscriberId, Topics, _Properties, SessionId]) ->
+    case apply(Mod, Fun, [Username, SubscriberId, conv_m5_topics(Topics), SessionId]) of
         {ok, Topics} when is_list(Topics) ->
             {ok, #{topics => Topics}};
         Other ->
             Other
     end;
+convert(on_subscribe, Mod, Fun, [Username, SubscriberId, Topics, _Properties, SessionId]) ->
+    %% The v5 topics already carry the matched ACL, which is the shape
+    %% the MQTTv4 on_subscribe hook takes - only the QoS has to come
+    %% out of the subinfo tuple.
+    apply(Mod, Fun, [Username, SubscriberId, conv_m5_topics_with_acl(Topics), SessionId]);
 convert(_, Mod, Fun, Args) ->
     apply(Mod, Fun, Args).
 
@@ -80,6 +85,15 @@ conv_m5_topics(Topics) ->
     lists:map(
         fun({T, {QoS, _SubOpts}}) ->
             {T, QoS}
+        end,
+        Topics
+    ).
+
+conv_m5_topics_with_acl(Topics) ->
+    lists:map(
+        fun
+            ({T, {QoS, _SubOpts}, MatchedAcl}) -> {T, QoS, MatchedAcl};
+            ({T, QoS, MatchedAcl}) -> {T, QoS, MatchedAcl}
         end,
         Topics
     ).

@@ -29,7 +29,7 @@
 -export([
     change_config/1,
     auth_on_register/6,
-    auth_on_register_m5/6
+    auth_on_register_m5/7
 ]).
 
 -define(TABLE, ?MODULE).
@@ -60,7 +60,7 @@ change_config(Configs) ->
 auth_on_register(_Peer, _SubscriberId, User, Password, _CleanSession, _SessionId) ->
     check(User, Password).
 
-auth_on_register_m5(_Peer, _SubscriberId, User, Password, _CleanStart, _Properties) ->
+auth_on_register_m5(_Peer, _SubscriberId, User, Password, _CleanStart, _Properties, _SessionId) ->
     check(User, Password).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

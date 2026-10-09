@@ -607,7 +607,7 @@ format_all_till_ok_(auth_on_subscribe = Hook, [User, SubscriberId, Topics, _], _
     [{"Calling ~p(~s,~p) with topics:~n", [Hook, User, SubscriberId]}, ftopics(Topics)];
 format_all_till_ok_(
     auth_on_register_m5 = Hook,
-    [Peer, SubscriberId, User, Password, CleanStart, Props],
+    [Peer, SubscriberId, User, Password, CleanStart, Props, _SessionId],
     Opts
 ) ->
     [
@@ -616,7 +616,7 @@ format_all_till_ok_(
     ];
 format_all_till_ok_(
     auth_on_publish_m5 = Hook,
-    [User, SubscriberId, QoS, Topic, Payload, IsRetain, Props],
+    [User, SubscriberId, QoS, Topic, Payload, IsRetain, Props, _SessionId],
     Opts
 ) ->
     [
@@ -627,7 +627,9 @@ format_all_till_ok_(
         },
         format_props(Props, Opts)
     ];
-format_all_till_ok_(auth_on_subscribe_m5 = Hook, [User, SubscriberId, Topics, Props], Opts) ->
+format_all_till_ok_(
+    auth_on_subscribe_m5 = Hook, [User, SubscriberId, Topics, Props, _SessionId], Opts
+) ->
     [
         {"Calling ~p(~s,~p) with topics:~n", [Hook, User, SubscriberId]},
         ftopics(Topics),

@@ -103,11 +103,11 @@ uname_anon_username_test_m5(Config) ->
     ),
     Connack = mqtt5_v4compat:gen_connack(success, Config),
     ok = vmq_plugin_mgr:enable_module_plugin(
-        on_register_m5, ?MODULE, hook_on_register_uname_anon_username_m5, 4
+        on_register_m5, ?MODULE, hook_on_register_uname_anon_username_m5, 5
     ),
     {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, conn_opts(Config), Config),
     ok = vmq_plugin_mgr:disable_module_plugin(
-        on_register_m5, ?MODULE, hook_on_register_uname_anon_username_m5, 4
+        on_register_m5, ?MODULE, hook_on_register_uname_anon_username_m5, 5
     ),
     ok = close(Socket, Config).
 
@@ -205,16 +205,16 @@ auth_on_register_change_username_test(Config) ->
       on_register, ?MODULE, hook_on_register_changed_username, 5),
 
     ok = vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register_m5, ?MODULE, hook_change_username_m5, 6),
+      auth_on_register_m5, ?MODULE, hook_change_username_m5, 7),
     ok = vmq_plugin_mgr:enable_module_plugin(
-      on_register_m5, ?MODULE, hook_on_register_changed_username_m5, 4),
+      on_register_m5, ?MODULE, hook_on_register_changed_username_m5, 5),
 
     {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, conn_opts(Config), Config),
 
     ok = vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register_m5, ?MODULE, hook_change_username_m5, 6),
+      auth_on_register_m5, ?MODULE, hook_change_username_m5, 7),
     ok = vmq_plugin_mgr:disable_module_plugin(
-      on_register_m5, ?MODULE, hook_on_register_changed_username_m5, 4),
+      on_register_m5, ?MODULE, hook_on_register_changed_username_m5, 5),
 
     ok = vmq_plugin_mgr:disable_module_plugin(
       on_register, ?MODULE, hook_on_register_changed_username, 5),
@@ -255,13 +255,13 @@ hook_change_username(_, _, <<"old_username">>, _, _, _) ->
 hook_on_register_changed_username(_, _, <<"new_username">>, _, _) ->
     ok.
 
-hook_change_username_m5(_, _, <<"old_username">>, _, _, _) ->
+hook_change_username_m5(_, _, <<"old_username">>, _, _, _, _) ->
     {ok, #{username => <<"new_username">>}}.
 
-hook_on_register_changed_username_m5(_,_, <<"new_username">>, _) ->
+hook_on_register_changed_username_m5(_,_, <<"new_username">>, _, _) ->
     ok.
 
-hook_on_register_uname_anon_username_m5(_, _, <<"user">>, _) ->
+hook_on_register_uname_anon_username_m5(_, _, <<"user">>, _, _) ->
     ok.
 
 %% Helpers

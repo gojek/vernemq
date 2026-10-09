@@ -3,10 +3,31 @@
          teardown/0,
          teardown/1,
          reset_tables/0,
+         wait_until_ready/0,
          maybe_start_distribution/1,
          get_suite_rand_seed/0,
          seed_rand/1,
          rand_bytes/1]).
+
+%% vmq_reg_trie loads the existing subscriptions asynchronously and only
+%% then flips subscribe_trie_ready, which gates vmq_reg:subscribe/2. Until
+%% it does a SUBSCRIBE is answered with {error, not_ready}, so a test case
+%% connecting right after setup/0 can fail for reasons that have nothing
+%% to do with what it asserts. Best effort: give up quietly rather than
+%% failing the suite, since not every configuration builds the trie.
+wait_until_ready() ->
+    wait_until_ready(500).
+
+wait_until_ready(0) ->
+    ok;
+wait_until_ready(N) ->
+    case persistent_term:get(subscribe_trie_ready, 0) of
+        1 ->
+            ok;
+        _ ->
+            timer:sleep(10),
+            wait_until_ready(N - 1)
+    end.
 
 setup() ->
     os:cmd(os:find_executable("epmd")++" -daemon"),
