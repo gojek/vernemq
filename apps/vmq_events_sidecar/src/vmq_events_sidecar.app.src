@@ -32,7 +32,14 @@
             {vmq_events_sidecar_plugin, on_session_expired, 2, []},
             {vmq_events_sidecar_plugin, on_delivery_complete, 9, []},
             {vmq_events_sidecar_plugin, on_client_gone, 4, []},
-            {vmq_events_sidecar_plugin, on_message_drop, 4, []}
+            {vmq_events_sidecar_plugin, on_message_drop, 4, []},
+
+            {vmq_events_sidecar_plugin, on_register_m5, 5, []},
+            {vmq_events_sidecar_plugin, on_publish_m5, 9, []},
+            {vmq_events_sidecar_plugin, on_subscribe_m5, 5, []},
+            {vmq_events_sidecar_plugin, on_unsubscribe_m5, 5, []},
+            {vmq_events_sidecar_plugin, on_deliver_m5, 10, []},
+            {vmq_events_sidecar_plugin, on_delivery_complete_m5, 10, []}
         ]}
     ]},
     {modules, []},
