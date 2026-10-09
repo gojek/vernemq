@@ -477,7 +477,7 @@ on_publish_m5(
     Topic,
     Payload,
     IsRetain,
-    _Props,
+    Props,
     SessionId,
     #matched_acl{name = ACL} = MatchedAcl
 ) ->
@@ -485,13 +485,13 @@ on_publish_m5(
     send_event(
         on_publish_m5,
         {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl,
-            SessionId},
+            SessionId, Props},
         ACL
     ).
 
 -spec on_subscribe_m5(username(), subscriber_id(), [topic()], properties(), session_id()) ->
     'next'.
-on_subscribe_m5(UserName, SubscriberId, Topics, _Props, SessionId) ->
+on_subscribe_m5(UserName, SubscriberId, Topics, Props, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(
         on_subscribe_m5,
@@ -500,16 +500,16 @@ on_subscribe_m5(UserName, SubscriberId, Topics, _Props, SessionId) ->
                 [unword(T), from_internal_qos(qos_from_subinfo(SubInfo)), MatchedAcl]
              || {T, SubInfo, MatchedAcl} <- Topics
             ],
-            SessionId}
+            SessionId, Props}
     ).
 
 -spec on_unsubscribe_m5(username(), subscriber_id(), [topic()], properties(), session_id()) ->
     'next'.
-on_unsubscribe_m5(UserName, SubscriberId, Topics, _Props, SessionId) ->
+on_unsubscribe_m5(UserName, SubscriberId, Topics, Props, SessionId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(
         on_unsubscribe_m5,
-        {MP, ClientId, normalise(UserName), [unword(T) || T <- Topics], SessionId}
+        {MP, ClientId, normalise(UserName), [unword(T) || T <- Topics], SessionId, Props}
     ),
     %% called as an all_till_ok hook: returning ok would stop the other
     %% plugins in the chain from running
@@ -534,7 +534,7 @@ on_deliver_m5(
     Topic,
     Payload,
     IsRetain,
-    _Props,
+    Props,
     SessionId,
     #matched_acl{name = ACL} = MatchedAcl,
     Persisted
@@ -543,7 +543,7 @@ on_deliver_m5(
     send_event(
         on_deliver_m5,
         {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl,
-            Persisted, SessionId},
+            Persisted, SessionId, Props},
         ACL
     ),
     %% called as an all_till_ok hook, see on_unsubscribe_m5
@@ -571,13 +571,13 @@ on_delivery_complete_m5(
     #matched_acl{name = ACL} = MatchedAcl,
     Persisted,
     SessionId,
-    _Props
+    Props
 ) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event(
         on_delivery_complete_m5,
         {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain, MatchedAcl,
-            Persisted, SessionId},
+            Persisted, SessionId, Props},
         ACL
     ).
 
