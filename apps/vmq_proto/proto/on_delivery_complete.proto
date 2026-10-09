@@ -19,4 +19,5 @@ message OnDeliveryComplete {
   MatchedACL matched_acl = 9;
   bool persisted = 10;
   string session_id = 11;
+  map<string, string> user_properties = 12;
 }
