@@ -436,7 +436,8 @@ jwt_auth_bad_token(_Config) ->
     with_jwt_plugin(
       fun() ->
           Connect = jwt_connect("jwt-auth-bad-test", "username", <<"not-a-jwt">>),
-          Connack = packetv5:gen_connack(0, ?M5_BAD_USERNAME_OR_PASSWORD, #{}),
+          Connack = packetv5:gen_connack(0, ?M5_BAD_USERNAME_OR_PASSWORD,
+                                         #{p_reason_string => <<"Invalid JWT signature">>}),
           {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
           ok = gen_tcp:close(Socket)
       end).
@@ -464,7 +465,8 @@ jwt_auth_rid_mismatch(_Config) ->
     with_jwt_plugin(
       fun() ->
           Connect = jwt_connect("jwt-auth-rid-test", "username", jwt(<<"someone-else">>)),
-          Connack = packetv5:gen_connack(0, ?M5_NOT_AUTHORIZED, #{}),
+          Connack = packetv5:gen_connack(0, ?M5_NOT_AUTHORIZED,
+                                         #{p_reason_string => <<"Username does not match rid claim">>}),
           {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
           ok = gen_tcp:close(Socket)
       end).
