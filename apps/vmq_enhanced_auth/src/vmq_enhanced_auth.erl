@@ -247,16 +247,6 @@ auth_on_register_m5(
     _SessionId
 ) ->
     case auth_on_register_jwt(UserName, Password) of
-        ok ->
-            {ok, #{
-                properties => #{
-                    ?P_MAX_QOS => 2,
-                    ?P_RETAIN_AVAILABLE => false,
-                    ?P_WILDCARD_SUBS_AVAILABLE => true,
-                    ?P_SUB_IDS_AVAILABLE => true,
-                    ?P_SHARED_SUBS_AVAILABLE => true
-                }
-            }};
         {error, Reason} ->
             {error, #{
                 reason_code => reason_code(Reason),
