@@ -22,8 +22,7 @@
 
 -spec encode(event()) -> #'Any'{} | <<>>.
 encode(
-    {on_register, Timestamp,
-        {MP, ClientId, PPeer, Port, UserName, #{?P_USER_PROPERTY := Properties}, SessionId}}
+    {on_register, Timestamp, {MP, ClientId, PPeer, Port, UserName, Props, SessionId}}
 ) ->
     encode_envelope(
         "OnRegister",
@@ -34,20 +33,7 @@ encode(
             mountpoint = MP,
             client_id = ClientId,
             timestamp = convert_timestamp(Timestamp),
-            user_properties = Properties,
-            session_id = SessionId
-        })
-    );
-encode({on_register, Timestamp, {MP, ClientId, PPeer, Port, UserName, #{}, SessionId}}) ->
-    encode_envelope(
-        "OnRegister",
-        on_register_pb:encode_msg(#'eventssidecar.v1.OnRegister'{
-            peer_addr = PPeer,
-            peer_port = Port,
-            username = UserName,
-            mountpoint = MP,
-            client_id = ClientId,
-            timestamp = convert_timestamp(Timestamp),
+            user_properties = user_properties(Props),
             session_id = SessionId
         })
     );
@@ -255,16 +241,106 @@ encode(
     );
 encode({on_register_m5, Timestamp, Event}) ->
     encode({on_register, Timestamp, Event});
-encode({on_publish_m5, Timestamp, Event}) ->
-    encode({on_publish, Timestamp, Event});
-encode({on_subscribe_m5, Timestamp, Event}) ->
-    encode({on_subscribe, Timestamp, Event});
-encode({on_unsubscribe_m5, Timestamp, Event}) ->
-    encode({on_unsubscribe, Timestamp, Event});
-encode({on_deliver_m5, Timestamp, Event}) ->
-    encode({on_deliver, Timestamp, Event});
-encode({on_delivery_complete_m5, Timestamp, Event}) ->
-    encode({on_delivery_complete, Timestamp, Event});
+encode(
+    {on_publish_m5, Timestamp,
+        {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain,
+            #matched_acl{name = Name, pattern = Pattern}, SessionId, Props}}
+) ->
+    encode_envelope(
+        "OnPublish",
+        on_publish_pb:encode_msg(#'eventssidecar.v1.OnPublish'{
+            username = UserName,
+            client_id = ClientId,
+            mountpoint = MP,
+            qos = QoS,
+            topic = Topic,
+            payload = Payload,
+            retain = IsRetain,
+            timestamp = convert_timestamp(Timestamp),
+            matched_acl = #'eventssidecar.v1.MatchedACL'{name = Name, pattern = Pattern},
+            session_id = SessionId,
+            user_properties = user_properties(Props)
+        })
+    );
+encode(
+    {on_subscribe_m5, Timestamp, {MP, ClientId, UserName, Topics, SessionId, Props}}
+) ->
+    encode_envelope(
+        "OnSubscribe",
+        on_subscribe_pb:encode_msg(#'eventssidecar.v1.OnSubscribe'{
+            client_id = ClientId,
+            mountpoint = MP,
+            username = UserName,
+            topics = [
+                #'eventssidecar.v1.TopicInfo'{
+                    topic = T,
+                    qos = QoS,
+                    matched_acl = #'eventssidecar.v1.MatchedACL'{name = Name, pattern = Pattern}
+                }
+             || [T, QoS, #matched_acl{name = Name, pattern = Pattern}] <- Topics
+            ],
+            timestamp = convert_timestamp(Timestamp),
+            session_id = SessionId,
+            user_properties = user_properties(Props)
+        })
+    );
+encode({on_unsubscribe_m5, Timestamp, {MP, ClientId, UserName, Topics, SessionId, Props}}) ->
+    encode_envelope(
+        "OnUnsubscribe",
+        on_unsubscribe_pb:encode_msg(#'eventssidecar.v1.OnUnsubscribe'{
+            client_id = ClientId,
+            mountpoint = MP,
+            username = UserName,
+            topics = Topics,
+            timestamp = convert_timestamp(Timestamp),
+            session_id = SessionId,
+            user_properties = user_properties(Props)
+        })
+    );
+encode(
+    {on_deliver_m5, Timestamp,
+        {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain,
+            #matched_acl{name = Name, pattern = Pattern}, Persisted, SessionId, Props}}
+) ->
+    encode_envelope(
+        "OnDeliver",
+        on_deliver_pb:encode_msg(#'eventssidecar.v1.OnDeliver'{
+            client_id = ClientId,
+            mountpoint = MP,
+            username = UserName,
+            topic = Topic,
+            qos = QoS,
+            is_retain = IsRetain,
+            payload = Payload,
+            timestamp = convert_timestamp(Timestamp),
+            matched_acl = #'eventssidecar.v1.MatchedACL'{name = Name, pattern = Pattern},
+            persisted = Persisted,
+            session_id = SessionId,
+            user_properties = user_properties(Props)
+        })
+    );
+encode(
+    {on_delivery_complete_m5, Timestamp,
+        {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain,
+            #matched_acl{name = Name, pattern = Pattern}, Persisted, SessionId, Props}}
+) ->
+    encode_envelope(
+        "OnDeliveryComplete",
+        on_delivery_complete_pb:encode_msg(#'eventssidecar.v1.OnDeliveryComplete'{
+            client_id = ClientId,
+            mountpoint = MP,
+            username = UserName,
+            topic = Topic,
+            qos = QoS,
+            is_retain = IsRetain,
+            payload = Payload,
+            timestamp = convert_timestamp(Timestamp),
+            matched_acl = #'eventssidecar.v1.MatchedACL'{name = Name, pattern = Pattern},
+            persisted = Persisted,
+            session_id = SessionId,
+            user_properties = user_properties(Props)
+        })
+    );
 encode(_) ->
     <<>>.
 
@@ -337,3 +413,6 @@ map_registration_failure_reason(unwanted_redis_response) ->
     'REASON_STATE_STORE_ERROR';
 map_registration_failure_reason(_) ->
     'REASON_UNSPECIFIED'.
+
+user_properties(#{?P_USER_PROPERTY := Properties}) -> Properties;
+user_properties(_) -> [].
