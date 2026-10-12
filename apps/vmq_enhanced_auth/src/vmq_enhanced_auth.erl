@@ -1116,9 +1116,9 @@ mqtt5_subscribe_test(_) ->
                 <<"invalid-user">>, {"", <<"client-id">>}, Topics, #{}, ?SESSION_ID
             )
         ),
-        %% Inbound user properties are not echoed back into the SUBACK
+        %% Inbound user properties are echoed back into the SUBACK
         ?_assertEqual(
-            {ok, #{topics => [{Topic, {1, SubOpts}, ReadAcl}], properties => #{}}},
+            {ok, #{topics => [{Topic, {1, SubOpts}, ReadAcl}], properties => #{p_user_property => [{<<"k">>, <<"v">>}]}}},
             auth_on_subscribe_m5(
                 <<"test">>,
                 {"", <<"client-id">>},
