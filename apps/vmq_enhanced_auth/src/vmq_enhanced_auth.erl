@@ -1126,7 +1126,10 @@ mqtt5_subscribe_test(_) ->
         ),
         %% Inbound user properties are echoed back into the SUBACK
         ?_assertEqual(
-            {ok, #{topics => [{Topic, {1, SubOpts}, ReadAcl}], properties => #{p_user_property => [{<<"k">>, <<"v">>}]}}},
+            {ok, #{
+                topics => [{Topic, {1, SubOpts}, ReadAcl}],
+                properties => #{p_user_property => [{<<"k">>, <<"v">>}]}
+            }},
             auth_on_subscribe_m5(
                 <<"test">>,
                 {"", <<"client-id">>},
