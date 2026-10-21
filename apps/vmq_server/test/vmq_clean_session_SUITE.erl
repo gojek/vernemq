@@ -47,7 +47,8 @@ groups() ->
     [session_expiration_connect_test,
      session_expiration_disconnect_test,
      session_expiration_reset_at_disconnect,
-     session_exp_only_at_disconnect_is_illegal],
+     session_exp_only_at_disconnect_is_illegal,
+     session_expiration_override_test],
     [
      {mqttv4, [], V4Tests},
      {mqttv5, [shuffle], V5Tests}
@@ -182,6 +183,32 @@ session_expiration_reset_at_disconnect(Cfg) ->
 
     {ok, Socket1} = packetv5:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:close(Socket1).
+
+session_expiration_override_test(Cfg) ->
+    %% the broker forces the session expiry, whatever the client sends
+    vmq_server_cmd:set_config(session_expiry_interval_override, "2s"),
+    ClientId = vmq_cth:ustr(Cfg),
+    Connect = packetv5:gen_connect(ClientId, [{keepalive, 60},
+                                              {clean_start, false},
+                                              {properties,
+                                               #{p_session_expiry_interval => 0}}]),
+    Props = #{p_session_expiry_interval => 2},
+    Connack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, Props),
+    ConnackSP = packetv5:gen_connack(1, ?M5_CONNACK_ACCEPT, Props),
+    Disconnect = packetv5:gen_disconnect(0, #{p_session_expiry_interval => 0}),
+
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, Disconnect),
+    ok = gen_tcp:close(Socket),
+
+    %% the session survived the 0 from the client
+    {ok, Socket1} = packetv5:do_client_connect(Connect, ConnackSP, []),
+    ok = gen_tcp:send(Socket1, Disconnect),
+    ok = gen_tcp:close(Socket1),
+
+    timer:sleep(2200),
+    {ok, Socket2} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:close(Socket2).
 
 session_exp_only_at_disconnect_is_illegal(Cfg) ->
     %% it's a protocol error to set session expiration only at
