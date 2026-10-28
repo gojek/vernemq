@@ -518,10 +518,14 @@ enqueue_pending_redis(<<"msg", L:32, Bin:L/binary>>, Node) ->
                     of
                         ok ->
                             ok;
-                        {error, _} = Err ->
+                        {error, Reason} ->
                             _ = vmq_metrics:incr_cluster_msg_drop(teardown, 1),
+                            lager:warning(
+                                "can't enqueue pending msg for ~p to redis on teardown of ~p due to ~p",
+                                [SubscriberId, Node, Reason]
+                            ),
                             catch vmq_reg:on_message_drop_hook(
-                                SubscriberId, Msg, {pending_redis_enqueue_failed, Err}
+                                SubscriberId, Msg, pending_redis_enqueue_failed
                             )
                     end
                 end,
