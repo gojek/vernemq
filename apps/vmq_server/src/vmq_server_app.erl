@@ -79,7 +79,6 @@ prep_stop(State) ->
 -spec stop(_) -> 'ok'.
 stop(_State) ->
     ok = vmq_ranch_config:stop_all_mqtt_listeners(true),
-    _ = vmq_message_store:stop(),
     _ = vmq_metadata:stop(),
     ok.
 
@@ -92,16 +91,16 @@ maybe_update_nodetool() ->
             ]),
             case escript:extract(Nodetool, []) of
                 {ok, [Shebang, Comment, _, Source]} ->
-                    {ok, UpdatedScriptBin} =
-                        escript:create(binary, [
+                    case
+                        escript:create(Nodetool, [
                             Shebang, Comment, {emu_args, "+fnu -proto_dist " ++ ProtoDist}, Source
-                        ]),
-                    try file:write_file(Nodetool, UpdatedScriptBin) of
-                        ok -> ok
-                    catch
-                        E:R ->
-                            lager:info("Could not write nodetool due to ~p for reason ~p~n", [E, R]),
-                            {error, R}
+                        ])
+                    of
+                        ok ->
+                            ok;
+                        {error, WriteReason} ->
+                            lager:info("Could not write nodetool for reason ~p~n", [WriteReason]),
+                            {error, WriteReason}
                     end;
                 {error, Reason} ->
                     {error, Reason}
