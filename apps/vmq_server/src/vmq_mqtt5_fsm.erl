@@ -1855,7 +1855,7 @@ dispatch_publish_qos1(MessageId, Msg, _Cnt, State) ->
     end.
 
 -spec maybe_send_immediate_puback(AclName :: binary() | undefined, MessageId :: msg_id()) ->
-    [mqtt_puback()].
+    list().
 maybe_send_immediate_puback(AclName, MessageId) ->
     case vmq_mqtt_fsm_util:should_send_puback(AclName) of
         true ->
