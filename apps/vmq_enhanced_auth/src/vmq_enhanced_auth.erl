@@ -171,7 +171,14 @@ auth_on_subscribe_m5(User, SubscriberId, Topics, Props, SessionId) ->
                             Modifiers
                         )
                     of
-                        V5Topics -> {ok, #{topics => V5Topics, properties => #{}}}
+                        V5Topics ->
+                            UserProps = maps:get(p_user_property, Props, []),
+                            ResponseProps =
+                                case UserProps of
+                                    [] -> #{};
+                                    _ -> #{p_user_property => UserProps}
+                                end,
+                            {ok, #{topics => V5Topics, properties => ResponseProps}}
                     catch
                         error:function_clause -> {error, modifiers_mismatch}
                     end;
