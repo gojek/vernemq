@@ -161,15 +161,22 @@ auth_on_subscribe_m5(User, SubscriberId, Topics, _Props, SessionId) ->
         true ->
             V3Topics = [{Topic, QoS} || {Topic, QoS, _SubOpts} <- SubOptsByTopic],
             case auth_on_subscribe(User, SubscriberId, V3Topics, SessionId) of
-                {ok, Modifiers} ->
-                    V5Topics = lists:zipwith(
-                        fun({_Topic, _QoS, SubOpts}, {MTopic, MQoS, MatchedAcl}) ->
-                            {MTopic, {MQoS, SubOpts}, MatchedAcl}
-                        end,
-                        SubOptsByTopic,
-                        Modifiers
-                    ),
-                    {ok, #{topics => V5Topics, properties => #{}}};
+                {ok, Modifiers} when length(Modifiers) =:= length(SubOptsByTopic) ->
+                    try
+                        lists:zipwith(
+                            fun({MTopic, _QoS, SubOpts}, {MTopic, MQoS, MatchedAcl}) ->
+                                {MTopic, {MQoS, SubOpts}, MatchedAcl}
+                            end,
+                            SubOptsByTopic,
+                            Modifiers
+                        )
+                    of
+                        V5Topics -> {ok, #{topics => V5Topics, properties => #{}}}
+                    catch
+                        error:function_clause -> {error, modifiers_mismatch}
+                    end;
+                {ok, _} ->
+                    {error, ?UNSPECIFIED_ERROR};
                 Other ->
                     Other
             end
@@ -220,22 +227,7 @@ auth_on_register(
     %% 4. return {error, invalid_credentials} -> CONNACK_CREDENTIALS is sent
     %% 5. return {error, Error} -> CONNACK_AUTH is sent
 
-    %% we return 'ok'
-    D = is_auth_on_register_disabled(),
-    if
-        D ->
-            next;
-        true ->
-            {Result, Claims} = verify(Password, ?SecretKey),
-            if
-                Result =:= ok ->
-                    check_rid(Claims, UserName);
-                %else block
-                true ->
-                    vmq_enhanced_auth_metrics:incr({?REGISTER_AUTH_ERROR, ?INVALID_SIGNATURE}),
-                    {error, ?INVALID_SIGNATURE}
-            end
-    end.
+    auth_on_register_jwt(UserName, Password).
 
 auth_on_register_m5(
     _Peer,
