@@ -40,6 +40,7 @@
 -behaviour(on_subscribe_m5_hook).
 -behaviour(on_unsubscribe_m5_hook).
 -behaviour(on_deliver_m5_hook).
+-behaviour(on_delivery_complete_m5_hook).
 -behaviour(on_auth_m5_hook).
 
 -export([
@@ -66,6 +67,7 @@
     on_subscribe_m5/5,
     on_unsubscribe_m5/5,
     on_deliver_m5/10,
+    on_delivery_complete_m5/10,
     on_auth_m5/4
 ]).
 
@@ -580,6 +582,35 @@ on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _
 on_deliver_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props, SessionId, _, _) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver_m5, [
+        {username, nullify(UserName)},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {qos, QoS},
+        {topic, unword(Topic)},
+        {payload, Payload},
+        {retain, IsRetain},
+        {properties, Props},
+        {session_id, SessionId}
+    ]).
+
+-spec on_delivery_complete_m5(
+    username(),
+    subscriber_id(),
+    qos(),
+    topic(),
+    payload(),
+    flag(),
+    matched_acl(),
+    flag(),
+    session_id(),
+    properties()
+) ->
+    'next'.
+on_delivery_complete_m5(
+    UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _, _, SessionId, Props
+) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all(on_delivery_complete_m5, [
         {username, nullify(UserName)},
         {mountpoint, MP},
         {client_id, ClientId},
