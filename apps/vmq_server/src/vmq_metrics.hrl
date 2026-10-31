@@ -99,6 +99,7 @@
 
 -define(METRIC_QUEUE_SETUP, queue_setup).
 -define(METRIC_QUEUE_INITIALIZED_FROM_STORAGE, queue_initialized_from_storage).
+-define(METRIC_QUEUE_OFFLINE_MESSAGES_EXPIRED, queue_offline_messages_expired).
 -define(METRIC_QUEUE_TEARDOWN, queue_teardown).
 -define(METRIC_QUEUE_MESSAGE_DROP, queue_message_drop).
 -define(METRIC_QUEUE_MESSAGE_EXPIRED, queue_message_expired).

@@ -915,7 +915,12 @@ queue_down_terminate(Reason, #state{queue_pid = QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
 -spec terminate_by_client(reason_code(), properties(), state()) -> any().
-terminate_by_client(RC, Props0, #state{queue_pid = QPid} = State) ->
+terminate_by_client(RC, Props, #state{queue_pid = QPid} = State) ->
+    Props0 =
+        case session_expiry_interval_override() of
+            0 -> Props;
+            Override -> Props#{p_session_expiry_interval => Override}
+        end,
     OldSInt = State#state.session_expiry_interval,
     NewSInt = maps:get(p_session_expiry_interval, Props0, 0),
     {Out, NewState} =
@@ -1066,9 +1071,27 @@ check_enhanced_auth(F, State) ->
     %% No enhanced authentication
     check_connect(F, #{}, State).
 
-check_connect(#mqtt5_connect{proto_ver = Ver, clean_start = CleanStart} = F, OutProps, State) ->
+check_connect(
+    #mqtt5_connect{proto_ver = Ver, clean_start = CleanStart, properties = Props} = F0,
+    OutProps0,
+    State
+) ->
     CCleanStart = unflag(CleanStart),
+    {F, OutProps} =
+        case session_expiry_interval_override() of
+            0 ->
+                {F0, OutProps0};
+            Override ->
+                %% tell the client the value the broker will actually use
+                {
+                    F0#mqtt5_connect{properties = Props#{p_session_expiry_interval => Override}},
+                    OutProps0#{p_session_expiry_interval => Override}
+                }
+        end,
     check_client_id(F, OutProps, State#state{clean_start = CCleanStart, proto_ver = Ver}).
+
+session_expiry_interval_override() ->
+    vmq_config:get_env(session_expiry_interval_override, 0).
 
 check_client_id(
     #mqtt5_connect{} = Frame,

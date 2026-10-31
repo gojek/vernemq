@@ -50,6 +50,8 @@
         {queue_type, fifo},
         % never
         {persistent_client_expiration, 0},
+        {max_offline_message_ttl, 21600},
+        {session_expiry_interval_override, 0},
         % not allowed
         {max_last_will_delay, 0},
         {max_drain_time, 100},

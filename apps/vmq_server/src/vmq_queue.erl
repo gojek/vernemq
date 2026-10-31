@@ -104,6 +104,7 @@
     deliver_mode = fanout,
     sessions = maps:new(),
     expiry_timer :: undefined | reference(),
+    message_expiry_timer :: undefined | reference(),
     drain_time,
     drain_over_timer,
     drain_pending_batch :: undefined | {reference(), reference(), queue:new()},
@@ -533,7 +534,12 @@ offline({enqueue, Enq}, #state{id = SId, session_id = SessionId} = State) ->
     end,
     %% storing the message in the offline queue
     _ = vmq_metrics:incr_queue_in(),
-    {next_state, offline, insert(Enq, State)};
+    {next_state, offline, reset_expiry_timers(insert(Enq, State))};
+offline(expire_message, #state{id = SId} = State) ->
+    %% only the offline store (Redis) copy goes, the in-memory queue stays until expire_session
+    vmq_message_store:delete(SId),
+    _ = vmq_metrics:incr_queue_offline_messages_expired(),
+    {next_state, offline, State#state{message_expiry_timer = undefined}};
 offline(
     expire_session, #state{id = SId, offline = #queue{queue = Q}, session_id = SessionId} = State
 ) ->
@@ -563,7 +569,7 @@ offline({migrate, OtherQueue}, From, State) ->
     }};
 offline({enqueue_many, Msgs}, _From, State) ->
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
-    {reply, ok, offline, insert_many(Msgs, State)};
+    {reply, ok, offline, reset_expiry_timers(insert_many(Msgs, State))};
 offline({enqueue_many, Msgs, Opts}, _From, State) ->
     enqueue_many_(Msgs, offline, Opts, State);
 offline(
@@ -825,7 +831,7 @@ enqueue_many_(Msgs, FsmState, #{states := AllowedStates}, State) ->
     case allowed_state(FsmState, AllowedStates) of
         true ->
             _ = vmq_metrics:incr_queue_in(length(Msgs)),
-            {reply, ok, FsmState, insert_many(Msgs, State)};
+            {reply, ok, FsmState, maybe_reset_expiry_timers(FsmState, insert_many(Msgs, State))};
         false ->
             {reply, {error, FsmState}, FsmState, State}
     end.
@@ -1382,12 +1388,38 @@ maybe_set_expiry_timer(
 maybe_set_expiry_timer(State) ->
     State.
 
-maybe_set_expiry_timer(0, State) ->
+maybe_set_expiry_timer(ExpireAfter, State) ->
+    maybe_set_message_expiry_timer(ExpireAfter, set_session_expiry_timer(ExpireAfter, State)).
+
+set_session_expiry_timer(0, State) ->
     %% never expire
     State;
-maybe_set_expiry_timer(ExpireAfter, State) when ExpireAfter > 0 ->
+set_session_expiry_timer(ExpireAfter, State) when ExpireAfter > 0 ->
     Ref = gen_fsm:send_event_after(ExpireAfter * 1000, expire_session),
     State#state{expiry_timer = Ref}.
+
+%% The offline messages in the store live max_offline_message_ttl, but never
+%% longer than the session itself (0 = no limit).
+maybe_set_message_expiry_timer(SessionExpireAfter, State) ->
+    Ttl = vmq_config:get_env(max_offline_message_ttl, 0),
+    case message_expiry(Ttl, SessionExpireAfter) of
+        0 ->
+            State;
+        Secs ->
+            Ref = gen_fsm:send_event_after(Secs * 1000, expire_message),
+            State#state{message_expiry_timer = Ref}
+    end.
+
+message_expiry(Ttl, 0) -> Ttl;
+message_expiry(0, SessionExpireAfter) -> SessionExpireAfter;
+message_expiry(Ttl, SessionExpireAfter) -> min(Ttl, SessionExpireAfter).
+
+%% a message for an offline client counts as activity: restart both timers
+maybe_reset_expiry_timers(offline, State) -> reset_expiry_timers(State);
+maybe_reset_expiry_timers(_, State) -> State.
+
+reset_expiry_timers(State) ->
+    maybe_set_expiry_timer(unset_expiry_timer(State)).
 
 maybe_set_last_will_timer(#state{delayed_will = undefined} = State) ->
     State;
@@ -1441,11 +1473,20 @@ unset_will_timer(#state{delayed_will_timer = Ref} = State) ->
     gen_fsm:cancel_timer(Ref),
     State#state{delayed_will_timer = undefined}.
 
-unset_expiry_timer(#state{expiry_timer = undefined} = State) ->
+unset_expiry_timer(State) ->
+    unset_message_expiry_timer(unset_session_expiry_timer(State)).
+
+unset_session_expiry_timer(#state{expiry_timer = undefined} = State) ->
     State;
-unset_expiry_timer(#state{expiry_timer = Ref} = State) ->
+unset_session_expiry_timer(#state{expiry_timer = Ref} = State) ->
     gen_fsm:cancel_timer(Ref),
     State#state{expiry_timer = undefined}.
+
+unset_message_expiry_timer(#state{message_expiry_timer = undefined} = State) ->
+    State;
+unset_message_expiry_timer(#state{message_expiry_timer = Ref} = State) ->
+    gen_fsm:cancel_timer(Ref),
+    State#state{message_expiry_timer = undefined}.
 
 state_change(Msg, OldStateName, NewStateName) ->
     lager:debug("transition from ~p --> ~p because of ~p", [OldStateName, NewStateName, Msg]),

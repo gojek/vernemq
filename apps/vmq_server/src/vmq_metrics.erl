@@ -69,6 +69,7 @@
 
     incr_queue_setup/0,
     incr_queue_initialized_from_storage/0,
+    incr_queue_offline_messages_expired/0,
     incr_queue_teardown/0,
     incr_queue_drop/0,
     incr_queue_msg_expired/1,
@@ -290,6 +291,9 @@ incr_queue_setup() ->
 
 incr_queue_initialized_from_storage() ->
     incr_item(?METRIC_QUEUE_INITIALIZED_FROM_STORAGE, 1).
+
+incr_queue_offline_messages_expired() ->
+    incr_item(?METRIC_QUEUE_OFFLINE_MESSAGES_EXPIRED, 1).
 
 incr_queue_teardown() ->
     incr_item(?METRIC_QUEUE_TEARDOWN, 1).
@@ -1679,6 +1683,13 @@ counter_entries_def() ->
         m(
             counter,
             [],
+            queue_offline_messages_expired,
+            queue_offline_messages_expired,
+            <<"The number of times the offline messages of a MQTT queue were deleted from offline storage because they expired.">>
+        ),
+        m(
+            counter,
+            [],
             queue_teardown,
             queue_teardown,
             <<"The number of times a MQTT queue process has been terminated.">>
@@ -2928,7 +2939,8 @@ met2idx(?METRIC_CLUSTER_DRAIN_MESSAGES) -> 385;
 met2idx(?METRIC_CLUSTER_DRAIN_BYTES) -> 386;
 met2idx({?REDIS_CMD, ?ZREM, ?DEREGISTER_NODE}) -> 387;
 met2idx({?REDIS_CMD_ERROR, ?ZREM, ?DEREGISTER_NODE}) -> 388;
-met2idx({?REDIS_CMD_MISS, ?ZREM, ?DEREGISTER_NODE}) -> 389.
+met2idx({?REDIS_CMD_MISS, ?ZREM, ?DEREGISTER_NODE}) -> 389;
+met2idx(?METRIC_QUEUE_OFFLINE_MESSAGES_EXPIRED) -> 390.
 
 -ifdef(TEST).
 clear_stored_rates() ->
