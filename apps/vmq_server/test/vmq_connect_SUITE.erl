@@ -67,12 +67,18 @@ groups() ->
          uname_password_success_test,
          change_subscriber_id_test
         ],
+    RegisterFailedTests =
+        [on_register_failed_no_hook_test,
+         on_register_failed_auth_denied_test,
+         on_register_failed_will_not_authorized_test
+        ],
     [
      {mqttv4, [shuffle,sequence],
-      [auth_on_register_change_username_test|Tests]},
+      [auth_on_register_change_username_test|Tests] ++ RegisterFailedTests},
      {mqtts, [], Tests},
      {mqttws, [], [ws_protocols_list_test, ws_no_known_protocols_test] ++ Tests},
-     {mqttv5, [auth_on_register_change_username_test, uname_anon_username_test_m5]}
+     {mqttv5, [auth_on_register_change_username_test, uname_anon_username_test_m5]
+      ++ RegisterFailedTests}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -238,6 +244,46 @@ ws_no_known_protocols_test(Config) ->
     {error, unknown_websocket_protocol} = packet:do_client_connect(Connect, Connack, ConnOpts),
     ok.
 
+%% allow_anonymous is false and no auth_on_register hook is
+%% registered, so the broker rejects the CONNECT itself
+on_register_failed_no_hook_test(Config) ->
+    ok = enable_register_failed_capture(),
+    Connect = mqtt5_v4compat:gen_connect("orf-no-hook-test", [{keepalive,10}], Config),
+    Connack = mqtt5_v4compat:gen_connack(auth_rejected(Config), Config),
+    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, conn_opts(Config), Config),
+    {<<"orf-no-hook-test">>, no_matching_hook_found} = captured_register_failure(),
+    ok = disable_register_failed_capture(),
+    ok = close(Socket, Config).
+
+on_register_failed_auth_denied_test(Config) ->
+    {Hook, Fun, Arity} = auth_denied_hook(Config),
+    ok = vmq_plugin_mgr:enable_module_plugin(Hook, ?MODULE, Fun, Arity),
+    ok = enable_register_failed_capture(),
+    Connect = mqtt5_v4compat:gen_connect("orf-auth-denied-test",
+                                         [{keepalive,10}, {username, "user"},
+                                          {password, "wrong"}], Config),
+    Connack = mqtt5_v4compat:gen_connack(credentials_rejected(Config), Config),
+    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, conn_opts(Config), Config),
+    {<<"orf-auth-denied-test">>, invalid_credentials} = captured_register_failure(),
+    ok = disable_register_failed_capture(),
+    ok = vmq_plugin_mgr:disable_module_plugin(Hook, ?MODULE, Fun, Arity),
+    ok = close(Socket, Config).
+
+%% the session registers and is then torn down because its last will
+%% isn't authorized - no auth_on_publish hook grants the will topic
+on_register_failed_will_not_authorized_test(Config) ->
+    vmq_server_cmd:set_config(allow_anonymous, true),
+    vmq_config:configure_node(),
+    ok = enable_register_failed_capture(),
+    Connect = mqtt5_v4compat:gen_connect("orf-will-test",
+                                         [{keepalive,10}, {will_topic, "orf/will"},
+                                          {will_msg, <<"goodbye">>}], Config),
+    Connack = mqtt5_v4compat:gen_connack(not_authorized, Config),
+    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, conn_opts(Config), Config),
+    {<<"orf-will-test">>, not_allowed} = captured_register_failure(),
+    ok = disable_register_failed_capture(),
+    ok = close(Socket, Config).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -264,7 +310,53 @@ hook_on_register_changed_username_m5(_,_, <<"new_username">>, _, _) ->
 hook_on_register_uname_anon_username_m5(_, _, <<"user">>, _, _) ->
     ok.
 
+hook_orf_auth_denied(_, {"", <<"orf-auth-denied-test">>}, <<"user">>, <<"wrong">>, _, _) ->
+    {error, invalid_credentials}.
+
+hook_orf_auth_denied_m5(_, {"", <<"orf-auth-denied-test">>}, <<"user">>, <<"wrong">>, _, _, _) ->
+    {error, invalid_credentials}.
+
+hook_capture_register_failed(_Peer, {_MP, ClientId}, _UserName, _CleanSession, Reason) ->
+    ets:insert(?MODULE, {register_failed, ClientId, Reason}),
+    ok.
+
 %% Helpers
+enable_register_failed_capture() ->
+    catch ets:delete(?MODULE),
+    ?MODULE = ets:new(?MODULE, [public, named_table]),
+    vmq_plugin_mgr:enable_module_plugin(
+      on_register_failed, ?MODULE, hook_capture_register_failed, 5).
+
+disable_register_failed_capture() ->
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           on_register_failed, ?MODULE, hook_capture_register_failed, 5),
+    true = ets:delete(?MODULE),
+    ok.
+
+captured_register_failure() ->
+    [{register_failed, ClientId, Reason}] = ets:lookup(?MODULE, register_failed),
+    {ClientId, Reason}.
+
+%% the connack a broker side authentication rejection maps to
+auth_rejected(Config) ->
+    case mqtt5_v4compat:protover(Config) of
+        4 -> not_authorized;
+        5 -> bad_authn
+    end.
+
+%% the connack a rejection by the auth hook maps to
+credentials_rejected(Config) ->
+    case mqtt5_v4compat:protover(Config) of
+        4 -> malformed_credentials;
+        5 -> bad_authn
+    end.
+
+auth_denied_hook(Config) ->
+    case mqtt5_v4compat:protover(Config) of
+        4 -> {auth_on_register, hook_orf_auth_denied, 6};
+        5 -> {auth_on_register_m5, hook_orf_auth_denied_m5, 7}
+    end.
+
 stop_listener(Config) ->
     Port = proplists:get_value(port, Config),
     Address = proplists:get_value(address, Config),
