@@ -153,7 +153,7 @@ auth_on_publish(User, SubscriberId, QoS, Topic, _, _, _SessionId) ->
             end
     end.
 
-auth_on_subscribe_m5(User, SubscriberId, Topics, _Props, SessionId) ->
+auth_on_subscribe_m5(User, SubscriberId, Topics, Props, SessionId) ->
     SubOptsByTopic = [{Topic, QoS, SubOpts} || {Topic, {QoS, SubOpts}} <- Topics],
     case length(SubOptsByTopic) =:= length(Topics) of
         false ->
@@ -171,7 +171,14 @@ auth_on_subscribe_m5(User, SubscriberId, Topics, _Props, SessionId) ->
                             Modifiers
                         )
                     of
-                        V5Topics -> {ok, #{topics => V5Topics, properties => #{}}}
+                        V5Topics ->
+                            UserProps = maps:get(p_user_property, Props, []),
+                            ResponseProps =
+                                case UserProps of
+                                    [] -> #{};
+                                    _ -> #{p_user_property => UserProps}
+                                end,
+                            {ok, #{topics => V5Topics, properties => ResponseProps}}
                     catch
                         error:function_clause -> {error, modifiers_mismatch}
                     end;
@@ -1116,9 +1123,12 @@ mqtt5_subscribe_test(_) ->
                 <<"invalid-user">>, {"", <<"client-id">>}, Topics, #{}, ?SESSION_ID
             )
         ),
-        %% Inbound user properties are not echoed back into the SUBACK
+        %% Inbound user properties are echoed back into the SUBACK
         ?_assertEqual(
-            {ok, #{topics => [{Topic, {1, SubOpts}, ReadAcl}], properties => #{}}},
+            {ok, #{
+                topics => [{Topic, {1, SubOpts}, ReadAcl}],
+                properties => #{p_user_property => [{<<"k">>, <<"v">>}]}
+            }},
             auth_on_subscribe_m5(
                 <<"test">>,
                 {"", <<"client-id">>},

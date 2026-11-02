@@ -18,4 +18,5 @@ message OnPublish {
     bool retain = 8;
     MatchedACL matched_acl = 9;
     string session_id = 10;
+    map<string, string> user_properties = 11;
 }
