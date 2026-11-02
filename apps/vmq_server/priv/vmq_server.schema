@@ -288,6 +288,54 @@
          end
  end}.
 
+%% @doc How long the offline messages of a persistent client are kept in the
+%% offline message store (Redis) after the client went offline or the last
+%% message arrived. Never longer than the session expiry. The messages kept in
+%% the in-memory queue are not affected. The value is an integer followed by one
+%% of 's', 'h', 'd', 'w', 'm', 'y', or 'never'.
+{mapping, "max_offline_message_ttl", "vmq_server.max_offline_message_ttl", [
+                                                                            {default, "6h"},
+                                                                            {commented, "6h"},
+                                                                            {datatype, string}
+                                                                           ]}.
+
+{translation, "vmq_server.max_offline_message_ttl",
+ fun(Conf) ->
+         S = cuttlefish:conf_get("max_offline_message_ttl", Conf),
+         case S of
+             "never" -> 0;
+             _ ->
+                 case vmq_schema:string_to_secs(S) of
+                     error ->
+                         cuttlefish:invalid(S ++ " must be an integer followed by one of 's', 'h', 'd', 'w', 'm', 'y' for second, hour, day, week, month, and year, or the string 'never'");
+                     Val -> Val
+                 end
+         end
+ end}.
+
+%% @doc Force the session expiry interval of MQTTv5 clients. When set, it
+%% replaces the value sent by the client in CONNECT and DISCONNECT and is
+%% returned to the client in CONNACK. 'client' uses the client's value.
+{mapping, "session_expiry_interval_override", "vmq_server.session_expiry_interval_override", [
+                                                                                              {default, "client"},
+                                                                                              {commented, "client"},
+                                                                                              {datatype, string}
+                                                                                             ]}.
+
+{translation, "vmq_server.session_expiry_interval_override",
+ fun(Conf) ->
+         S = cuttlefish:conf_get("session_expiry_interval_override", Conf),
+         case S of
+             "client" -> 0;
+             _ ->
+                 case vmq_schema:string_to_secs(S) of
+                     error ->
+                         cuttlefish:invalid(S ++ " must be an integer followed by one of 's', 'h', 'd', 'w', 'm', 'y' for second, hour, day, week, month, and year, or the string 'client'");
+                     Val -> Val
+                 end
+         end
+ end}.
+
 %% @doc The maximum delay for a last will message. This setting
 %% applies only to MQTTv5 sessions and can be used to override the
 %% value provided by the client.
