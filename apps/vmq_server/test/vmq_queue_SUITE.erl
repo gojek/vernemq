@@ -26,6 +26,8 @@
          queue_offline_online_transition_test_ignore_max/1,
          queue_offline_online_transition_test_ignore_max_lifo/1,
          queue_persistent_client_expiration_test/1,
+         queue_offline_message_expiration_test/1,
+         queue_offline_message_expiration_reset_test/1,
          queue_offline_drop_hook_test/1,
          queue_force_disconnect_test/1,
          queue_force_disconnect_cleanup_test/1]).
@@ -71,6 +73,8 @@ groups() ->
      queue_offline_online_transition_test_ignore_max,
      queue_offline_online_transition_test_ignore_max_lifo,
      queue_persistent_client_expiration_test,
+     queue_offline_message_expiration_test,
+     queue_offline_message_expiration_reset_test,
      queue_offline_drop_hook_test,
      queue_force_disconnect_test,
      queue_force_disconnect_cleanup_test
@@ -354,6 +358,63 @@ queue_persistent_client_expiration_test(Cfg) ->
 
     not_found = vmq_queue_sup_sup:get_queue_pid(SubscriberId),
     {ok, []} = vmq_message_store:find(SubscriberId).
+
+offline_message_expiration_setup(Cfg, ClientId, SessionExpiry, MsgTtl) ->
+    #{group := RegView} = proplists:get_value(vmq_md, Cfg),
+    Parent = self(),
+    SubscriberId = {"", ClientId},
+    application:set_env(vmq_server, persistent_client_expiration, SessionExpiry),
+    application:set_env(vmq_server, max_offline_message_ttl, MsgTtl),
+    QueueOpts = maps:merge(vmq_queue:default_opts(), #{cleanup_on_disconnect => false,
+                                                       max_offline_messages => 1000,
+                                                       queue_type => fifo}),
+    SessionPid1 = spawn(fun() -> mock_session(Parent) end),
+    {ok, #{session_present := false,
+           queue_pid := _QPid}} = vmq_reg:register_subscriber_(SessionPid1, SubscriberId, false, QueueOpts, 10),
+    {ok, [1]} = vmq_reg:subscribe(SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
+    timer:sleep(50), % give some time to plumtree
+    {RegView, SubscriberId, SessionPid1}.
+
+offline_message_expiration_cleanup() ->
+    application:set_env(vmq_server, persistent_client_expiration, 0),
+    application:set_env(vmq_server, max_offline_message_ttl, 21600).
+
+%% expire_message only clears the offline store, the queue lives until expire_session
+queue_offline_message_expiration_test(Cfg) ->
+    {RegView, SubscriberId, SessionPid1} =
+        offline_message_expiration_setup(Cfg, <<"offline-message-expiration">>, 8, 2),
+    SessionPid1 ! {go_down_in, 1},
+    Msgs = publish_multi(RegView, SubscriberId, [<<"test">>, <<"transition">>]),
+    timer:sleep(500),
+    {ok, FoundMsgs} = vmq_message_store:find(SubscriberId),
+    true = length(Msgs) == length(FoundMsgs),
+
+    %% message timer (2s) fired, session timer (8s) did not
+    timer:sleep(3500),
+    {ok, []} = vmq_message_store:find(SubscriberId),
+    QPid = vmq_queue_sup_sup:get_queue_pid(SubscriberId),
+    true = is_pid(QPid),
+
+    %% the session expires later
+    timer:sleep(6000),
+    not_found = vmq_queue_sup_sup:get_queue_pid(SubscriberId),
+    offline_message_expiration_cleanup().
+
+%% a message for an offline client restarts the message timer
+queue_offline_message_expiration_reset_test(Cfg) ->
+    {RegView, SubscriberId, SessionPid1} =
+        offline_message_expiration_setup(Cfg, <<"offline-message-expiration-reset">>, 20, 3),
+    SessionPid1 ! {go_down_in, 1},
+    _ = publish_multi(RegView, SubscriberId, [<<"test">>, <<"transition">>]),
+    timer:sleep(3000),
+    %% client is offline since ~1s, the timer would fire at ~4s
+    _ = publish_multi(RegView, SubscriberId, [<<"test">>, <<"transition">>]),
+    timer:sleep(2000),
+    {ok, [_ | _]} = vmq_message_store:find(SubscriberId),
+    timer:sleep(2500),
+    {ok, []} = vmq_message_store:find(SubscriberId),
+    true = is_pid(vmq_queue_sup_sup:get_queue_pid(SubscriberId)),
+    offline_message_expiration_cleanup().
 
 queue_offline_drop_hook_test(Cfg) ->
     #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),

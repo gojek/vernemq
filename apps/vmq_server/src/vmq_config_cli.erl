@@ -36,6 +36,8 @@ register_config_() ->
             "retry_interval",
             "max_client_id_size",
             "persistent_client_expiration",
+            "max_offline_message_ttl",
+            "session_expiry_interval_override",
             "max_inflight_messages",
             "max_online_messages",
             "max_offline_messages",
