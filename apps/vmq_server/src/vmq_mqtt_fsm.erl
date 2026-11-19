@@ -505,9 +505,9 @@ connected(
     case auth_on_subscribe(User, SubscriberId, SubTopics, OnAuthSuccess, SessionId) of
         {ok, QoSs} ->
             check_mqtt_auth_errors(QoSs),
-            Frame = #mqtt_suback{message_id = MessageId, qos_table = QoSs},
+            _Frame = #mqtt_suback{message_id = MessageId, qos_table = QoSs},
             _ = vmq_metrics:incr_mqtt_suback_sent(),
-            {State, [Frame]};
+            {State, []};
         {error, not_allowed} ->
             %% allow the parser to add the 0x80 Failure return code
             lager:error(
