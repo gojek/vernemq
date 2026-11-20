@@ -338,44 +338,17 @@ connected(
         end,
     {NewState2, Out};
 connected(
-    #mqtt_puback{message_id = MessageId},
+    #mqtt_puback{message_id = _MessageId},
     #state{
-        waiting_acks = WAcks,
-        subscriber_id = SubscriberId,
-        username = Username,
-        session_id = SessionId
+        waiting_acks = _WAcks,
+        subscriber_id = _SubscriberId,
+        username = _Username,
+        session_id = _SessionId
     } = State
 ) ->
     %% qos1 flow
     _ = vmq_metrics:incr_mqtt_puback_received(),
-    case maps:get(MessageId, WAcks, not_found) of
-        #vmq_msg{
-            routing_key = Topic,
-            payload = Payload,
-            retain = IsRetain,
-            qos = QoS,
-            acl_name = Name,
-            persisted = Persisted,
-            pub_msg_id = PubMsgId,
-            pub_pid = PubPid
-        } ->
-            _ = vmq_plugin:all(on_delivery_complete, [
-                Username,
-                SubscriberId,
-                QoS,
-                Topic,
-                Payload,
-                IsRetain,
-                #matched_acl{name = Name},
-                Persisted,
-                SessionId
-            ]),
-            vmq_mqtt_fsm_util:maybe_send_puback(Name, PubPid, PubMsgId),
-            handle_waiting_msgs(State#state{waiting_acks = maps:remove(MessageId, WAcks)});
-        not_found ->
-            _ = vmq_metrics:incr_mqtt_error_invalid_puback(),
-            {State, []}
-    end;
+    {State, []};
 connected(#mqtt_pubrec{message_id = MessageId}, State) ->
     #state{
         waiting_acks = WAcks,
@@ -1246,13 +1219,13 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
 
 -spec maybe_send_immediate_puback(AclName :: binary() | undefined, MessageId :: msg_id()) ->
     [mqtt_puback()].
-maybe_send_immediate_puback(AclName, MessageId) ->
+maybe_send_immediate_puback(AclName, _MessageId) ->
     case vmq_mqtt_fsm_util:should_send_puback(AclName) of
         true ->
             [];
         false ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
-            [#mqtt_puback{message_id = MessageId}]
+            []
     end.
 
 -spec dispatch_publish_qos2(msg_id(), msg(), state()) ->
