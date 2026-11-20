@@ -1246,13 +1246,13 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
 
 -spec maybe_send_immediate_puback(AclName :: binary() | undefined, MessageId :: msg_id()) ->
     [mqtt_puback()].
-maybe_send_immediate_puback(AclName, MessageId) ->
+maybe_send_immediate_puback(AclName, _MessageId) ->
     case vmq_mqtt_fsm_util:should_send_puback(AclName) of
         true ->
             [];
         false ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
-            [#mqtt_puback{message_id = MessageId}]
+            []
     end.
 
 -spec dispatch_publish_qos2(msg_id(), msg(), state()) ->
